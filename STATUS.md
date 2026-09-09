@@ -4,8 +4,9 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-09
-- 마지막 커밋: Phase 4 — 물질화와 재개
-- 테스트: `python -m pytest tests -q` → **81 passed**
+- 마지막 커밋: Phase 5 — 학습 루프와 추론 계약
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **93 passed**
+- 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
 
@@ -127,42 +128,60 @@ Mech-Vision(산업용 3D 비전 노드 편집기)의 규약을 의도적으로 �
 **실측 결과**: 6건을 shard 3개로 구운 뒤 고아 shard를 심고 `--resume` → 커밋된 6건 재사용, 새로 4건,
 고아 2개 삭제. 스펙을 바꾸고 재개하면 양쪽 spec_hash를 보여주며 거부(exit 5).
 
+### Phase 5 — 학습 루프와 추론 계약 ✅ (실물 백본만 남음)
+
+- [x] 환경: `.venv` Python 3.12.14 + torch 2.14.0+cu130. `torch.cuda.is_available() == True`, bf16 matmul 14.9 TFLOP/s
+- [x] `plugins/base.py`에 `BackboneAdapter` 계약 확장(build / module_groups / lora_root / collate)
+- [x] `plugins/tiny_backbone.py` — **로컬 소형 VLM(2.3M)**. 비전 타워 + 프로젝터 + 4레이어 LLM + UTF-8 바이트 토크나이저. 다운로드 없이 진짜로 학습된다
+- [x] `train/freeze.py` — 3상태(false/true/lora) → 실제 `requires_grad`, LoRALinear 주입, 선언과 실제의 일치를 `verify()`가 확인
+- [x] `train/loop.py` — 다단계, `init_from` 연결, grad accum, 원자적 체크포인트, **step 단위 재개**, peak VRAM 측정
+- [x] `train/contract.py` — `inference_contract.json` + `inference_graph.yaml`. 정답 경로를 잘라내고 프롬프트 경로만 남긴다(누설 차단 노드는 한 단계 위로 거슬러 해소)
+- [x] `io.prompt_export` 노드 — 추론 그래프의 종결점이자 바이트 대조 수단
+- [x] `NodeDef.per_sample` — Trainer는 샘플 루프가 아니라 데이터셋 전체에 한 번 돈다
+- [x] 실행 프로파일 허용 목록 — `flash_attn2` / DeepSpeed / apex / disk offload / distributed를 학습 전에 거부
+- [x] CLI `train`, `infer-graph`
+- [x] 완료 조건 + 검증 12개 (`tests/test_train.py`)
+
+**실측 결과** (RTX 3060, 12건 물질화 후 학습):
+
+```
+학습 [cuda] 샘플 12건
+  projector_align  step 30 · loss 5.704 -> 5.716 · 2.1s · peak 0.15 GB
+    학습 파라미터: projector 28,928
+  lora_ft          step 30 · loss 5.702 -> 5.425 · 2.0s · peak 0.19 GB
+    학습 파라미터: projector 28,928, llm 32,768 · LoRA 16개 모듈
+추론 그래프 대조: 12건 · 바이트 동일 12건
+```
+
+**아직 안 된 것**: 실물 2B 백본. `BackboneAdapter` 계약은 `tiny-vlm`이 참조 구현으로 채워 놓았으므로,
+모델 id를 정하고 같은 인터페이스를 구현하면 그래프도 스펙도 그대로 둔 채 `backbone:` 한 줄로 바뀐다.
+
 ### 설계 문서
 
 - [x] `docs/design/` 13편 + README. Mech-Vision 공개 문서와 화면 캡처 3장 실측이 근거이며 `[문서확인]`/`[이미지확인]`/`[추정]`으로 구분 표기
 
 ---
 
-## 3. 다음 — Phase 5 (여기서 시작하면 된다)
+## 3. 다음 — 둘 중 하나를 고른다
 
-목표: **2B QLoRA 2단계 학습이 단일 GPU에서 완주하고, 추론 프롬프트가 학습 프롬프트와 바이트 단위로 같다.**
+### 3a. 실물 2B 백본 (Phase 5 마무리)
+- [ ] 모델 id 확정 (7장의 미결 항목). 2B급 VLM + Windows에서 도는 것
+- [ ] `python -m pip install transformers accelerate peft bitsandbytes safetensors sentencepiece`
+- [ ] `plugins/hf_backbone.py` — `BackboneAdapter` 구현. `spec()`은 가중치 없이 config.json만 읽어 답해야 한다
+- [ ] `collate()`를 실제 프로세서/토크나이저로. `chars_per_token` 추정을 실제 토큰 카운트로 교체
+- [ ] QLoRA(nf4) 경로 확인 — 예산 게이트는 이미 nf4를 계산에 넣고 있다
+- 완료 조건: 같은 그래프·같은 스펙에서 `backbone:` 한 줄만 바꿔 학습이 완주한다
 
-### 3.1 환경
-- [ ] torch 설치. Python 3.14 휠이 없으면 3.12 venv를 따로 만든다 (STATUS 5장 참조)
-- [ ] 실제 2B급 백본 모델 id 확정 + `BackboneAdapter` 구현체 1종 (`spec()`은 이미 계약이 있다)
-
-### 3.2 학습 루프
-- [ ] `train/loop.py` — 단계 실행, `init_from`으로 단계 연결, 체크포인트(가중치 + optimizer + **데이터로더 상태**)
-- [ ] `train/freeze.py` — `trainable` 3상태(false/true/lora)와 정규식 overrides를 실제 `requires_grad`로
-- [ ] 데이터는 `train/shards.py`로만 읽는다. 원본 데이터도 그래프도 다시 읽지 않는다
-- [ ] dataloader: `start_method=spawn`, `persistent_workers=True` (Windows)
-- [ ] `train.vlm_trainer` 노드의 스텁을 실제 학습으로 교체
-
-### 3.3 추론 계약
-- [ ] `train/contract.py` — 체크포인트 옆에 `inference_contract.json` + `inference_graph.yaml`
-- [ ] 추론 그래프는 학습 그래프에서 **정답 경로를 잘라내고 프롬프트 경로만** 남긴 서브그래프로 자동 추출
-- [ ] CLI `infer-graph`
-
-### 3.4 완료 조건
-1. Triad 구조 2단계(projector 정렬 → LoRA)가 이 PC에서 완주한다
-2. 학습 중단 후 `--resume`이 step 단위로 이어지고 데이터로더 순서가 재현된다
-3. **추론 그래프로 만든 프롬프트가 학습 시 프롬프트와 바이트 단위로 동일**하다(테스트로 고정)
-4. `freeze` 정책이 실제 `requires_grad` 상태와 일치함을 테스트가 확인한다
-5. Windows 미지원 옵션을 고르면 G2가 대체안과 함께 거부한다
+### 3b. Phase 6 — Parameter Recipe와 스윕
+- [ ] `spec/recipe.py` — `recipes.yaml` 로더(화이트리스트 검사는 이미 컴파일러에 있다)
+- [ ] 스윕 전개(grid/list/random) + `recipes.lock.yaml`
+- [ ] **전개 시점에 전 레시피 예산 사전 검사** — 초과 레시피는 큐에 넣지 않는다
+- [ ] 물질화 캐시 공유: 전처리 파라미터가 같은 레시피는 한 번만 굽는다
+- [ ] CLI `recipe list/show/diff/expand/set-active`, `sweep`
+- 완료 조건: 그래프 1개 + 레시피 3개로 실험 3개가 순차 실행된다
 
 ## 4. 그 이후 (요약 — 상세는 `docs/design/10-roadmap.md`)
 
-- **Phase 6 Parameter Recipe·스윕** — 화이트리스트는 이미 컴파일러에 있음. 스펙 파일·전개·순차 큐가 남음
 - **Phase 7 UI** — 7파티션, 수직 캔버스, Debug Output, History
 - **Phase 8 확장** — 다중 GPU, 원격, 캐시 백엔드
 
@@ -173,7 +192,8 @@ Mech-Vision(산업용 3D 비전 노드 편집기)의 규약을 의도적으로 �
 | 항목 | 사실 | 대응 |
 |---|---|---|
 | GPU | RTX 3060 **12GB** (4090 아님) | Phase 3에서 프로파일 분리. stage1 projector 정렬은 `grad_checkpointing: true` + `per_device: 1`이어야 들어간다 |
-| torch | **미설치** | Phase 4까지는 필요 없었다. **Phase 5의 첫 작업이 설치다** |
+| torch | **`.venv`에 설치됨** (2.14.0+cu130, CUDA True) | 3.14 host에는 없다. 항상 `.venv\Scripts\python.exe`를 쓴다 |
+| `uv venv`는 pip를 넣지 않는다 | 활성화해도 `pip`가 venv 밖으로 샌다 | venv 안에서는 **항상 `python -m pip`**. 이 venv에는 pip를 넣어 두었다 |
 | 예산 프로파일 | 기본 `rtx3060_12gb`(이 PC). 4090은 `--device rtx4090_24gb` 또는 trainer.yaml의 `budget.device` | 그래프는 그대로다. 바뀌는 것은 Trainer 설정 한 줄 |
 | Python | 3.14.4 (`C:\Users\wnsgu\AppData\Local\Python\pythoncore-3.14-64`) | torch 휠이 3.14를 지원하는지 미확인. 안 되면 3.12 venv를 따로 만든다 |
 | 설치된 패키지 | `yaml` `pytest` `numpy` `pydantic` `PIL` 있음 | 코어는 표준 라이브러리 + yaml만 쓴다. 새 의존성은 정말 필요할 때만 |

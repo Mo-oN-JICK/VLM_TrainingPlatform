@@ -406,4 +406,6 @@ def for_graph(
     cg: CompiledGraph, cfg: TrainerConfig, train_node: str, measured_text_tokens: int = 0
 ) -> BudgetResult:
     images, hw = vision_from_graph(cg, train_node)
-    return estimate(cfg, images=images, image_hw=hw, measured_text_tokens=measured_text_tokens)
+    res = estimate(cfg, images=images, image_hw=hw, measured_text_tokens=measured_text_tokens)
+    res.errors.extend(cfg.profile_errors(cg.runtime_profile))
+    return res

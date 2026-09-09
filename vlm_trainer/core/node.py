@@ -135,6 +135,7 @@ class NodeDef:
     external_call: bool = False
     deterministic: bool = True
     clears_taint: tuple = ()   # 이 노드를 거치면 제거되는 semantic taint (예: label)
+    per_sample: bool = True     # False면 샘플 루프가 아니라 데이터셋 전체에 한 번 실행된다(학습)
     doc: NodeDoc = field(default_factory=NodeDoc)
     impl: Optional[Type[Node]] = None
 

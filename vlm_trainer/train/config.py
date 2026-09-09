@@ -33,6 +33,19 @@ OPTIMIZER_BYTES = {
 }
 
 
+# 기본 실행 프로파일(단일 GPU / Windows)에서 돌지 않는 선택지.
+# 여기 걸리면 학습을 시작하지 않는다 — 큐에 넣고 퇴근한 밤이 통째로 날아가는 것을 막는다.
+PROFILE_UNSUPPORTED: Dict[str, Dict[str, str]] = {
+    "windows_single_gpu": {
+        "attn_impl:flash_attn2": "sdpa로 바꿔라. flash-attn은 Windows 휠이 없다",
+        "optimizer:deepspeed_adam": "adamw_torch 또는 adamw_bnb_8bit를 써라. DeepSpeed는 Windows를 지원하지 않는다",
+        "optimizer:adamw_apex_fused": "adamw_torch를 써라. apex는 Windows 빌드가 없다",
+        "offload:disk": "offload를 none 또는 cpu로 두어라",
+        "distributed:true": "기본 프로파일은 단일 GPU다. 다중 GPU는 확장 지점이지 기본값이 아니다",
+    }
+}
+
+
 @dataclass
 class Quantization:
     mode: str = "none"  # none | int8 | nf4
@@ -103,17 +116,43 @@ class BudgetPolicy:
 
 
 @dataclass
+class Distributed:
+    enabled: bool = False
+    strategy: str = "none"
+
+
+@dataclass
 class TrainerConfig:
     backbone: str = "dummy-2b"
     adapter: str = ""
     dtype: str = "bf16"
+    attn_impl: str = "sdpa"
+    offload: str = "none"  # none | cpu | disk
     quantization: Quantization = field(default_factory=Quantization)
     vision: Vision = field(default_factory=Vision)
     sequence: Sequence = field(default_factory=Sequence)
     loss: Loss = field(default_factory=Loss)
     stages: List[Stage] = field(default_factory=list)
     budget: BudgetPolicy = field(default_factory=BudgetPolicy)
+    distributed: Distributed = field(default_factory=Distributed)
     source_path: str = ""
+
+    def profile_errors(self, profile: str) -> List[str]:
+        """실행 프로파일이 지원하지 않는 선택지를 골라낸다."""
+        table = PROFILE_UNSUPPORTED.get(profile) or {}
+        picked = [f"attn_impl:{self.attn_impl}", f"offload:{self.offload}",
+                  f"distributed:{str(self.distributed.enabled).lower()}"]
+        picked += [f"optimizer:{s.optimizer}" for s in self.stages]
+        out: List[str] = []
+        for key in picked:
+            if key in table:
+                field_name, value = key.split(":", 1)
+                out.append(
+                    f"실행 프로파일 {profile}가 지원하지 않는 설정: {field_name} = {value}\n"
+                    f"  {table[key]}\n"
+                    "  이 검사가 없었다면: 물질화를 마치고 백본을 올린 직후 임포트 에러로 죽는다."
+                )
+        return out
 
     # ── 로드 ────────────────────────────────────────────────────────────
     @staticmethod
@@ -127,6 +166,9 @@ class TrainerConfig:
             sequence=Sequence(**(d.get("sequence") or {})),
             loss=Loss(**(d.get("loss") or {})),
             budget=BudgetPolicy(**(d.get("budget") or {})),
+            distributed=Distributed(**(d.get("distributed") or {})),
+            attn_impl=str(d.get("attn_impl", "sdpa")),
+            offload=str(d.get("offload", "none")),
             source_path=source_path,
         )
         for s in d.get("stages") or []:

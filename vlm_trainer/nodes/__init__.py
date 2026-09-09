@@ -7,4 +7,9 @@
 from . import answer, dataset, expert, imaging, prompt, source, timeseries  # noqa: F401
 from ..plugins import dummy_backbones, dummy_experts  # noqa: F401
 
+try:  # 로컬 소형 백본은 torch가 있을 때만 등록한다
+    from ..plugins import tiny_backbone  # noqa: F401
+except ImportError:  # pragma: no cover - torch 없는 환경
+    pass
+
 __all__ = ["source", "imaging", "timeseries", "expert", "prompt", "answer", "dataset"]

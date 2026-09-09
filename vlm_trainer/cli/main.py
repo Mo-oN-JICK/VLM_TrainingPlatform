@@ -27,6 +27,7 @@ from ..engine.runner import RunOptions, ancestors, execute
 from ..spec.decompile import decompile, dump_yaml
 from ..train.config import TrainerConfig
 from ..train import shards as shards_mod
+from ..train import contract as contract_mod
 
 
 def _load_nodes(modules: List[str]) -> None:
@@ -299,6 +300,66 @@ def cmd_materialize(a: argparse.Namespace) -> int:
     return 0 if rep.ok else 5
 
 
+def cmd_infer_graph(a: argparse.Namespace) -> int:
+    _load_nodes(a.nodes)
+    cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
+    spec = contract_mod.extract_inference_graph(cg)
+    text = dump_yaml(spec)
+    if a.out:
+        with open(a.out, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        print(f"추론 그래프 -> {a.out}")
+        print(f"  프롬프트 종단: {contract_mod.prompt_terminus(cg)}")
+        print(f"  노드 {len(spec['nodes'])}개 (정답 경로는 잘라냈다)")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_train(a: argparse.Namespace) -> int:
+    from ..engine.journal import Journal
+    from ..train import loop as loop_mod
+
+    _load_nodes(a.nodes)
+    cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
+    got = _trainer_cfg(a, cg)
+    if got is None:
+        raise SystemExit("이 그래프에는 Trainer 노드가 없다.")
+    cfg, tn = got
+    run_id = _run_id(a)
+    spec_dir = os.path.dirname(os.path.abspath(a.spec))
+
+    # G4 — GPU를 잡기 전 마지막 문
+    mat_dir = a.materialized or os.path.join("runs", run_id, "materialized")
+    measured = 0
+    if not a.skip_budget:
+        b = budget_mod.for_graph(cg, cfg, tn, measured_text_tokens=_measure_tokens(a, cg, cfg))
+        if not b.ok and cfg.budget.policy == "fail_fast":
+            print(budget_mod.render(b), file=sys.stderr)
+            print("", file=sys.stderr)
+            print("학습을 시작하지 않았다.", file=sys.stderr)
+            return 4
+        measured = b.s_vision
+
+    out_dir = os.path.join("runs", run_id, "train")
+    journal = Journal(os.path.join("runs", run_id, "journal.jsonl"))
+    rep = loop_mod.train(
+        cfg,
+        os.path.abspath(mat_dir),
+        os.path.abspath(out_dir),
+        device=a.device_torch,
+        journal=journal,
+        resume=a.resume,
+        max_steps=a.max_steps,
+        on_log=lambda stage, step, loss: print(f"    {stage} step {step:>4} loss {loss:.4f}"),
+    )
+    rep.contract = contract_mod.write(
+        os.path.abspath(out_dir), cg, cfg, spec_dir, vision_tokens=measured
+    )
+    print(loop_mod.render(rep))
+    return 0 if rep.ok else 6
+
+
 def cmd_preview(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
     cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
@@ -408,6 +469,26 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--cache-dir", default=".cache")
     m.add_argument("--run-id", default="")
     m.set_defaults(func=cmd_materialize)
+
+    ig = sub.add_parser("infer-graph", help="학습 그래프에서 정답 경로를 잘라낸 추론 그래프를 뽑는다")
+    ig.add_argument("spec")
+    ig.add_argument("--set", action="append", default=[])
+    ig.add_argument("--out", default="")
+    ig.set_defaults(func=cmd_infer_graph)
+
+    tr = sub.add_parser("train", help="물질화된 shard로 다단계 학습을 실행한다")
+    tr.add_argument("spec")
+    tr.add_argument("--materialized", default="", help="기본값 runs/<run_id>/materialized")
+    tr.add_argument("--set", action="append", default=[])
+    tr.add_argument("--device", default="", help="예산 프로파일")
+    tr.add_argument("--device-torch", default="auto", help="cuda | cpu | auto")
+    tr.add_argument("--resume", action="store_true")
+    tr.add_argument("--max-steps", type=int, default=0)
+    tr.add_argument("--skip-budget", action="store_true")
+    tr.add_argument("--what-if", action="append", default=[])
+    tr.add_argument("--cache-dir", default=".cache")
+    tr.add_argument("--run-id", default="")
+    tr.set_defaults(func=cmd_train)
 
     pv = sub.add_parser("preview", help="노드 하나만 실행해 시각화 출력을 본다")
     pv.add_argument("spec")

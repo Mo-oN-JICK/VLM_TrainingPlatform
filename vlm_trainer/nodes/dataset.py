@@ -271,6 +271,43 @@ class DatasetExport(Node):
 
 
 @dataclass
+class PromptExportParams:
+    out_dir: str = "runs/{run_id}/infer"
+    write_images: bool = False
+
+
+@register(
+    type="io.prompt_export",
+    version="1.0.0",
+    category="File",
+    kind=NodeKind.OUTPUT,
+    inputs={
+        "prompt": Port(text("prompt"), "최종 프롬프트"),
+        "images": Port(image(frame=ANY).as_list(1, 16).as_optional(), "함께 넣을 이미지들"),
+    },
+    params=PromptExportParams,
+    recipe_overridable=["out_dir"],
+    preview="dry_summary",
+    doc=NodeDoc(
+        summary="프롬프트를 그대로 내보낸다. 추론 그래프의 종결점.",
+        scenario="추론 계약이 실제로 재현되는지 확인하는 수단 — 학습 때의 프롬프트와 바이트 단위로 대조한다.",
+    ),
+)
+class PromptExport(Node):
+    def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
+        out_dir = os.path.abspath(params.out_dir.replace("{run_id}", ctx.run_id))
+        os.makedirs(out_dir, exist_ok=True)
+        rec = {
+            "id": ctx.sample_key,
+            "prompt": str(inputs["prompt"]),
+            "n_images": len(inputs.get("images") or []),
+        }
+        with open(os.path.join(out_dir, "prompts.jsonl"), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        return {}
+
+
+@dataclass
 class TrainerParams:
     config_path: str = "trainer.yaml"  # project.yaml 기준. 설계 문서 07의 선언형 스키마
     out_dir: str = "runs/{run_id}/train"
@@ -287,6 +324,7 @@ class TrainerParams:
     },
     params=TrainerParams,
     recipe_overridable=["config_path", "out_dir"],
+    per_sample=False,  # 샘플마다가 아니라 물질화된 데이터셋 전체에 한 번
     preview="budget_table",
     doc=NodeDoc(
         summary="학습 실행. 그래프의 종결점이며 Output 분류에 속한다.",

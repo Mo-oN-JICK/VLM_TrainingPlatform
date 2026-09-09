@@ -116,6 +116,9 @@ def execute(
     plan = [i for i in cg.order if targets is None or i in targets]
     if not opts.run_outputs:
         plan = [i for i in plan if cg.nodes[i].kind is not NodeKind.OUTPUT]
+    else:
+        # per_sample=False Output(학습)은 샘플 루프가 아니라 train 단계에서 한 번 돈다
+        plan = [i for i in plan if resolve_node(cg.nodes[i].ref).per_sample]
 
     for row in rows:
         key = str(row[space.key])

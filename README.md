@@ -2,11 +2,14 @@
 
 Mech-Vision의 규약을 모방한 노드 그래프 기반 파인튜닝 플랫폼. 설계 문서는 [`docs/design/`](docs/design/README.md).
 
-현재 상태: **Phase 0–4 완료** — 타입 시스템 · 레지스트리 · 컴파일러(G1/G2) · decompile 왕복 ·
+현재 상태: **Phase 0–5 완료** — 타입 시스템 · 레지스트리 · 컴파일러(G1/G2) · decompile 왕복 ·
 노드 카탈로그 26개 · 실행 엔진(캐시 · spawn 워커 · 격리) · dry-run(G3) · **자원 예산 게이트(G4)** ·
-노드 단위 미리보기 · **물질화와 재개** · CLI 9개 명령. **4중 게이트가 전부 동작한다.**
-합성 더미 데이터로 전 경로가 돌고, 예산을 넘는 설정은 학습 전에 거부되며, 중단된 물질화는 이어받는다.
-다음은 Phase 5(Trainer 실학습과 추론 계약).
+노드 단위 미리보기 · 물질화와 재개 · **다단계 학습(LoRA·freeze·체크포인트·재개)** ·
+**추론 계약** · CLI 11개 명령. **4중 게이트가 전부 동작한다.**
+합성 더미 데이터로 전 경로가 GPU에서 돌고, 추론 그래프가 만든 프롬프트는 학습 때와 바이트 단위로 같다.
+다음은 실물 2B 백본 어댑터와 Phase 6(Parameter Recipe·스윕).
+
+실행 환경은 `.venv`(Python 3.12 + torch 2.14.0+cu130)다. `python` 대신 `.venv\\Scripts\\python.exe`를 쓴다.
 
 ## 실행
 
@@ -39,6 +42,12 @@ python -m vlm_trainer.cli.main materialize solutions/dummy_ecg/projects/01_dummy
 # 6) 실행 - Output 노드까지 (dataset export + train plan). G4에 걸리면 시작하지 않는다
 python -m vlm_trainer.cli.main run solutions/dummy_ecg/projects/01_dummy/project.yaml --limit 8 --run-id demo
 
+# 7) 학습 - 물질화된 shard로 다단계 학습 (G4를 먼저 통과해야 시작한다)
+python -m vlm_trainer.cli.main train solutions/dummy_ecg/projects/01_dummy/project.yaml --run-id demo --set n_train.config_path=trainer_tiny.yaml
+
+# 8) 추론 그래프 - 학습 그래프에서 정답 경로를 잘라낸 서브그래프
+python -m vlm_trainer.cli.main infer-graph solutions/dummy_ecg/projects/01_dummy/project.yaml --out infer.yaml
+
 # 노드 라이브러리 / 노드 상세 / 스펙 되돌리기
 python -m vlm_trainer.cli.main nodes
 python -m vlm_trainer.cli.main show image.crop_by_regions
@@ -56,13 +65,13 @@ python -m vlm_trainer.cli.main decompile solutions/dummy_ecg/projects/01_dummy/p
 | `vlm_trainer/spec/` | YAML 로더, canonical form, decompile |
 | `vlm_trainer/nodes/` | 노드 카탈로그 26개 (Data Acquisition · 2D · Time Series · Expert · Adapters · Prompt · Answer · Data · File · Training) |
 | `vlm_trainer/engine/` | 실행 엔진 — 캐시, spawn 워커, 샘플 공간, dry-run(G3), 예산(G4), 물질화, 저널, 미리보기 |
-| `vlm_trainer/train/` | 선언형 TrainerConfig, 물질화 산출물 리더 |
+| `vlm_trainer/train/` | 선언형 TrainerConfig, shard 리더, freeze 정책, 학습 루프, 추론 계약 |
 | `vlm_trainer/answer/` | 정답 Text 스키마 — 렌더러와 파서를 같은 정의에서 생성 |
 | `vlm_trainer/plugins/` | 플러그인 규약 + 더미 전문가 모델 2종(이미지 영역 / 시계열 구간) |
 | `vlm_trainer/cli/` | `vlmt` 커맨드 |
 | `solutions/dummy_ecg/` | 합성 더미 데이터로 도는 예제 Solution (Procedure 포함) |
 | `tools/` | 합성 더미 데이터 생성기 |
-| `tests/` | 완료 조건 81개 + 예제 Solution |
+| `tests/` | 완료 조건 93개 + 예제 Solution |
 | `docs/design/` | 설계 문서 13편 |
 
 ## 설계에서 구현으로 오며 바뀐 것
@@ -80,4 +89,6 @@ python -m vlm_trainer.cli.main decompile solutions/dummy_ecg/projects/01_dummy/p
 | 프롬프트의 이미지 자리표시자 개수를 타입에 싣는다 | 지금은 `sample.assemble`이 실행 시점에 실측 대조한다. 예산 산정은 `list.concat.max_n`(타입의 리스트 상한)을 쓴다 | 실제 개수는 샘플마다 달라 컴파일 시점에 확정되지 않는다. 예산은 상한으로 보수적으로 잡는다 |
 | 예산 기준 장치가 4090 24GB | 기본 프로파일은 **`rtx3060_12gb`**, `rtx4090_24gb`는 전환만 하면 된다 | 지금 이 PC가 3060이다. 설정 한 줄로 바뀌므로 다른 PC로 옮길 때 그래프는 그대로다 |
 | 물질화 shard 포맷이 webdataset tar | **디렉터리 + jsonl + PNG** | 검증 대상(원자 커밋·재개·매니페스트)은 같고 읽기가 훨씬 단순하다. tar 패킹은 학습 처리량이 실제로 문제될 때 바꾼다 |
+| Phase 5의 백본이 실물 2B | **로컬 소형 백본 `tiny-vlm`**(2.3M 파라미터, 다운로드 없음)으로 학습 경로 전체를 검증 | 비전 타워·프로젝터·LoRA·다단계 freeze·체크포인트·재개는 모델 크기와 무관하게 같은 코드다. 실물 백본은 `BackboneAdapter`를 채우고 `backbone:` 한 줄을 바꾸면 된다 |
+| 프로파일 미지원 옵션은 G2가 거부 | **G4가 함께 본다** | Trainer 설정이 로드되는 지점이 G4다. 학습 시작 전이라는 성질은 같다 |
 | 텍스트 토큰 수를 토크나이저로 잰다 | 토크나이저가 없는 동안 `chars_per_token`(기본 2.5)으로 환산하고, dry-run 실측 문자 수를 쓴다 | 백본이 붙는 Phase 5에서 실제 토크나이저로 교체한다. 선언값이 실측보다 작으면 G4가 거부하므로 낙관적으로 기울지 않는다 |

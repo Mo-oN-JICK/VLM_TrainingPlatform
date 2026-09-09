@@ -41,6 +41,8 @@ def _check_contracts(d: NodeDef) -> None:
     if d.kind is NodeKind.INPUT and d.impl is not None:
         if d.impl.fingerprint is Node.fingerprint:
             raise RegistrationError(f"{d.ref}: Input 노드는 fingerprint()를 구현해야 한다 (C4)")
+    if not d.per_sample and d.kind is not NodeKind.OUTPUT:
+        raise RegistrationError(f"{d.ref}: per_sample=False는 Output 노드에만 허용된다")
     if d.external_call and d.kind is not NodeKind.PROCESSING:
         raise RegistrationError(f"{d.ref}: external_call은 Processing 노드에만 허용된다")
     if d.params is not None and not dataclasses.is_dataclass(d.params):
@@ -84,6 +86,7 @@ def register(
     external_call: bool = False,
     deterministic: bool = True,
     clears_taint: Iterable[str] = (),
+    per_sample: bool = True,
     doc: Optional[NodeDoc] = None,
 ) -> Callable[[Type[Node]], Type[Node]]:
     def deco(cls: Type[Node]) -> Type[Node]:
@@ -101,6 +104,7 @@ def register(
             external_call=external_call,
             deterministic=deterministic,
             clears_taint=tuple(clears_taint),
+            per_sample=per_sample,
             doc=doc or NodeDoc(),
             impl=cls,
         )
