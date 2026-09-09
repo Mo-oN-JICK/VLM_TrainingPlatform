@@ -1,0 +1,19 @@
+kind: Procedure
+name: expert_crop
+version: "1.0.0"
+summary: "전문가 모델로 의심 영역을 지목하고 crop을 만든다."
+
+exposed_inputs:
+  subject: {port: "n_exp:subject"}
+  image:   {port: "n_crop:image"}
+exposed_outputs:
+  crops:   {port: "n_crop:crops"}
+exposed_params:
+  topk:          {node: n_exp,  param: topk}
+  padding_ratio: {node: n_crop, param: padding_ratio}
+
+nodes:
+  - {id: n_exp,  type: "test.expert@1.0.0", params: {plugin: "dummy@0.1.0", topk: 3}}
+  - {id: n_crop, type: "test.crop@1.0.0",   params: {padding_ratio: 0.15, max_n: 3}}
+edges:
+  - {from: "n_exp:regions", to: "n_crop:regions"}

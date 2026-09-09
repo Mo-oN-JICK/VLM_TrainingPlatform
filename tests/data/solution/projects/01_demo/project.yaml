@@ -1,0 +1,28 @@
+spec_version: 1
+kind: Project
+id: "01_demo"
+name: "Procedure 인라인 데모"
+
+sample_space:
+  index: "../../data/index.jsonl"
+  key: sample_id
+  splits: {strategy: group_holdout, group_by: patient_id, ratios: {train: 0.9, val: 0.1}, seed: 20260909}
+
+nodes:
+  - {id: n_img, type: "test.image_source@1.0.0", params: {column: image_path}}
+  - {id: n_out, type: "test.image_sink@1.0.0",   params: {out_dir: "runs/{run_id}/img"}}
+
+procedures:
+  - id: p1
+    ref: "expert_crop@1.0.0"
+    params: {topk: 2, padding_ratio: 0.2}
+
+edges:
+  - {from: "n_img:image", to: "p1:subject"}
+  - {from: "n_img:image", to: "p1:image"}
+  - {from: "p1:crops",    to: "n_out:images"}
+
+materialize:
+  boundary: ["p1/n_crop"]
+
+runtime_profile: windows_single_gpu
