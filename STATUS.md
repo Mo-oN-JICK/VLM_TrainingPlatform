@@ -4,8 +4,8 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-09
-- 마지막 커밋: Phase 7 편집기 2차 — 파라미터 편집 패널
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **150 passed**
+- 마지막 커밋: Phase 7 편집기 3차 — History 되감기
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **159 passed**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -250,8 +250,15 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
       다시 검사되는 파라미터를 눈으로 구분한다
 - [x] 선택 상태에 **실측한 선택 색**(`#3B5067` / `#57F7E6`)을 쓴다. 리로드 후에도 선택이 유지된다
 
-**아직 없는 것**: 노드 추가/삭제 UI(API는 있다), 라이브 실행 갱신, History 되감기,
-Parameter Recipe 편집기.
+- [x] **History 되감기** — 편집 하나가 시점 하나. 항목을 누르면 그 시점으로 돌아가고,
+      Undo/Redo(Ctrl+Z / Ctrl+Shift+Z)는 같은 커서의 이동일 뿐이다
+- [x] 되감은 뒤 새로 편집하면 redo 가지를 잘라낸다. 거부된 편집은 기록에 남지 않는다
+- [x] 각 시점에 **직전과의 diff**가 붙는다(`- z_thresh: 3.0` / `+ z_thresh: 4.5`).
+      스펙이 텍스트라 편집 하나가 두 줄로 남는다
+- [x] `edit_history.jsonl`을 스펙 옆에 append-only로 남긴다 — 사람이 읽는 기록
+
+**아직 없는 것**: 노드 추가/삭제 UI(API는 있다), 라이브 실행 갱신, Parameter Recipe 편집기,
+세션을 넘는 History 복원(저널은 남지만 되감기는 세션 안에서만).
 
 ### 설계 문서
 
@@ -272,7 +279,6 @@ Parameter Recipe 편집기.
 
 ### 3b. Phase 7 마무리 — 편집기의 남은 절반
 - [ ] 노드 추가/삭제 UI (Node Library에서 캔버스로 드래그). API는 이미 있다
-- [ ] History 되감기 — 편집 커맨드 저널 + diff 스냅샷 (설계 08 §8.8)
 - [ ] Parameter Recipe 편집기 (Project Assistant 안)
 - [ ] 실행을 편집기에서 띄우고 상태를 라이브로 반영(SSE 또는 폴링)
 - 완료 조건: UI만으로 그래프 하나를 처음부터 만들어 CLI로 실행한다

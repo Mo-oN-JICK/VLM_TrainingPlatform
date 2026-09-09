@@ -60,14 +60,17 @@ def _nodes(raw: Any, where: str) -> List[NodeInstance]:
 
 def load_project(path: str) -> GraphModel:
     path = os.path.abspath(path)
-    data = _read_yaml(path)
+    return build_project(_read_yaml(path), os.path.dirname(path), os.path.basename(path))
+
+
+def build_project(data: Dict[str, Any], source_dir: str, where: str = "spec") -> GraphModel:
+    """이미 읽어 둔 매핑에서 GraphModel을 만든다. History 되감기가 이 경로를 쓴다."""
     kind = data.get("kind", "Project")
     if kind != "Project":
-        raise SpecError(f"{path}: kind는 Project여야 한다 (현재 {kind!r})")
+        raise SpecError(f"{where}: kind는 Project여야 한다 (현재 {kind!r})")
     if int(data.get("spec_version", SPEC_VERSION)) != SPEC_VERSION:
-        raise SpecError(f"{path}: 지원하지 않는 spec_version {data.get('spec_version')!r}")
+        raise SpecError(f"{where}: 지원하지 않는 spec_version {data.get('spec_version')!r}")
 
-    where = os.path.basename(path)
     ss = data.get("sample_space") or {}
     mt = data.get("materialize") or {}
 
@@ -97,7 +100,7 @@ def load_project(path: str) -> GraphModel:
         defaults=dict(data.get("defaults") or {}),
         runtime_profile=str(data.get("runtime_profile", "windows_single_gpu")),
         debug=dict(data.get("debug") or {}),
-        source_dir=os.path.dirname(path),
+        source_dir=source_dir,
     )
 
     dup = [i for i in g.ids if g.ids.count(i) > 1]

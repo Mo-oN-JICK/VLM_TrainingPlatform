@@ -5,3 +5,4 @@ __pycache__/
 runs/
 .pytest_cache/
 solutions/*/data/dummy/
+edit_history.jsonl

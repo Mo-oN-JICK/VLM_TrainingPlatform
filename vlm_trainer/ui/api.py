@@ -8,7 +8,10 @@ G1/G2를 통과해야만 받아들여진다. 통과하지 못하면 변경 자�
 
 from __future__ import annotations
 
+import difflib
+import json
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -19,7 +22,9 @@ from ..core.node import NodeKind
 from ..core.registry import all_defs, resolve as resolve_node
 from ..core.unify import unify_ports
 from ..spec.decompile import decompile, dump_yaml
-from ..spec.loader import load_project
+import yaml
+
+from ..spec.loader import build_project, load_project
 
 
 def _short(errors: Any) -> str:
@@ -90,6 +95,20 @@ def occupied_inputs(cg: CompiledGraph) -> List[str]:
     return sorted({e.dst for e in cg.edges})
 
 
+HISTORY_FILE = "edit_history.jsonl"
+
+
+@dataclass
+class HistoryEntry:
+    """한 번의 편집. 스펙이 텍스트라 시점 복원이 스냅샷 하나로 끝난다."""
+
+    label: str
+    spec_hash: str
+    spec: str = ""  # canonical YAML
+    at: str = ""
+    diff: List[str] = field(default_factory=list)
+
+
 @dataclass
 class Editor:
     """열려 있는 프로젝트 하나. 편집은 메모리에서, 저장은 명시적으로."""
@@ -99,13 +118,94 @@ class Editor:
     compiled: Optional[CompiledGraph] = None
     error: str = ""
     dirty: bool = False
+    history: List[HistoryEntry] = field(default_factory=list)
+    cursor: int = -1
 
     @staticmethod
     def open(path: str) -> "Editor":
         e = Editor(path=os.path.abspath(path))
         e.graph = load_project(e.path)
         e._recompile()
+        e._record("열기")
         return e
+
+    # ── History ─────────────────────────────────────────────────────────
+    @property
+    def history_path(self) -> str:
+        return os.path.join(os.path.dirname(self.path), HISTORY_FILE)
+
+    def _spec_text(self) -> str:
+        return dump_yaml(decompile(self.compiled, keep_procedures=True)) if self.compiled else ""
+
+    def _record(self, label: str) -> None:
+        """편집 한 번을 시점으로 남긴다. redo 가지가 있으면 잘라낸다."""
+        if self.compiled is None:
+            return
+        text = self._spec_text()
+        prev = self.history[self.cursor].spec.splitlines() if self.cursor >= 0 else []
+        diff = [
+            ln
+            for ln in difflib.unified_diff(prev, text.splitlines(), lineterm="", n=0)
+            if ln and ln[0] in "+-" and not ln.startswith(("+++", "---"))
+        ]
+        del self.history[self.cursor + 1 :]
+        entry = HistoryEntry(
+            label=label,
+            spec_hash=self.compiled.spec_hash,
+            spec=text,
+            at=time.strftime("%H:%M:%S"),
+            diff=diff[:12],
+        )
+        self.history.append(entry)
+        self.cursor = len(self.history) - 1
+        try:  # 저널은 사람이 읽는 기록이다. 실패해도 편집을 막지 않는다
+            payload = {"at": entry.at, "label": label, "spec_hash": entry.spec_hash, "diff": diff}
+            with open(self.history_path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
+    def _restore(self, index: int) -> Dict[str, Any]:
+        if not (0 <= index < len(self.history)):
+            return {"ok": False, "reason": f"그 시점이 없다: {index}"}
+        entry = self.history[index]
+        try:
+            data = yaml.safe_load(entry.spec) or {}
+            self.graph = build_project(data, os.path.dirname(self.path), "history")
+        except Exception as exc:
+            return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
+        if not self._recompile():
+            return {"ok": False, "reason": _short(self.error), "detail": self.error}
+        self.cursor = index
+        self.dirty = True
+        return {"ok": True, "cursor": index, "label": entry.label}
+
+    def undo(self) -> Dict[str, Any]:
+        if self.cursor <= 0:
+            return {"ok": False, "reason": "되돌릴 편집이 없다"}
+        return self._restore(self.cursor - 1)
+
+    def redo(self) -> Dict[str, Any]:
+        if self.cursor >= len(self.history) - 1:
+            return {"ok": False, "reason": "다시 할 편집이 없다"}
+        return self._restore(self.cursor + 1)
+
+    def rewind(self, index: int) -> Dict[str, Any]:
+        """History 항목을 클릭하면 그 시점으로 돌아간다. Undo/Redo는 이 커서의 이동일 뿐이다."""
+        return self._restore(int(index))
+
+    def history_view(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "index": i,
+                "label": h.label,
+                "at": h.at,
+                "spec_hash": h.spec_hash,
+                "current": i == self.cursor,
+                "diff": h.diff,
+            }
+            for i, h in enumerate(self.history)
+        ]
 
     # ── 내부 ────────────────────────────────────────────────────────────
     def _recompile(self) -> bool:
@@ -119,7 +219,7 @@ class Editor:
             self.error = str(exc) if isinstance(exc, VlmtError) else f"{type(exc).__name__}: {exc}"
             return False
 
-    def _try(self, mutate) -> Dict[str, Any]:
+    def _try(self, mutate, label: str = "편집") -> Dict[str, Any]:
         """변경을 적용해 보고, 게이트를 통과하지 못하면 되돌린다."""
         before_nodes = [NodeInstance(n.id, n.type, dict(n.params)) for n in self.graph.nodes]
         before_edges = list(self.graph.edges)
@@ -130,6 +230,7 @@ class Editor:
             return {"ok": False, "reason": _short(exc), "detail": str(exc)}
         if self._recompile():
             self.dirty = True
+            self._record(label)
             return {"ok": True}
         reason, detail = _short(self.error), self.error
         self.graph.nodes, self.graph.edges = before_nodes, before_edges
@@ -148,7 +249,7 @@ class Editor:
             self.graph.edges = [e for e in self.graph.edges if e.dst != dst]
             self.graph.edges.append(Edge.parse(src, dst))
 
-        res = self._try(go)
+        res = self._try(go, f"연결 {src} -> {dst}")
         if res["ok"] and replaced:
             res["replaced"] = replaced
         return res
@@ -157,14 +258,14 @@ class Editor:
         def go() -> None:
             self.graph.edges = [e for e in self.graph.edges if e.dst != dst]
 
-        return self._try(go)
+        return self._try(go, f"배선 제거 {dst}")
 
     def set_param(self, node_id: str, param: str, value: Any) -> Dict[str, Any]:
         def go() -> None:
             n = self.graph.node(node_id)
             n.params[param] = value
 
-        return self._try(go)
+        return self._try(go, f"{node_id}.{param} = {value!r}")
 
     def add_node(self, node_type: str, node_id: str = "") -> Dict[str, Any]:
         d = resolve_node(node_type)
@@ -178,7 +279,7 @@ class Editor:
         def go() -> None:
             self.graph.nodes.append(NodeInstance(nid, d.ref, dict(d.default_params())))
 
-        res = self._try(go)
+        res = self._try(go, f"노드 추가 {nid}")
         res["id"] = nid
         return res
 
@@ -189,7 +290,7 @@ class Editor:
                 e for e in self.graph.edges if e.src_node != node_id and e.dst_node != node_id
             ]
 
-        return self._try(go)
+        return self._try(go, f"노드 삭제 {node_id}")
 
     def save(self) -> Dict[str, Any]:
         if self.compiled is None:
@@ -245,4 +346,6 @@ class Editor:
             "edges": [{"from": e.src, "to": e.dst} for e in cg.edges],
             "compat": compat_matrix(cg),
             "occupied": occupied_inputs(cg),
+            "history": self.history_view(),
+            "cursor": self.cursor,
         }

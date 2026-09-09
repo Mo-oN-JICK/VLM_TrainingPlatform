@@ -15,7 +15,8 @@ from typing import Any, Dict, Optional, Tuple
 from .api import Editor
 
 ROUTES = ("/api/state", "/api/library", "/api/connect", "/api/disconnect",
-          "/api/param", "/api/add", "/api/remove", "/api/save")
+          "/api/param", "/api/add", "/api/remove", "/api/save",
+          "/api/undo", "/api/redo", "/api/rewind")
 
 
 def handle(editor: Editor, path: str, body: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
@@ -36,6 +37,12 @@ def handle(editor: Editor, path: str, body: Dict[str, Any]) -> Tuple[int, Dict[s
         res = editor.remove_node(body["node"])
     elif path == "/api/save":
         res = editor.save()
+    elif path == "/api/undo":
+        res = editor.undo()
+    elif path == "/api/redo":
+        res = editor.redo()
+    elif path == "/api/rewind":
+        res = editor.rewind(body["index"])
     else:
         return 404, {"ok": False, "reason": f"알 수 없는 경로 {path}"}
 

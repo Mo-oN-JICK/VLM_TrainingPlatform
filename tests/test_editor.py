@@ -228,3 +228,107 @@ def test_type_affecting_change_is_rechecked_by_the_gates(ed):
     # 그 아래 resize가 448로 고정하므로 여전히 컴파일된다. 반대로 resize를 깨면 거부된다.
     bad = ed.set_param("n_plot_rs", "size", "not a size")
     assert not bad["ok"]
+
+
+# ── History 되감기 ──────────────────────────────────────────────────────
+
+
+def test_every_edit_becomes_a_point_in_time(ed):
+    assert len(ed.history) == 1 and ed.cursor == 0  # 열기
+
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    ed.set_param("n_plot", "channel", 1)
+    assert len(ed.history) == 3 and ed.cursor == 2
+
+    view = ed.history_view()
+    assert view[0]["label"] == "열기"
+    assert "z_thresh" in view[1]["label"]
+    assert view[-1]["current"] and not view[0]["current"]
+
+
+def test_history_stores_a_diff_not_a_wall_of_text(ed):
+    """스펙이 텍스트라 편집 하나가 두 줄로 남는다."""
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    diff = ed.history[-1].diff
+    assert diff == ["-    z_thresh: 3.0", "+    z_thresh: 4.5"], diff
+
+
+def test_undo_and_redo_are_cursor_moves(ed):
+    before = ed.compiled.spec_hash
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    after = ed.compiled.spec_hash
+    assert after != before
+
+    assert ed.undo()["ok"]
+    assert ed.compiled.spec_hash == before
+    assert ed.compiled.nodes["n_stats"].params["z_thresh"] == 3.0
+
+    assert ed.redo()["ok"]
+    assert ed.compiled.spec_hash == after
+
+    assert not ed.redo()["ok"]  # 끝에서 한 번 더
+    ed.undo()
+    assert not ed.undo()["ok"]  # 처음에서 한 번 더
+
+
+def test_rewind_jumps_to_any_point(ed):
+    hashes = [ed.compiled.spec_hash]
+    for value in (4.0, 5.0, 6.0):
+        ed.set_param("n_stats", "z_thresh", value)
+        hashes.append(ed.compiled.spec_hash)
+
+    assert ed.rewind(1)["ok"]
+    assert ed.compiled.spec_hash == hashes[1]
+    assert ed.compiled.nodes["n_stats"].params["z_thresh"] == 4.0
+
+
+def test_editing_after_undo_drops_the_redo_branch(ed):
+    ed.set_param("n_stats", "z_thresh", 4.0)
+    ed.set_param("n_stats", "z_thresh", 5.0)
+    assert len(ed.history) == 3
+
+    ed.undo()
+    ed.set_param("n_stats", "channel", 1)  # 다른 가지로 갈라진다
+    assert len(ed.history) == 3 and ed.cursor == 2
+    assert not ed.redo()["ok"]
+    assert ed.compiled.nodes["n_stats"].params["z_thresh"] == 4.0
+
+
+def test_refused_edit_leaves_no_trace_in_history(ed):
+    n = len(ed.history)
+    assert not ed.set_param("n_plot", "size", "이건 크기가 아니다")["ok"]
+    assert len(ed.history) == n
+
+
+def test_journal_is_written_next_to_the_spec(ed):
+    import json as _json
+
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    lines = [_json.loads(ln) for ln in open(ed.history_path, encoding="utf-8") if ln.strip()]
+    assert len(lines) == 2
+    assert lines[-1]["spec_hash"] == ed.compiled.spec_hash
+    assert any("z_thresh" in d for d in lines[-1]["diff"])
+
+
+def test_router_exposes_history(ed):
+    code, payload = server_mod.handle(ed, "/api/param", {"node": "n_stats", "param": "z_thresh", "value": 4.5})
+    assert code == 200 and len(payload["state"]["history"]) == 2
+
+    code, payload = server_mod.handle(ed, "/api/undo", {})
+    assert code == 200 and payload["state"]["cursor"] == 0
+
+    code, payload = server_mod.handle(ed, "/api/undo", {})
+    assert code == 409 and "되돌릴 편집이 없다" in payload["reason"]
+
+    code, payload = server_mod.handle(ed, "/api/rewind", {"index": 1})
+    assert code == 200 and payload["state"]["cursor"] == 1
+
+
+def test_history_panel_renders_points_and_diffs(ed):
+    from vlm_trainer.ui import render as render_mod
+
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    page = render_mod.render_editor(ed)
+    assert page.count('class="hrow') == 2
+    assert "vlmtRewind(" in page and "vlmtUndo()" in page
+    assert "z_thresh: 4.5" in page

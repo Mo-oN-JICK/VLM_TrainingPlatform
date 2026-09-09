@@ -114,6 +114,7 @@ def render(
     editable: bool = False,
     compat: Optional[Dict[str, Dict[str, str]]] = None,
     banner: str = "",
+    editor: Any = None,
 ) -> str:
     placed = _layout(cg)
     max_lane = max((p.lane for p in placed.values()), default=0)
@@ -270,11 +271,13 @@ def render(
             f"<script>{_EDITOR_JS}</script>"
         )
     tools = _EDITOR_TOOLS if editable else _VIEWER_TOOLS
+    history = _history_panel(editor) if (editable and editor is not None) else ''
     banner_html = f'<div class="banner">{html.escape(banner)}</div>' if banner else ""
 
     return _TEMPLATE.format(
         title=html.escape(head),
         params=_params_panel(cg) if editable else '',
+        history=history,
         scripts=scripts,
         tools=tools,
         banner=banner_html,
@@ -377,6 +380,15 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .prow input:focus{{outline:1px solid {T.NODE['border']}}}
 .mk{{font-size:9px;border:1px solid;border-radius:2px;padding:0 3px}}
 .mk.r{{color:{T.PORT['Image']}}} .mk.t{{color:{T.STATE['partial']}}}
+.hrow{{border-left:2px solid transparent;padding:4px 8px;margin-bottom:2px;cursor:pointer;
+      font-size:11.5px;color:#A8B0B6;display:grid;grid-template-columns:58px 1fr 64px;gap:6px}}
+.hrow:hover{{background:{T.NODE['bg']}}}
+.hrow.cur{{border-left-color:{T.NODE['border']};background:{T.NODE['bg']};color:#D8DCDF}}
+.hrow .ht{{color:#6F7478;font-size:10.5px}}
+.hrow .hh{{color:#6F7478;font-size:10px;text-align:right}}
+.hrow .hdp,.hrow .hdm{{grid-column:1/4;font-family:ui-monospace,Consolas,monospace;font-size:10px;
+      white-space:pre-wrap}}
+.hrow .hdp{{color:#7FBF9F}} .hrow .hdm{{color:#C98A8A}}
 .log b{{color:#3FB27F}}
 .btn{{background:{T.SURFACE['panel']};color:#D8DCDF;border:1px solid {T.NODE['border']};
      border-radius:3px;padding:3px 12px;font-size:12px;cursor:pointer}}
@@ -417,6 +429,7 @@ _TEMPLATE = """<!doctype html>
     {cards}
   </div></div>
   <div class="side">
+    {history}
     {params}
     {debug}
     {quarantine}
@@ -433,6 +446,8 @@ _TEMPLATE = """<!doctype html>
 _VIEWER_TOOLS = '<span style="margin-left:auto">읽기 전용 뷰어</span>'
 
 _EDITOR_TOOLS = (
+    '<button class="btn" onclick="vlmtUndo()">Undo</button>'
+    '<button class="btn" onclick="vlmtRedo()">Redo</button>'
     '<button class="btn" onclick="vlmtSave()">Save</button>'
     '<button class="btn" onclick="location.reload()">Reload</button>'
     '<span class="hint">출력 칩을 끌어 입력 칩에 놓는다 · 입력 칩 우클릭으로 배선 제거</span>'
@@ -518,6 +533,26 @@ document.addEventListener('mouseup', async (ev) => {
   else toast('연결 거부: ' + (data.reason || ''), true);
 });
 
+
+async function vlmtUndo() {
+  const {code, data} = await post('/api/undo', {});
+  if (code === 200) location.reload(); else toast(data.reason || '', true);
+}
+async function vlmtRedo() {
+  const {code, data} = await post('/api/redo', {});
+  if (code === 200) location.reload(); else toast(data.reason || '', true);
+}
+async function vlmtRewind(i) {
+  const {code, data} = await post('/api/rewind', {index: i});
+  if (code === 200) location.reload();
+  else toast('되감기 실패: ' + (data.reason || ''), true);
+}
+document.addEventListener('keydown', (ev) => {
+  if (!window.EDITABLE) return;
+  const z = ev.key === 'z' || ev.key === 'Z';
+  if ((ev.ctrlKey || ev.metaKey) && z) { ev.preventDefault(); ev.shiftKey ? vlmtRedo() : vlmtUndo(); }
+});
+
 function vlmtSelect(nid) {
   document.querySelectorAll('.node').forEach(n => n.classList.toggle('sel', n.dataset.node === nid));
   document.querySelectorAll('.params').forEach(p => p.classList.toggle('on', p.dataset.node === nid));
@@ -573,7 +608,27 @@ def render_editor(editor: Any) -> str:
         editable=True,
         compat=compat_matrix(cg),
         banner=editor.error,
+        editor=editor,
     )
+
+
+def _history_panel(editor: Any) -> str:
+    """History 탭. 항목을 클릭하면 그 시점으로 되감는다."""
+    rows = []
+    for h in editor.history_view():
+        cls = "hrow cur" if h["current"] else "hrow"
+        diff = "".join(
+            f'<div class="hd{"p" if ln.startswith("+") else "m"}">{html.escape(ln)}</div>'
+            for ln in h["diff"][:6]
+        )
+        rows.append(
+            f'<div class="{cls}" onclick="vlmtRewind({h["index"]})">'
+            f'<span class="ht">{html.escape(h["at"])}</span>'
+            f'<span class="hl">{html.escape(h["label"])}</span>'
+            f'<span class="hh">{html.escape(h["spec_hash"][3:11])}</span>'
+            f"{diff}</div>"
+        )
+    return '<h4>History</h4>' + ("".join(reversed(rows)) or '<div class="doc">기록이 없다.</div>')
 
 
 def _params_panel(cg: CompiledGraph) -> str:
