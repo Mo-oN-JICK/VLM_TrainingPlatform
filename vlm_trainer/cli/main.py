@@ -383,6 +383,14 @@ def cmd_train(a: argparse.Namespace) -> int:
     return 0 if rep.ok else 6
 
 
+def cmd_edit(a: argparse.Namespace) -> int:
+    from ..ui import server as server_mod
+
+    _load_nodes(a.nodes)
+    server_mod.serve(a.spec, port=a.port, open_browser=a.open)
+    return 0
+
+
 def cmd_backbones(a: argparse.Namespace) -> int:
     from ..plugins.base import all_backbones, resolve_backbone
 
@@ -639,6 +647,12 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--cache-dir", default=".cache")
     m.add_argument("--run-id", default="")
     m.set_defaults(func=cmd_materialize)
+
+    ed = sub.add_parser("edit", help="그래프 편집기를 연다 (127.0.0.1 로컬 서버)")
+    ed.add_argument("spec")
+    ed.add_argument("--port", type=int, default=8770)
+    ed.add_argument("--open", action="store_true")
+    ed.set_defaults(func=cmd_edit)
 
     bb = sub.add_parser("backbones", help="등록된 백본과 그 형상을 보여준다 (가중치는 열지 않는다)")
     bb.add_argument("--add", default="", help="hf:<경로 또는 모델 id>를 config.json만 읽어 등록한다")

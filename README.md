@@ -2,14 +2,15 @@
 
 Mech-Vision의 규약을 모방한 노드 그래프 기반 파인튜닝 플랫폼. 설계 문서는 [`docs/design/`](docs/design/README.md).
 
-현재 상태: **Phase 0–6 완료 + 읽기 전용 그래프 뷰어** — 타입 시스템 · 레지스트리 · 컴파일러(G1/G2) · decompile 왕복 ·
+현재 상태: **Phase 0–7 (편집기 1차) 완료** — 타입 시스템 · 레지스트리 · 컴파일러(G1/G2) · decompile 왕복 ·
 노드 카탈로그 26개 · 실행 엔진(캐시 · spawn 워커 · 격리) · dry-run(G3) · **자원 예산 게이트(G4)** ·
 노드 단위 미리보기 · 물질화와 재개 · **다단계 학습(LoRA·freeze·체크포인트·재개)** ·
 추론 계약 · **Parameter Recipe와 스윕** · CLI 13개 명령. **4중 게이트가 전부 동작한다.**
 합성 더미 데이터로 전 경로가 GPU에서 돌고, 추론 그래프가 만든 프롬프트는 학습 때와 바이트 단위로 같으며,
 그래프 하나 위에서 레시피만 바꾼 실험 여러 개가 물질화를 공유하며 순차로 돈다.
 `vlmt view`가 컴파일된 그래프를 한 장의 HTML로 그리고, `vlmt run --view --debug-output`은
-거기에 실행 상태와 노드별 Debug Output을 함께 칠한다(서버·프레임워크 없음).
+거기에 실행 상태와 노드별 Debug Output을 함께 칠한다. `vlmt edit`는 로컬 편집기를 연다 —
+**타입이 맞지 않는 배선은 드롭 자체가 되지 않는다**(프레임워크 없이 표준 라이브러리만 쓴다).
 실물 백본은 `backbone: hf:<모델 경로>` 한 줄로 들어온다 — 어댑터가 `config.json`만 읽어
 예산을 답하므로 가중치 없이도 G4가 돈다. 남은 것은 모델 id 결정과 다운로드, 그리고 편집 가능한 UI.
 
@@ -67,7 +68,10 @@ python -m vlm_trainer.cli.main view solutions/dummy_ecg/projects/01_dummy/projec
 # 12) 실행 상태 + Debug Output을 칠한 뷰 (토글이 꺼져 있으면 미리보기를 만들지도 않는다)
 python -m vlm_trainer.cli.main run solutions/dummy_ecg/projects/01_dummy/project.yaml --run-id vw --limit 3 --debug-output --view -
 
-# 13) 백본 - 등록된 것과 그 형상 (가중치는 열지 않는다)
+# 13) 편집기 - 배선을 끌어 놓는다. 타입이 안 맞으면 놓이지 않는다
+python -m vlm_trainer.cli.main edit solutions/dummy_ecg/projects/01_dummy/project.yaml --open
+
+# 14) 백본 - 등록된 것과 그 형상 (가중치는 열지 않는다)
 python -m vlm_trainer.cli.main backbones
 python -m vlm_trainer.cli.main backbones --add hf:D:/models/my-2b-vlm
 
@@ -91,11 +95,11 @@ python -m vlm_trainer.cli.main decompile solutions/dummy_ecg/projects/01_dummy/p
 | `vlm_trainer/train/` | 선언형 TrainerConfig, shard 리더, freeze 정책, 학습 루프, 추론 계약 |
 | `vlm_trainer/answer/` | 정답 Text 스키마 — 렌더러와 파서를 같은 정의에서 생성 |
 | `vlm_trainer/plugins/` | 플러그인 규약 + 더미 전문가 모델 2종(이미지 영역 / 시계열 구간) |
-| `vlm_trainer/ui/` | 디자인 토큰(문서 12의 실측값), 읽기 전용 그래프 뷰어 |
+| `vlm_trainer/ui/` | 디자인 토큰(문서 12의 실측값), 그래프 뷰어, 편집기 API·로컬 서버 |
 | `vlm_trainer/cli/` | `vlmt` 커맨드 |
 | `solutions/dummy_ecg/` | 합성 더미 데이터로 도는 예제 Solution (Procedure 포함) |
 | `tools/` | 합성 더미 데이터 생성기 |
-| `tests/` | 완료 조건 130개 + 예제 Solution |
+| `tests/` | 완료 조건 146개 + 예제 Solution |
 | `docs/design/` | 설계 문서 13편 |
 
 ## 설계에서 구현으로 오며 바뀐 것
@@ -115,6 +119,7 @@ python -m vlm_trainer.cli.main decompile solutions/dummy_ecg/projects/01_dummy/p
 | 물질화 shard 포맷이 webdataset tar | **디렉터리 + jsonl + PNG** | 검증 대상(원자 커밋·재개·매니페스트)은 같고 읽기가 훨씬 단순하다. tar 패킹은 학습 처리량이 실제로 문제될 때 바꾼다 |
 | Phase 5의 백본이 실물 2B | **로컬 소형 백본 `tiny-vlm`**(2.3M 파라미터, 다운로드 없음)으로 학습 경로 전체를 검증 | 비전 타워·프로젝터·LoRA·다단계 freeze·체크포인트·재개는 모델 크기와 무관하게 같은 코드다. 실물 백본은 `BackboneAdapter`를 채우고 `backbone:` 한 줄을 바꾸면 된다 |
 | 프로파일 미지원 옵션은 G2가 거부 | **G4가 함께 본다** | Trainer 설정이 로드되는 지점이 G4다. 학습 시작 전이라는 성질은 같다 |
-| Phase 7이 편집 가능한 UI | **읽기 전용 뷰어부터** — 정적 HTML 한 장, 서버 없음 | 캔버스 규약(수직 흐름·포트 색·3분류 형태)을 먼저 눈과 테스트로 고정한다. 편집기는 이 위에 얹으면 되고, 뷰어만으로도 그래프 검토에 쓸모가 있다 |
+| Phase 7이 편집 가능한 UI | 읽기 전용 뷰어 → 그 위에 편집기 | 캔버스 규약을 먼저 눈과 테스트로 고정했다. 편집기는 같은 렌더러에 스크립트만 얹는다 |
+| 입력 포트가 이미 찼으면 연결 거부 | **연결은 교체다** — 원자적으로 갈아끼운다 | 팬인 금지는 그대로다. 다만 갈아끼우기를 disconnect+connect 두 단계로 만들면 중간 상태가 컴파일되지 않아 편집기가 쓸모없어진다 |
 | 레시피가 `stages[1].optimizer.lr` 같은 깊은 경로를 덮는다 | 오버라이드는 **`노드id.파라미터` 한 단계**만. Trainer 설정 변주는 `n_train.config_path`로 파일을 바꿔 표현한다 | 깊은 경로 오버레이는 화이트리스트 검사가 복잡해진다. 지금 형태로도 스윕은 성립하고, 필요해지면 그때 확장한다 |
 | 텍스트 토큰 수를 토크나이저로 잰다 | 토크나이저가 없는 동안 `chars_per_token`(기본 2.5)으로 환산하고, dry-run 실측 문자 수를 쓴다 | 백본이 붙는 Phase 5에서 실제 토크나이저로 교체한다. 선언값이 실측보다 작으면 G4가 거부하므로 낙관적으로 기울지 않는다 |

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import html
+import json
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -104,7 +105,16 @@ def _state_of(report: Any, nid: str) -> Tuple[str, str]:
     return "pending", ""
 
 
-def render(cg: CompiledGraph, *, title: str = "", note: str = "", report: Any = None) -> str:
+def render(
+    cg: CompiledGraph,
+    *,
+    title: str = "",
+    note: str = "",
+    report: Any = None,
+    editable: bool = False,
+    compat: Optional[Dict[str, Dict[str, str]]] = None,
+    banner: str = "",
+) -> str:
     placed = _layout(cg)
     max_lane = max((p.lane for p in placed.values()), default=0)
     width = max((p.x for p in placed.values()), default=0) + CARD_W + PAD
@@ -148,14 +158,16 @@ def render(cg: CompiledGraph, *, title: str = "", note: str = "", report: Any = 
         # 제네릭이 남아 있으면 그 자체가 눈에 띄어야 한다.
         in_types = {p: n.input_types.get(p) or d.inputs[p].type for p in d.inputs}
         chips_in = "".join(
-            f'<div class="chip" style="left:{cx - pl.x}px;top:0;width:{cw}px;'
+            f'<div class="chip cin" data-ref="{nid}:{name}" '
+            f'style="left:{cx - pl.x}px;top:0;width:{cw}px;'
             f'background:{T.port_color(_type_label(in_types[name])[1], _type_label(in_types[name])[2])}">'
             f'<span class="t">&lt;{html.escape(_type_label(in_types[name])[0])}&gt;</span>'
             f'<span class="p">{html.escape(name)}</span></div>'
             for name, cx, cy, cw in _chips(d.inputs, pl.x, 0)
         )
         chips_out = "".join(
-            f'<div class="chip" style="left:{cx - pl.x}px;top:0;width:{cw}px;'
+            f'<div class="chip cout" data-ref="{nid}:{name}" '
+            f'style="left:{cx - pl.x}px;top:0;width:{cw}px;'
             f'background:{T.port_color(_type_label(n.output_types[name])[1], _type_label(n.output_types[name])[2])}">'
             f'<span class="t">&lt;{html.escape(_type_label(n.output_types[name])[0])}&gt;</span>'
             f'<span class="p">{html.escape(name)}</span></div>'
@@ -244,8 +256,26 @@ def render(cg: CompiledGraph, *, title: str = "", note: str = "", report: Any = 
     }
     head = title or cg.id or "graph"
 
+    # 편집 모드에서는 호환성 표를 페이지에 함께 실어 보낸다.
+    # 드래그 중에 서버를 다시 부르지 않고도 놓을 수 있는 포트만 밝히기 위해서다.
+    # 뷰어는 스크립트를 아예 싣지 않는다 — 자체 완결이면서 죽은 태그도 남기지 않는다
+    scripts = ""
+    if editable:
+        compat_json = json.dumps(compat or {}, ensure_ascii=False)
+        occupied_json = json.dumps(sorted({e.dst for e in cg.edges}))
+        scripts = (
+            f"<script>window.COMPAT = {compat_json}; window.OCCUPIED = {occupied_json}; "
+            'window.EDITABLE = "1";</script>'
+            f"<script>{_EDITOR_JS}</script>"
+        )
+    tools = _EDITOR_TOOLS if editable else _VIEWER_TOOLS
+    banner_html = f'<div class="banner">{html.escape(banner)}</div>' if banner else ""
+
     return _TEMPLATE.format(
         title=html.escape(head),
+        scripts=scripts,
+        tools=tools,
+        banner=banner_html,
         css=_CSS,
         lib=lib,
         cards="".join(cards),
@@ -334,6 +364,20 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .log{{background:{T.SURFACE['panel_alt']};border-top:1px solid {T.SURFACE['line']};
      padding:6px 12px;font-size:11.5px;color:#8A9196}}
 .log b{{color:#3FB27F}}
+.btn{{background:{T.SURFACE['panel']};color:#D8DCDF;border:1px solid {T.NODE['border']};
+     border-radius:3px;padding:3px 12px;font-size:12px;cursor:pointer}}
+.btn:hover{{background:{T.NODE['bg_selected']}}}
+.hint{{margin-left:auto;color:#79828A;font-size:11.5px}}
+.banner{{background:#3A2A2A;color:#E8B0B0;padding:6px 12px;font-size:12px;
+        border-bottom:1px solid {T.SURFACE['line']};white-space:pre-wrap}}
+.chip.cout{{cursor:grab}}
+.chip.okdrop{{outline:2px solid {T.NODE['border_selected']};outline-offset:1px}}
+.chip.nodrop{{opacity:.28;cursor:not-allowed}}
+#toast{{position:fixed;right:16px;bottom:40px;z-index:9;max-width:560px;padding:0;opacity:0;
+       transition:opacity .15s;font-size:12.5px;border-radius:3px}}
+#toast.show{{opacity:1;padding:8px 12px}}
+#toast.ok{{background:#1E3A2E;color:#9BE0BC;border:1px solid #3FB27F}}
+#toast.bad{{background:#3A2224;color:#F0B0B0;border:1px solid #D9615A}}
 """
 
 _TEMPLATE = """<!doctype html>
@@ -345,8 +389,10 @@ _TEMPLATE = """<!doctype html>
   <span>노드 {nodes} · 배선 {edges} · 레인 {lanes}단</span>
   <span>I {ci} / P {cp} / O {co}</span>
   <span>프로파일 {profile}</span>
-  <span style="margin-left:auto">읽기 전용 뷰어 — 편집은 아직 없다</span>
+  {tools}
 </div>
+{banner}
+<div id="toast"></div>
 <div class="shell">
   <div class="rail">
     <h4>Node Library</h4>
@@ -364,5 +410,127 @@ _TEMPLATE = """<!doctype html>
   </div>
 </div>
 <div class="log"><b>{note}</b> &nbsp; {runline} &nbsp; spec_hash {spec_hash}</div>
+{scripts}
 </body></html>
 """
+
+
+_VIEWER_TOOLS = '<span style="margin-left:auto">읽기 전용 뷰어</span>'
+
+_EDITOR_TOOLS = (
+    '<button class="btn" onclick="vlmtSave()">Save</button>'
+    '<button class="btn" onclick="location.reload()">Reload</button>'
+    '<span class="hint">출력 칩을 끌어 입력 칩에 놓는다 · 입력 칩 우클릭으로 배선 제거</span>'
+)
+
+# 편집기 스크립트. 드래그 중에는 호환되는 입력만 밝히고, 나머지에는 **놓을 수 없다**.
+# 연결이 성립해도 서버가 다시 컴파일해 G1/G2를 통과해야 받아들여진다.
+_EDITOR_JS = r"""
+const toast = (msg, bad) => {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = bad ? 'bad show' : 'ok show';
+  clearTimeout(window._tt);
+  window._tt = setTimeout(() => { t.className = ''; }, 5000);
+};
+
+async function post(path, body) {
+  const r = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify(body)});
+  return {code: r.status, data: await r.json()};
+}
+
+async function vlmtSave() {
+  const {code, data} = await post('/api/save', {});
+  toast(code === 200 ? '저장했다: ' + data.path : '저장 실패: ' + (data.reason || ''), code !== 200);
+}
+
+let drag = null, temp = null;
+const svg = document.querySelector('svg.wires');
+const stageBox = () => document.querySelector('.stage').getBoundingClientRect();
+
+document.addEventListener('mousedown', (ev) => {
+  const chip = ev.target.closest('.chip.cout');
+  if (!chip || !window.EDITABLE) return;
+  ev.preventDefault();
+  const row = window.COMPAT[chip.dataset.ref] || {};
+  drag = {src: chip.dataset.ref, row: row};
+
+  document.querySelectorAll('.chip.cin').forEach(c => {
+    const why = row[c.dataset.ref];
+    if (why === '') {
+      c.classList.add('okdrop');
+      if (window.OCCUPIED.indexOf(c.dataset.ref) >= 0) c.title = '놓으면 기존 배선을 교체한다';
+    }
+    else { c.classList.add('nodrop'); c.title = why || '타입이 맞지 않는다'; }
+  });
+
+  const st = stageBox(), b = chip.getBoundingClientRect();
+  temp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  temp.setAttribute('stroke', '#57F7E6');
+  temp.setAttribute('fill', 'none');
+  temp.setAttribute('stroke-width', '2');
+  temp.setAttribute('stroke-dasharray', '5 4');
+  temp.dataset.x = b.left - st.left + b.width / 2;
+  temp.dataset.y = b.top - st.top + b.height;
+  svg.appendChild(temp);
+});
+
+document.addEventListener('mousemove', (ev) => {
+  if (!drag || !temp) return;
+  const st = stageBox();
+  const x = ev.clientX - st.left, y = ev.clientY - st.top;
+  const x1 = +temp.dataset.x, y1 = +temp.dataset.y, m = (y1 + y) / 2;
+  temp.setAttribute('d', 'M ' + x1 + ' ' + y1 + ' C ' + x1 + ' ' + m + ', ' + x + ' ' + m + ', ' + x + ' ' + y);
+});
+
+document.addEventListener('mouseup', async (ev) => {
+  if (!drag) return;
+  const chip = ev.target.closest('.chip.cin');
+  const src = drag.src, row = drag.row;
+  drag = null;
+  if (temp) { temp.remove(); temp = null; }
+  document.querySelectorAll('.chip.cin').forEach(c => c.classList.remove('okdrop', 'nodrop'));
+  if (!chip) return;
+
+  const dst = chip.dataset.ref, why = row[dst];
+  if (why !== '') {                       // 드롭 자체가 되지 않는다
+    toast(dst + ' 에는 놓을 수 없다 — ' + (why || '타입 불일치'), true);
+    return;
+  }
+  const {code, data} = await post('/api/connect', {from: src, to: dst});
+  if (code === 200) location.reload();
+  else toast('연결 거부: ' + (data.reason || ''), true);
+});
+
+document.addEventListener('contextmenu', async (ev) => {
+  const chip = ev.target.closest('.chip.cin');
+  if (!chip || !window.EDITABLE) return;
+  ev.preventDefault();
+  const {code, data} = await post('/api/disconnect', {to: chip.dataset.ref});
+  if (code === 200) location.reload();
+  else toast('제거 실패: ' + (data.reason || ''), true);
+});
+"""
+
+
+def render_editor(editor: Any) -> str:
+    """편집 가능한 페이지. 변경은 전부 /api/* 를 거쳐 코어로 간다."""
+    from .api import compat_matrix
+
+    cg = editor.compiled
+    if cg is None:
+        return (
+            "<!doctype html><meta charset='utf-8'><body style='background:#1A1A1A;color:#E8B0B0;"
+            "font:13px sans-serif;padding:24px'><h3>컴파일 실패</h3><pre>"
+            + html.escape(editor.error)
+            + "</pre></body>"
+        )
+    return render(
+        cg,
+        title=cg.name or cg.id,
+        note="편집 중" + (" · 저장하지 않은 변경 있음" if editor.dirty else ""),
+        editable=True,
+        compat=compat_matrix(cg),
+        banner=editor.error,
+    )

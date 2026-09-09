@@ -4,8 +4,8 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-09
-- 마지막 커밋: HF 백본 어댑터 (Phase 5의 마지막 조각, 코드 완료)
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **130 passed**
+- 마지막 커밋: Phase 7 편집기 1차 — 타입 검사 드래그 연결
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **146 passed**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -224,6 +224,29 @@ Mech-Vision(산업용 3D 비전 노드 편집기)의 규약을 의도적으로 �
 `tiny_backbone.py`가 검증된 참조 구현이고 이 파일은 같은 계약의 HF 판이다.
 transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(조용히 실패하지 않는다).
 
+### Phase 7 (2차) — 편집기 ✅
+
+- [x] `ui/api.py` — **UI가 코어를 호출하는 유일한 통로.** 모든 변경은 GraphModel을 고치고 곧바로
+      컴파일해 G1/G2를 통과해야 받아들여진다. 실패하면 되돌린다. UI 전용 실행 경로는 없다
+- [x] `compat_matrix()` — 출력 포트마다 놓을 수 있는 입력과 그 이유를 미리 계산해 페이지에 싣는다.
+      드래그 중 서버 왕복이 없다. 실제 연결은 그래도 컴파일로 확정한다
+- [x] **타입이 맞지 않는 배선은 드롭 자체가 되지 않는다** — 호환되는 칩만 밝고, 나머지에 놓으면
+      이유와 필요한 어댑터를 말한다
+- [x] **연결은 교체다** — 이미 배선이 있는 입력에 놓으면 원자적으로 갈아끼운다.
+      실패하면 원래 배선이 남는다. 팬인 금지는 그대로
+- [x] 필수 입력을 비우는 disconnect는 거부(그래프는 언제나 컴파일되는 상태). optional은 허용
+- [x] 노드가 일반 예외를 던져도 편집기는 살아 있고 변경만 거부된다
+- [x] `ui/server.py` — 표준 라이브러리 `http.server`. 127.0.0.1 전용. 라우팅은 순수 함수라 소켓 없이 테스트된다
+- [x] 저장은 명시적 — 편집 중에는 디스크가 바뀌지 않고, Save가 decompile해 원자 교체한다
+- [x] CLI `edit --port --open`
+- [x] 검증 16개 (`tests/test_editor.py`) — **UI로 바꾼 그래프를 CLI가 같은 spec_hash로 컴파일**하는 것 포함
+
+브라우저에서 실제로 확인했다. 시계열 출력을 이미지 입력에 끌어다 놓으면:
+`p_crop/n_resize:items 에는 놓을 수 없다 — list(scalar != list) — list.wrap 또는 list.map 노드가 필요`
+
+**아직 없는 것**: 노드 추가/삭제 UI(API는 있다), 파라미터 편집 위젯(API는 있다), 라이브 실행 갱신,
+History 되감기, Parameter Recipe 편집기.
+
 ### 설계 문서
 
 - [x] `docs/design/` 13편 + README. Mech-Vision 공개 문서와 화면 캡처 3장 실측이 근거이며 `[문서확인]`/`[이미지확인]`/`[추정]`으로 구분 표기
@@ -241,13 +264,13 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 - [ ] `chars_per_token` 추정을 실제 토크나이저 카운트로 교체
 - 완료 조건: 같은 그래프·같은 스펙에서 `backbone:` 한 줄만 바꿔 학습이 완주한다
 
-### 3b. Phase 7 — 편집 가능한 UI (뷰어 위에 얹는다)
-- [ ] `ui/server.py` — 코어 API를 감싸는 로컬 서버. **UI 전용 실행 경로를 만들지 않는다**
-- [ ] 실행 중 노드 상태 6종을 캔버스에 반영(이벤트 스트림). 색만이 아니라 라벨을 함께
-- [ ] Debug Output 패널 — 토글이 꺼져 있으면 preview를 생성조차 하지 않는다
-- [ ] 타입이 맞지 않는 배선은 **드롭 자체가 불가**(연결 후 경고가 아니다)
-- [ ] History 되감기, Parameter Recipe 편집기(Project Assistant 안)
-- 완료 조건: UI로 만든 그래프를 CLI가 같은 결과로 실행한다
+### 3b. Phase 7 마무리 — 편집기의 남은 절반
+- [ ] 노드 추가/삭제 UI (Node Library에서 캔버스로 드래그). API는 이미 있다
+- [ ] 파라미터 편집 패널 (Node Parameters 탭). API는 이미 있다
+- [ ] History 되감기 — 편집 커맨드 저널 + diff 스냅샷 (설계 08 §8.8)
+- [ ] Parameter Recipe 편집기 (Project Assistant 안)
+- [ ] 실행을 편집기에서 띄우고 상태를 라이브로 반영(SSE 또는 폴링)
+- 완료 조건: UI만으로 그래프 하나를 처음부터 만들어 CLI로 실행한다
 
 ## 4. 그 이후 (요약 — 상세는 `docs/design/10-roadmap.md`)
 
