@@ -9,6 +9,7 @@ import pytest
 
 from vlm_trainer.core.compiler import compile_project
 from vlm_trainer.ui import server as server_mod
+from vlm_trainer.ui import tokens as T
 from vlm_trainer.ui.api import Editor, compat_matrix
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -182,3 +183,48 @@ def test_editor_page_carries_the_compat_table(ed):
     assert 'data-ref="n_ts:series"' in page
     assert "okdrop" in page and "nodrop" in page
     assert "vlmtSave" in page
+
+
+# ── 파라미터 편집 패널 ──────────────────────────────────────────────────
+
+
+def test_param_meta_picks_a_widget_and_marks_the_risky_ones(ed):
+    from vlm_trainer.ui.api import param_meta
+
+    meta = {m["name"]: m for m in param_meta("ts.plot@1.0.0", ed.compiled.nodes["n_plot"].params)}
+    assert meta["size"]["kind"] == "json"          # 튜플은 JSON 입력으로
+    assert meta["channel"]["kind"] == "number"
+    assert meta["mark_regions"]["kind"] == "bool"
+
+    # 바꾸면 배선 타입이 다시 검사되는 파라미터에는 표식이 붙는다
+    assert meta["size"]["type_affecting"] and meta["size"]["overridable"]
+    assert not meta["channel"]["type_affecting"]
+
+
+def test_state_carries_param_meta(ed):
+    st = ed.state()
+    node = next(n for n in st["nodes"] if n["id"] == "n_stats")
+    names = {m["name"] for m in node["param_meta"]}
+    assert names == {"z_thresh", "channel"}
+
+
+def test_editor_page_has_a_params_panel_per_node(ed):
+    from vlm_trainer.ui import render as render_mod
+
+    page = render_mod.render_editor(ed)
+    assert page.count('class="params"') == len(ed.compiled.order)
+    assert 'data-node="n_stats"' in page
+    assert "vlmtParam(" in page and "vlmtSelect(" in page
+    # 선택된 카드는 실측한 선택 색을 쓴다
+    assert T.NODE["bg_selected"] in page and T.NODE["border_selected"] in page
+
+
+def test_type_affecting_change_is_rechecked_by_the_gates(ed):
+    """size는 타입에 영향을 준다 — 하류가 안 맞으면 변경이 거부되어야 한다."""
+    res = ed.set_param("n_plot", "size", [64, 64])
+    assert res["ok"], res.get("detail")
+    assert ed.compiled.nodes["n_plot"].output_types["plot"].shape == (64, 64, 3)
+
+    # 그 아래 resize가 448로 고정하므로 여전히 컴파일된다. 반대로 resize를 깨면 거부된다.
+    bad = ed.set_param("n_plot_rs", "size", "not a size")
+    assert not bad["ok"]

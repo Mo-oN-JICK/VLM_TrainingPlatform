@@ -57,6 +57,34 @@ def compat_matrix(cg: CompiledGraph) -> Dict[str, Dict[str, str]]:
     return out
 
 
+def param_meta(node_ref: str, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """파라미터마다 위젯을 고를 수 있게 값과 성질을 함께 낸다.
+
+    타입에 영향 주는 파라미터는 표식이 필요하다 — 바꾸면 배선이 다시 검사되기 때문이다.
+    """
+    d = resolve_node(node_ref)
+    out: List[Dict[str, Any]] = []
+    for name, value in params.items():
+        if isinstance(value, bool):
+            kind = "bool"
+        elif isinstance(value, (int, float)):
+            kind = "number"
+        elif isinstance(value, (list, tuple, dict)):
+            kind = "json"
+        else:
+            kind = "text"
+        out.append(
+            {
+                "name": name,
+                "value": value,
+                "kind": kind,
+                "overridable": name in d.recipe_overridable,
+                "type_affecting": name in d.type_affecting,
+            }
+        )
+    return out
+
+
 def occupied_inputs(cg: CompiledGraph) -> List[str]:
     """이미 배선이 있는 입력 포트. 놓으면 교체된다는 것을 UI가 알려주기 위한 것."""
     return sorted({e.dst for e in cg.edges})
@@ -207,6 +235,7 @@ class Editor:
                     "category": cg.nodes[nid].category,
                     "lane": cg.nodes[nid].lane,
                     "params": cg.nodes[nid].params,
+                    "param_meta": param_meta(cg.nodes[nid].ref, cg.nodes[nid].params),
                     "inputs": {p: str(t) for p, t in cg.nodes[nid].input_types.items()},
                     "outputs": {p: str(t) for p, t in cg.nodes[nid].output_types.items()},
                     "wired": cg.nodes[nid].inputs,

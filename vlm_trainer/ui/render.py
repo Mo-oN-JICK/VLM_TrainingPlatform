@@ -175,7 +175,8 @@ def render(
         )
 
         cards.append(
-            f'<div class="node {shape}" style="left:{pl.x}px;top:{pl.y}px" '
+            f'<div class="node {shape}" data-node="{html.escape(nid)}" '
+            f'style="left:{pl.x}px;top:{pl.y}px" '
             f'title="{html.escape(nid)} · {html.escape(n.ref)}">'
             f'<div class="ports top">{chips_in}</div>'
             f'<div class="card" style="border-top:3px solid {T.category_color(n.category)};'
@@ -273,6 +274,7 @@ def render(
 
     return _TEMPLATE.format(
         title=html.escape(head),
+        params=_params_panel(cg) if editable else '',
         scripts=scripts,
         tools=tools,
         banner=banner_html,
@@ -363,6 +365,18 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .row .v{{color:#6F7478;word-break:break-all}}
 .log{{background:{T.SURFACE['panel_alt']};border-top:1px solid {T.SURFACE['line']};
      padding:6px 12px;font-size:11.5px;color:#8A9196}}
+.node.sel .card{{background:{T.NODE['bg_selected']};border-color:{T.NODE['border_selected']}}}
+.params{{display:none;border-bottom:1px solid {T.SURFACE['line']};padding-bottom:8px;margin-bottom:8px}}
+.params.on{{display:block}}
+.phd{{color:#C6CCD1;font-size:12.5px;margin:2px 0 8px}}
+.phd em{{color:#6F7478;font-style:normal;font-size:11px}}
+.prow{{display:grid;grid-template-columns:1fr 148px;gap:8px;align-items:center;margin-bottom:5px}}
+.prow label{{color:#A8B0B6;font-size:11.5px;display:flex;gap:4px;align-items:center}}
+.prow input[type=text],.prow input[type=number]{{background:{T.SURFACE['canvas']};color:#D8DCDF;
+    border:1px solid {T.SURFACE['line']};border-radius:2px;padding:3px 6px;font-size:11.5px;width:100%}}
+.prow input:focus{{outline:1px solid {T.NODE['border']}}}
+.mk{{font-size:9px;border:1px solid;border-radius:2px;padding:0 3px}}
+.mk.r{{color:{T.PORT['Image']}}} .mk.t{{color:{T.STATE['partial']}}}
 .log b{{color:#3FB27F}}
 .btn{{background:{T.SURFACE['panel']};color:#D8DCDF;border:1px solid {T.NODE['border']};
      border-radius:3px;padding:3px 12px;font-size:12px;cursor:pointer}}
@@ -403,6 +417,7 @@ _TEMPLATE = """<!doctype html>
     {cards}
   </div></div>
   <div class="side">
+    {params}
     {debug}
     {quarantine}
     <h4>Node Quick Info</h4>
@@ -503,6 +518,31 @@ document.addEventListener('mouseup', async (ev) => {
   else toast('연결 거부: ' + (data.reason || ''), true);
 });
 
+function vlmtSelect(nid) {
+  document.querySelectorAll('.node').forEach(n => n.classList.toggle('sel', n.dataset.node === nid));
+  document.querySelectorAll('.params').forEach(p => p.classList.toggle('on', p.dataset.node === nid));
+}
+
+document.addEventListener('click', (ev) => {
+  const card = ev.target.closest('.node');
+  if (card) vlmtSelect(card.dataset.node);
+});
+
+async function vlmtParam(node, param, value, kind) {
+  if (kind === 'json') {
+    try { value = JSON.parse(value); }
+    catch (e) { toast('값이 JSON이 아니다: ' + value, true); return; }
+  }
+  const {code, data} = await post('/api/param', {node: node, param: param, value: value});
+  if (code === 200) { sessionStorage.setItem('sel', node); location.reload(); }
+  else toast('거부: ' + (data.reason || ''), true);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const sel = sessionStorage.getItem('sel');
+  if (sel) vlmtSelect(sel);
+});
+
 document.addEventListener('contextmenu', async (ev) => {
   const chip = ev.target.closest('.chip.cin');
   if (!chip || !window.EDITABLE) return;
@@ -534,3 +574,53 @@ def render_editor(editor: Any) -> str:
         compat=compat_matrix(cg),
         banner=editor.error,
     )
+
+
+def _params_panel(cg: CompiledGraph) -> str:
+    """노드마다 Node Parameters 블록. 카드를 고르면 그 블록만 보인다."""
+    from .api import param_meta
+
+    blocks = []
+    for nid in cg.order:
+        n = cg.nodes[nid]
+        rows = []
+        for m in param_meta(n.ref, n.params):
+            name, kind, value = m["name"], m["kind"], m["value"]
+            marks = ""
+            if m["overridable"]:
+                marks += '<span class="mk r" title="Parameter Recipe가 덮을 수 있다">recipe</span>'
+            if m["type_affecting"]:
+                marks += '<span class="mk t" title="바꾸면 배선 타입이 다시 검사된다">type</span>'
+
+            if kind == "bool":
+                widget = (
+                    f'<input type="checkbox" {"checked" if value else ""} '
+                    f"onchange=\"vlmtParam('{nid}','{name}',this.checked)\">"
+                )
+            elif kind == "number":
+                step = "1" if isinstance(value, int) else "any"
+                widget = (
+                    f'<input type="number" step="{step}" value="{html.escape(str(value))}" '
+                    f"onchange=\"vlmtParam('{nid}','{name}',this.valueAsNumber)\">"
+                )
+            elif kind == "json":
+                widget = (
+                    f'<input type="text" value="{html.escape(json.dumps(value, ensure_ascii=False))}" '
+                    f"onchange=\"vlmtParam('{nid}','{name}',this.value,'json')\">"
+                )
+            else:
+                widget = (
+                    f'<input type="text" value="{html.escape(str(value))}" '
+                    f"onchange=\"vlmtParam('{nid}','{name}',this.value)\">"
+                )
+            rows.append(
+                f'<div class="prow"><label>{html.escape(name)}{marks}</label>{widget}</div>'
+            )
+
+        blocks.append(
+            f'<div class="params" data-node="{html.escape(nid)}">'
+            f'<div class="phd">{html.escape(nid)} <em>{html.escape(n.ref)}</em></div>'
+            + ("".join(rows) or '<div class="doc">파라미터가 없다.</div>')
+            + "</div>"
+        )
+    return "".join(blocks)

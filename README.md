@@ -10,7 +10,8 @@ Mech-Vision의 규약을 모방한 노드 그래프 기반 파인튜닝 플랫�
 그래프 하나 위에서 레시피만 바꾼 실험 여러 개가 물질화를 공유하며 순차로 돈다.
 `vlmt view`가 컴파일된 그래프를 한 장의 HTML로 그리고, `vlmt run --view --debug-output`은
 거기에 실행 상태와 노드별 Debug Output을 함께 칠한다. `vlmt edit`는 로컬 편집기를 연다 —
-**타입이 맞지 않는 배선은 드롭 자체가 되지 않는다**(프레임워크 없이 표준 라이브러리만 쓴다).
+**타입이 맞지 않는 배선은 드롭 자체가 되지 않고**, 노드를 고르면 파라미터를 그 자리에서 고친다
+(프레임워크 없이 표준 라이브러리만 쓴다).
 실물 백본은 `backbone: hf:<모델 경로>` 한 줄로 들어온다 — 어댑터가 `config.json`만 읽어
 예산을 답하므로 가중치 없이도 G4가 돈다. 남은 것은 모델 id 결정과 다운로드, 그리고 편집 가능한 UI.
 
@@ -99,7 +100,7 @@ python -m vlm_trainer.cli.main decompile solutions/dummy_ecg/projects/01_dummy/p
 | `vlm_trainer/cli/` | `vlmt` 커맨드 |
 | `solutions/dummy_ecg/` | 합성 더미 데이터로 도는 예제 Solution (Procedure 포함) |
 | `tools/` | 합성 더미 데이터 생성기 |
-| `tests/` | 완료 조건 146개 + 예제 Solution |
+| `tests/` | 완료 조건 150개 + 예제 Solution |
 | `docs/design/` | 설계 문서 13편 |
 
 ## 설계에서 구현으로 오며 바뀐 것
