@@ -124,6 +124,11 @@ def register_backbone(cls: Type[BackboneAdapter]) -> Type[BackboneAdapter]:
 
 
 def resolve_backbone(backbone_id: str) -> Type[BackboneAdapter]:
+    if backbone_id not in _BACKBONES and backbone_id.startswith("hf:"):
+        # 실물 HF 백본은 처음 참조될 때 config.json만 읽어 등록한다(가중치는 열지 않는다)
+        from . import hf_backbone
+
+        return hf_backbone.register(backbone_id)
     if backbone_id not in _BACKBONES:
         raise RegistrationError(
             f"백본 {backbone_id!r}를 찾을 수 없다 (등록된 것: {sorted(_BACKBONES)})"

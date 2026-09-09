@@ -383,6 +383,22 @@ def cmd_train(a: argparse.Namespace) -> int:
     return 0 if rep.ok else 6
 
 
+def cmd_backbones(a: argparse.Namespace) -> int:
+    from ..plugins.base import all_backbones, resolve_backbone
+
+    _load_nodes(a.nodes)
+    if a.add:
+        s = resolve_backbone(a.add if a.add.startswith("hf:") else "hf:" + a.add).spec()
+        print(f"등록: {s.id}")
+    print(f"{'백본':<38}{'파라미터':>10}{'레이어':>7}{'hidden':>8}{'토큰/타일':>10}{'컨텍스트':>10}")
+    for s in all_backbones():
+        print(
+            f"{s.id:<38}{s.params_total / 1e9:>9.2f}B{s.n_layers:>7}{s.hidden:>8}"
+            f"{s.tokens_per_tile:>10}{s.max_context:>10}"
+        )
+    return 0
+
+
 def cmd_view(a: argparse.Namespace) -> int:
     from ..ui import render as render_mod
 
@@ -623,6 +639,10 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--cache-dir", default=".cache")
     m.add_argument("--run-id", default="")
     m.set_defaults(func=cmd_materialize)
+
+    bb = sub.add_parser("backbones", help="등록된 백본과 그 형상을 보여준다 (가중치는 열지 않는다)")
+    bb.add_argument("--add", default="", help="hf:<경로 또는 모델 id>를 config.json만 읽어 등록한다")
+    bb.set_defaults(func=cmd_backbones)
 
     vw = sub.add_parser("view", help="컴파일된 그래프를 한 장의 HTML로 그린다 (읽기 전용)")
     vw.add_argument("spec")

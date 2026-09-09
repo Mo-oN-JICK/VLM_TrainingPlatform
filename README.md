@@ -10,7 +10,8 @@ Mech-Vision의 규약을 모방한 노드 그래프 기반 파인튜닝 플랫�
 그래프 하나 위에서 레시피만 바꾼 실험 여러 개가 물질화를 공유하며 순차로 돈다.
 `vlmt view`가 컴파일된 그래프를 한 장의 HTML로 그리고, `vlmt run --view --debug-output`은
 거기에 실행 상태와 노드별 Debug Output을 함께 칠한다(서버·프레임워크 없음).
-남은 것은 실물 2B 백본 어댑터(Phase 5의 마지막 조각)와 편집 가능한 UI(Phase 7).
+실물 백본은 `backbone: hf:<모델 경로>` 한 줄로 들어온다 — 어댑터가 `config.json`만 읽어
+예산을 답하므로 가중치 없이도 G4가 돈다. 남은 것은 모델 id 결정과 다운로드, 그리고 편집 가능한 UI.
 
 실행 환경은 `.venv`(Python 3.12 + torch 2.14.0+cu130)다. `python` 대신 `.venv\\Scripts\\python.exe`를 쓴다.
 
@@ -66,6 +67,10 @@ python -m vlm_trainer.cli.main view solutions/dummy_ecg/projects/01_dummy/projec
 # 12) 실행 상태 + Debug Output을 칠한 뷰 (토글이 꺼져 있으면 미리보기를 만들지도 않는다)
 python -m vlm_trainer.cli.main run solutions/dummy_ecg/projects/01_dummy/project.yaml --run-id vw --limit 3 --debug-output --view -
 
+# 13) 백본 - 등록된 것과 그 형상 (가중치는 열지 않는다)
+python -m vlm_trainer.cli.main backbones
+python -m vlm_trainer.cli.main backbones --add hf:D:/models/my-2b-vlm
+
 # 노드 라이브러리 / 노드 상세 / 스펙 되돌리기
 python -m vlm_trainer.cli.main nodes
 python -m vlm_trainer.cli.main show image.crop_by_regions
@@ -90,7 +95,7 @@ python -m vlm_trainer.cli.main decompile solutions/dummy_ecg/projects/01_dummy/p
 | `vlm_trainer/cli/` | `vlmt` 커맨드 |
 | `solutions/dummy_ecg/` | 합성 더미 데이터로 도는 예제 Solution (Procedure 포함) |
 | `tools/` | 합성 더미 데이터 생성기 |
-| `tests/` | 완료 조건 123개 + 예제 Solution |
+| `tests/` | 완료 조건 130개 + 예제 Solution |
 | `docs/design/` | 설계 문서 13편 |
 
 ## 설계에서 구현으로 오며 바뀐 것
