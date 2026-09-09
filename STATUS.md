@@ -4,8 +4,8 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-09
-- 마지막 커밋: Phase 5 — 학습 루프와 추론 계약
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **93 passed**
+- 마지막 커밋: Phase 6 — Parameter Recipe와 스윕
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **107 passed**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -156,6 +156,33 @@ Mech-Vision(산업용 3D 비전 노드 편집기)의 규약을 의도적으로 �
 **아직 안 된 것**: 실물 2B 백본. `BackboneAdapter` 계약은 `tiny-vlm`이 참조 구현으로 채워 놓았으므로,
 모델 id를 정하고 같은 인터페이스를 구현하면 그래프도 스펙도 그대로 둔 채 `backbone:` 한 줄로 바뀐다.
 
+### Phase 6 — Parameter Recipe와 스윕 ✅
+
+- [x] `spec/recipe.py` — `recipes.yaml` 로더(번호 1~99, 중복·범위 검사), 표시 이름, 구조 변경 금지(`sample_space`/`materialize`/`nodes`/`edges` 접두 거부)
+- [x] **Procedure 노출 파라미터 오버라이드** — `p_crop.max_n`이 내부 노드 `p_crop/n_crop.max_n`으로 해소된다. 노출되지 않은 것은 거부
+- [x] `status()` — 활성 레시피가 프로젝트를 더 이상 설명하지 못하면 **Customized** (Mech-Vision 규약)
+- [x] 스윕 전개 grid / list / random(seed 고정) + `naming` 템플릿 + `recipes.lock.yaml`로 고정
+- [x] `engine/sweep.py` — **전개 시점 예산 사전 검사**(큐에 넣기 전에 제외), **물질화 지문 공유**, 단일 GPU 순차 큐
+- [x] `materialize_key()` — 경계 상류 캐시 키의 지문. Trainer 설정만 다른 레시피는 같은 bake를 재사용한다
+- [x] CLI `recipe list/show/diff/expand/set-active`, `sweep`, 그리고 모든 명령에 `--recipe N`
+- [x] 완료 조건 + 검증 14개 (`tests/test_recipe.py`)
+
+**실측 결과** (레시피 3개 순차 실행):
+
+```
+스윕: 레시피 3개 · 큐 3개 · 제외 0개
+  물질화: 새로 2개 · 재사용 0개 (전처리 지문 2종)
+  레시피                   bake                추정    peak   step  결과
+  01_baseline           878843d2905a      1.1G   0.19G      6  loss 5.674
+  03_single_crop        a38b013c5987      1.1G   0.19G      6  loss 5.661
+  04_low_lr             878843d2905a      1.1G   0.19G      6  loss 5.730
+```
+
+1번과 4번은 전처리가 같아 **같은 bake를 공유**하고 학습만 따로 돈다. 3번은 crop 개수가 달라 따로 굽는다.
+
+**구현 중 고친 버그**: grad accumulation 카운터가 epoch마다 리셋돼서, 배치 수가 `grad_accum`보다 적은
+데이터셋은 optimizer step을 영영 밟지 못했다. 카운터를 epoch 밖으로 옮겼다.
+
 ### 설계 문서
 
 - [x] `docs/design/` 13편 + README. Mech-Vision 공개 문서와 화면 캡처 3장 실측이 근거이며 `[문서확인]`/`[이미지확인]`/`[추정]`으로 구분 표기
@@ -164,21 +191,22 @@ Mech-Vision(산업용 3D 비전 노드 편집기)의 규약을 의도적으로 �
 
 ## 3. 다음 — 둘 중 하나를 고른다
 
-### 3a. 실물 2B 백본 (Phase 5 마무리)
+### 3a. 실물 2B 백본 (Phase 5의 마지막 조각)
 - [ ] 모델 id 확정 (7장의 미결 항목). 2B급 VLM + Windows에서 도는 것
 - [ ] `python -m pip install transformers accelerate peft bitsandbytes safetensors sentencepiece`
-- [ ] `plugins/hf_backbone.py` — `BackboneAdapter` 구현. `spec()`은 가중치 없이 config.json만 읽어 답해야 한다
+- [ ] `plugins/hf_backbone.py` — `BackboneAdapter` 구현. `tiny_backbone.py`가 참조 구현이다
+      (`spec()`은 가중치 없이 config.json만 읽어 답해야 한다)
 - [ ] `collate()`를 실제 프로세서/토크나이저로. `chars_per_token` 추정을 실제 토큰 카운트로 교체
 - [ ] QLoRA(nf4) 경로 확인 — 예산 게이트는 이미 nf4를 계산에 넣고 있다
 - 완료 조건: 같은 그래프·같은 스펙에서 `backbone:` 한 줄만 바꿔 학습이 완주한다
 
-### 3b. Phase 6 — Parameter Recipe와 스윕
-- [ ] `spec/recipe.py` — `recipes.yaml` 로더(화이트리스트 검사는 이미 컴파일러에 있다)
-- [ ] 스윕 전개(grid/list/random) + `recipes.lock.yaml`
-- [ ] **전개 시점에 전 레시피 예산 사전 검사** — 초과 레시피는 큐에 넣지 않는다
-- [ ] 물질화 캐시 공유: 전처리 파라미터가 같은 레시피는 한 번만 굽는다
-- [ ] CLI `recipe list/show/diff/expand/set-active`, `sweep`
-- 완료 조건: 그래프 1개 + 레시피 3개로 실험 3개가 순차 실행된다
+### 3b. Phase 7 — UI
+- [ ] `ui/server.py` — 코어 API를 감싸는 로컬 서버. **UI 전용 실행 경로를 만들지 않는다**
+- [ ] 7파티션 레이아웃(문서 12의 와이어프레임), 수직 캔버스, 노드 상태 6종
+- [ ] 타입이 맞지 않는 배선은 **드롭 자체가 불가**(연결 후 경고가 아니다)
+- [ ] Debug Output 토글이 꺼져 있으면 preview를 생성조차 하지 않는다
+- [ ] History 되감기, Parameter Recipe 편집기(Project Assistant 안)
+- 완료 조건: UI로 만든 그래프를 CLI가 같은 결과로 실행한다
 
 ## 4. 그 이후 (요약 — 상세는 `docs/design/10-roadmap.md`)
 

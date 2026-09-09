@@ -168,6 +168,8 @@ def train(
         t0 = time.perf_counter()
         step = start_step
         seen = consumed
+        micro = 0  # 배치 카운터는 epoch를 넘어 이어진다 —
+                   # 그렇지 않으면 배치 수가 grad_accum보다 적은 데이터셋은 영영 step을 밟지 못한다
 
         for epoch in range(start_epoch, stage.epochs):
             for i, batch in enumerate(loader):
@@ -180,7 +182,8 @@ def train(
                 )
                 loss = out["loss"] / max(1, stage.grad_accum)
                 loss.backward()
-                if (i + 1) % stage.grad_accum == 0:
+                micro += 1
+                if micro % max(1, stage.grad_accum) == 0:
                     torch.nn.utils.clip_grad_norm_(params, 1.0)
                     opt.step()
                     opt.zero_grad(set_to_none=True)

@@ -15,15 +15,17 @@ import sys
 from typing import Any, Dict, List, Optional
 
 from ..core import registry
-from ..core.compiler import CompileFailed, canonical_view, compile_project
+from ..core.compiler import CompileFailed, canonical_view, compile_project, current_value
 from ..core.errors import VlmtError
 from ..core.node import NodeKind
 from ..engine import budget as budget_mod
 from ..engine import materialize as materialize_mod
+from ..engine import sweep as sweep_mod
 from ..engine import dryrun as dryrun_mod
 from ..engine import preview as preview_mod
 from ..engine import samples as samples_mod
 from ..engine.runner import RunOptions, ancestors, execute
+from ..spec import recipe as recipe_mod
 from ..spec.decompile import decompile, dump_yaml
 from ..train.config import TrainerConfig
 from ..train import shards as shards_mod
@@ -34,6 +36,17 @@ def _load_nodes(modules: List[str]) -> None:
     registry.load_builtin_nodes()
     for m in modules or []:
         importlib.import_module(m)
+
+
+def _recipe_overrides(a: argparse.Namespace) -> Dict[str, Any]:
+    """--recipe N 의 오버라이드에 --set 을 얹는다. 손으로 준 값이 마지막에 이긴다."""
+    out: Dict[str, Any] = {}
+    rid = getattr(a, "recipe", None)
+    if rid:
+        book = recipe_mod.load(a.spec)
+        out.update(book.overrides_for(int(rid)))
+    out.update(_overrides(getattr(a, "set", []) or []))
+    return out
 
 
 def _overrides(pairs: List[str]) -> Dict[str, Any]:
@@ -51,7 +64,7 @@ def _overrides(pairs: List[str]) -> Dict[str, Any]:
 
 def cmd_compile(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
-    cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
+    cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     print(f"compile OK  {cg.id or os.path.basename(a.spec)}")
     print(f"  노드 {len(cg.nodes)}개 · 배선 {len(cg.edges)}개 · 레인 {max(cg.lanes.values()) + 1}단")
     print(f"  spec_hash {cg.spec_hash}")
@@ -145,7 +158,7 @@ def _run_id(a: argparse.Namespace) -> str:
 
 def cmd_dryrun(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
-    cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
+    cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     space = _space(a, cg)
     opts = RunOptions(run_id=_run_id(a), extra_modules=tuple(a.nodes), cache_dir=a.cache_dir,
                       spec_dir=os.path.dirname(os.path.abspath(a.spec)))
@@ -213,7 +226,7 @@ def _measure_tokens(a: argparse.Namespace, cg, cfg) -> int:
 
 def cmd_budget(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
-    cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
+    cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     got = _trainer_cfg(a, cg)
     if got is None:
         print("이 그래프에는 Trainer 노드가 없다. 예산 검사 대상이 아니다.")
@@ -227,7 +240,7 @@ def cmd_budget(a: argparse.Namespace) -> int:
 
 def cmd_run(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
-    cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
+    cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     space = _space(a, cg)
     if a.split:
         space = space.split(a.split)
@@ -273,7 +286,7 @@ def cmd_run(a: argparse.Namespace) -> int:
 
 def cmd_materialize(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
-    cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
+    cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     space = _space(a, cg)
     ro = RunOptions(
         run_id=_run_id(a),
@@ -321,7 +334,7 @@ def cmd_train(a: argparse.Namespace) -> int:
     from ..train import loop as loop_mod
 
     _load_nodes(a.nodes)
-    cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
+    cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     got = _trainer_cfg(a, cg)
     if got is None:
         raise SystemExit("이 그래프에는 Trainer 노드가 없다.")
@@ -360,9 +373,121 @@ def cmd_train(a: argparse.Namespace) -> int:
     return 0 if rep.ok else 6
 
 
+def cmd_recipe(a: argparse.Namespace) -> int:
+    _load_nodes(a.nodes)
+    book = recipe_mod.load(a.spec)
+    if not book.recipes and a.action != "expand":
+        print(f"레시피가 없다: {book.path}")
+        return 0
+
+    if a.action == "list":
+        cg = compile_project(a.spec)
+        paths = {p for r in book.recipes.values() for p in r.overrides}
+        st = recipe_mod.status(book, {p: current_value(cg, p) for p in paths})
+        print(f"{book.path}")
+        print(f"  활성: {st if st else '없음'}"
+              + ("  (프로젝트를 직접 수정해 레시피와 어긋난다)" if st == recipe_mod.CUSTOMIZED else ""))
+        for rid in sorted(book.recipes):
+            r = book.recipes[rid]
+            mark = "*" if str(rid) == st else " "
+            print(f"  {mark}{rid:>3}  {r.name:<16} {r.note}")
+        for name, sw in book.sweeps.items():
+            total = 1
+            for v in sw.axes.values():
+                total *= len(v)
+            print(f"   sweep {name}: {sw.strategy} · 축 {len(sw.axes)}개 · 조합 {total}개 · 번호 {sw.id_range}")
+        return 0
+
+    if a.action == "show":
+        r = book.get(int(a.recipe_id))
+        print(f"{r.id:>3}  {r.name}  {r.note}")
+        for k, v in sorted(r.overrides.items()):
+            print(f"    {book.display_name(k):<24} = {v!r}   [{k}]")
+        return 0
+
+    if a.action == "diff":
+        x, y = book.get(int(a.recipe_id)), book.get(int(a.other))
+        rows = recipe_mod.diff(x, y)
+        print(f"{x.id} {x.name}  vs  {y.id} {y.name}")
+        for k, va, vb in rows:
+            print(f"    {book.display_name(k):<24} {va!r}  ->  {vb!r}")
+        if not rows:
+            print("    차이 없음")
+        return 0
+
+    if a.action == "expand":
+        expanded = recipe_mod.expand(book, a.sweep)
+        out_dir = os.path.dirname(os.path.abspath(a.spec))
+        rep, _ = sweep_mod.plan(a.spec, expanded, device=a.device)
+        lock = recipe_mod.save_lock(book, expanded, out_dir)
+        print(f"전개: {len(expanded)}개 (번호 {expanded[0].id}~{expanded[-1].id})")
+        print(f"  예산 통과: {len(rep.queued)}개  ·  제외: {len(rep.rejected)}개")
+        for e in rep.rejected:
+            print(f"    {e.recipe.label}: {e.reason}")
+        print(f"  -> {lock}")
+        return 0
+
+    if a.action == "set-active":
+        import yaml as _yaml
+
+        with open(book.path, "r", encoding="utf-8") as fh:
+            data = _yaml.safe_load(fh) or {}
+        data["active"] = int(a.recipe_id)
+        with open(book.path, "w", encoding="utf-8") as fh:
+            _yaml.safe_dump(data, fh, allow_unicode=True, sort_keys=False, width=100)
+        print(f"활성 레시피: {a.recipe_id}")
+        return 0
+
+    raise SystemExit(f"알 수 없는 action: {a.action}")
+
+
+def cmd_sweep(a: argparse.Namespace) -> int:
+    _load_nodes(a.nodes)
+    book = recipe_mod.load(a.spec)
+    if a.sweep:
+        recipes = recipe_mod.expand(book, a.sweep)
+    elif a.recipes:
+        recipes = [book.get(i) for i in _parse_ids(a.recipes)]
+    else:
+        recipes = [book.recipes[i] for i in sorted(book.recipes)]
+    if not recipes:
+        raise SystemExit("돌릴 레시피가 없다.")
+
+    print(f"스윕 시작: 레시피 {len(recipes)}개 · 단일 GPU 순차 큐")
+    rep = sweep_mod.run(
+        a.spec,
+        recipes,
+        run_root=a.run_root,
+        trainer_config=a.trainer_config or None,
+        limit=a.limit,
+        shard_size=a.shard_size,
+        device=a.device,
+        torch_device=a.device_torch,
+        max_steps=a.max_steps,
+        train=not a.no_train,
+        cache_dir=a.cache_dir,
+        on_event=print,
+    )
+    print()
+    print(sweep_mod.render(rep))
+    return 0 if not rep.rejected else 7
+
+
+def _parse_ids(text: str) -> List[int]:
+    out: List[int] = []
+    for part in text.split(","):
+        part = part.strip()
+        if "-" in part:
+            lo, hi = part.split("-", 1)
+            out.extend(range(int(lo), int(hi) + 1))
+        elif part:
+            out.append(int(part))
+    return out
+
+
 def cmd_preview(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
-    cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
+    cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     if a.node not in cg.nodes:
         raise SystemExit(f"노드 {a.node!r}가 그래프에 없다. 가능한 id: {', '.join(cg.order)}")
     node = cg.nodes[a.node]
@@ -470,6 +595,30 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--run-id", default="")
     m.set_defaults(func=cmd_materialize)
 
+    rc = sub.add_parser("recipe", help="Parameter Recipe 관리 (list/show/diff/expand/set-active)")
+    rc.add_argument("action", choices=["list", "show", "diff", "expand", "set-active"])
+    rc.add_argument("spec")
+    rc.add_argument("--recipe-id", default="1")
+    rc.add_argument("--other", default="2", help="diff 대상")
+    rc.add_argument("--sweep", default="", help="expand 할 스윕 이름")
+    rc.add_argument("--device", default="")
+    rc.set_defaults(func=cmd_recipe)
+
+    sw = sub.add_parser("sweep", help="레시피 여러 개를 순차로 돌린다 (물질화는 지문이 같으면 공유)")
+    sw.add_argument("spec")
+    sw.add_argument("--recipes", default="", help="예: 1,2,3 또는 10-21")
+    sw.add_argument("--sweep", default="", help="스윕 이름으로 전개해서 돌린다")
+    sw.add_argument("--run-root", default="runs/sweeps")
+    sw.add_argument("--trainer-config", default="")
+    sw.add_argument("--limit", type=int, default=0)
+    sw.add_argument("--shard-size", type=int, default=64)
+    sw.add_argument("--device", default="", help="예산 프로파일")
+    sw.add_argument("--device-torch", default="auto")
+    sw.add_argument("--max-steps", type=int, default=0)
+    sw.add_argument("--no-train", action="store_true", help="물질화와 예산까지만")
+    sw.add_argument("--cache-dir", default=".cache")
+    sw.set_defaults(func=cmd_sweep)
+
     ig = sub.add_parser("infer-graph", help="학습 그래프에서 정답 경로를 잘라낸 추론 그래프를 뽑는다")
     ig.add_argument("spec")
     ig.add_argument("--set", action="append", default=[])
@@ -503,8 +652,20 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _subparsers(parser: argparse.ArgumentParser) -> List[argparse.ArgumentParser]:
+    out: List[argparse.ArgumentParser] = []
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            out.extend(action.choices.values())
+    return out
+
+
 def main(argv: Optional[List[str]] = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    for p in _subparsers(parser):
+        if any(x.dest == "spec" for x in p._actions) and not any(x.dest == "recipe" for x in p._actions):
+            p.add_argument("--recipe", default="", help="Parameter Recipe 번호로 값 오버레이")
+    args = parser.parse_args(argv)
     try:
         return args.func(args)
     except CompileFailed as e:

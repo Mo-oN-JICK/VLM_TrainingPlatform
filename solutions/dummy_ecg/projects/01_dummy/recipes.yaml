@@ -1,0 +1,49 @@
+kind: ParameterRecipes
+project: "01_dummy"
+active: 1
+
+# 파라미터 표시 이름 커스텀 (Mech-Vision 모방)
+display:
+  "p_crop.score_threshold": "전문가 점수 임계"
+  "n_stats.z_thresh": "돌출 임계 z"
+  "n_prompt.template": "프롬프트 템플릿"
+
+recipes:
+  - id: 1
+    name: baseline
+    note: "기본값. 임계 z=3.0, 전문가 지목 2개"
+    overrides:
+      n_stats.z_thresh: 3.0
+      p_crop.max_n: 2
+
+  - id: 2
+    name: tight_spike
+    note: "돌출 임계를 올려 정답의 spike 판정이 보수적으로 바뀐다"
+    overrides:
+      n_stats.z_thresh: 4.5
+      p_crop.max_n: 2
+
+  - id: 3
+    name: single_crop
+    note: "crop을 1장만 — 이미지 개수가 줄어 비전 토큰도 준다"
+    overrides:
+      n_stats.z_thresh: 3.0
+      p_crop.max_n: 1
+
+  - id: 4
+    name: low_lr
+    note: "전처리는 1번과 같다 — 물질화를 공유하고 학습만 다시 한다"
+    overrides:
+      n_stats.z_thresh: 3.0
+      p_crop.max_n: 2
+      n_train.config_path: "trainer_tiny_lowlr.yaml"
+
+sweeps:
+  - name: spike_x_crop
+    id_range: [10, 99]
+    base: 1
+    strategy: grid
+    naming: "z{z_thresh}_n{max_n}"
+    axes:
+      n_stats.z_thresh: [2.5, 3.0, 4.0]
+      p_crop.max_n: [1, 2]

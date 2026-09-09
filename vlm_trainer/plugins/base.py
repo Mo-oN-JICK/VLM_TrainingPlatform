@@ -104,6 +104,13 @@ class BackboneAdapter:
     def spec(cls) -> BackboneSpec:
         return cls.spec_data
 
+    @classmethod
+    def build(cls, cfg: Any, stage: Any) -> Any:
+        raise NotImplementedError(
+            f"{cls.spec().id}: 이 백본 어댑터는 spec()만 제공한다(예산 계산용). "
+            "학습하려면 build/module_groups/collate를 구현하라 — tiny_backbone.py가 참조 구현이다."
+        )
+
 
 _BACKBONES: Dict[str, Type[BackboneAdapter]] = {}
 

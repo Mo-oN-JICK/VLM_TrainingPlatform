@@ -158,6 +158,7 @@ def _inline_procedures(
                 "params": dict(p.params or {}),
                 "exposed_inputs": dict(pd.exposed_inputs),
                 "exposed_outputs": dict(pd.exposed_outputs),
+                "exposed_params": {k: (f"{p.id}/{n}", prm) for k, (n, prm) in pd.exposed_params.items()},
             }
         )
 
@@ -219,7 +220,7 @@ def compile_graph(
 
     # 3) overlay — 값만, 화이트리스트 안에서만
     if recipe_overrides:
-        _apply_overrides(nodes, defs, recipe_overrides)
+        _apply_overrides(nodes, defs, recipe_overrides, procs)
 
     ids = [n.id for n in nodes]
     id_set = set(ids)
@@ -459,14 +460,32 @@ def compile_project(path: str, *, recipe_overrides: Optional[Dict[str, Any]] = N
 
 
 def _apply_overrides(
-    nodes: List[NodeInstance], defs: Dict[str, NodeDef], overrides: Dict[str, Any]
+    nodes: List[NodeInstance],
+    defs: Dict[str, NodeDef],
+    overrides: Dict[str, Any],
+    procs: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
-    """Parameter Recipe 오버레이. 값만, 화이트리스트 안에서만."""
+    """Parameter Recipe 오버레이. 값만, 화이트리스트 안에서만.
+
+    Procedure는 **노출한 파라미터로만** 덮을 수 있다(`p_crop.max_n`). 내부 노드를 직접
+    가리키는 형태(`p_crop/n_crop.max_n`)도 받지만, 캡슐화를 지키려면 앞의 형태를 쓴다.
+    """
     inst = {n.id: n for n in nodes}
+    exposed: Dict[str, Dict[str, tuple]] = {p["id"]: p.get("exposed_params") or {} for p in (procs or [])}
+
     for path, value in overrides.items():
         if "." not in path:
             raise SpecError(f"오버라이드 경로는 '노드id.파라미터' 형식이어야 한다: {path!r}")
         nid, param = path.split(".", 1)
+        if nid in exposed:  # Procedure 인스턴스의 노출 파라미터
+            table = exposed[nid]
+            if param not in table:
+                raise PolicyError(
+                    f"Procedure {nid}가 노출하지 않은 파라미터 {param!r}는 레시피가 덮을 수 없다 "
+                    f"(노출된 것: {sorted(table)})",
+                    node=nid,
+                )
+            nid, param = table[param]
         if nid not in inst:
             raise SpecError(f"오버라이드가 없는 노드를 가리킨다: {nid!r}")
         d = defs[nid]
@@ -477,6 +496,26 @@ def _apply_overrides(
                 node=nid,
             )
         inst[nid].params[param] = value
+
+
+def override_target(cg: CompiledGraph, path: str) -> Tuple[str, str]:
+    """오버라이드 경로를 실제 (노드 id, 파라미터)로 해소한다.
+
+    Procedure 인스턴스의 노출 파라미터(`p_crop.max_n`)는 내부 노드로 옮겨진다.
+    """
+    nid, param = path.split(".", 1)
+    for p in cg.procedures:
+        if p["id"] == nid:
+            tgt = (p.get("exposed_params") or {}).get(param)
+            if tgt:
+                return tgt
+    return nid, param
+
+
+def current_value(cg: CompiledGraph, path: str) -> Any:
+    nid, param = override_target(cg, path)
+    node = cg.nodes.get(nid)
+    return node.params.get(param) if node else None
 
 
 def canonical_view(cg: CompiledGraph) -> Dict[str, Any]:

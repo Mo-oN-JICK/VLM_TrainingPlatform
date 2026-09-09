@@ -2,12 +2,13 @@
 
 Mech-Vision의 규약을 모방한 노드 그래프 기반 파인튜닝 플랫폼. 설계 문서는 [`docs/design/`](docs/design/README.md).
 
-현재 상태: **Phase 0–5 완료** — 타입 시스템 · 레지스트리 · 컴파일러(G1/G2) · decompile 왕복 ·
+현재 상태: **Phase 0–6 완료** — 타입 시스템 · 레지스트리 · 컴파일러(G1/G2) · decompile 왕복 ·
 노드 카탈로그 26개 · 실행 엔진(캐시 · spawn 워커 · 격리) · dry-run(G3) · **자원 예산 게이트(G4)** ·
 노드 단위 미리보기 · 물질화와 재개 · **다단계 학습(LoRA·freeze·체크포인트·재개)** ·
-**추론 계약** · CLI 11개 명령. **4중 게이트가 전부 동작한다.**
-합성 더미 데이터로 전 경로가 GPU에서 돌고, 추론 그래프가 만든 프롬프트는 학습 때와 바이트 단위로 같다.
-다음은 실물 2B 백본 어댑터와 Phase 6(Parameter Recipe·스윕).
+추론 계약 · **Parameter Recipe와 스윕** · CLI 13개 명령. **4중 게이트가 전부 동작한다.**
+합성 더미 데이터로 전 경로가 GPU에서 돌고, 추론 그래프가 만든 프롬프트는 학습 때와 바이트 단위로 같으며,
+그래프 하나 위에서 레시피만 바꾼 실험 여러 개가 물질화를 공유하며 순차로 돈다.
+남은 것은 실물 2B 백본 어댑터(Phase 5의 마지막 조각)와 Phase 7(UI).
 
 실행 환경은 `.venv`(Python 3.12 + torch 2.14.0+cu130)다. `python` 대신 `.venv\\Scripts\\python.exe`를 쓴다.
 
@@ -48,6 +49,15 @@ python -m vlm_trainer.cli.main train solutions/dummy_ecg/projects/01_dummy/proje
 # 8) 추론 그래프 - 학습 그래프에서 정답 경로를 잘라낸 서브그래프
 python -m vlm_trainer.cli.main infer-graph solutions/dummy_ecg/projects/01_dummy/project.yaml --out infer.yaml
 
+# 9) Parameter Recipe - 그래프는 그대로 두고 값만 바꾼다
+python -m vlm_trainer.cli.main recipe list solutions/dummy_ecg/projects/01_dummy/project.yaml
+python -m vlm_trainer.cli.main recipe diff solutions/dummy_ecg/projects/01_dummy/project.yaml --recipe-id 1 --other 3
+python -m vlm_trainer.cli.main recipe expand solutions/dummy_ecg/projects/01_dummy/project.yaml --sweep spike_x_crop
+python -m vlm_trainer.cli.main dryrun solutions/dummy_ecg/projects/01_dummy/project.yaml --recipe 2
+
+# 10) 스윕 - 단일 GPU 순차 큐. 전처리 지문이 같은 레시피는 물질화를 공유한다
+python -m vlm_trainer.cli.main sweep solutions/dummy_ecg/projects/01_dummy/project.yaml --recipes 1,3,4 --limit 6 --max-steps 3
+
 # 노드 라이브러리 / 노드 상세 / 스펙 되돌리기
 python -m vlm_trainer.cli.main nodes
 python -m vlm_trainer.cli.main show image.crop_by_regions
@@ -62,16 +72,16 @@ python -m vlm_trainer.cli.main decompile solutions/dummy_ecg/projects/01_dummy/p
 | 경로 | 내용 |
 |---|---|
 | `vlm_trainer/core/` | 포트 타입, 단일화, 레지스트리, 그래프, 컴파일러, 게이트 에러 |
-| `vlm_trainer/spec/` | YAML 로더, canonical form, decompile |
+| `vlm_trainer/spec/` | YAML 로더, canonical form, decompile, Parameter Recipe |
 | `vlm_trainer/nodes/` | 노드 카탈로그 26개 (Data Acquisition · 2D · Time Series · Expert · Adapters · Prompt · Answer · Data · File · Training) |
-| `vlm_trainer/engine/` | 실행 엔진 — 캐시, spawn 워커, 샘플 공간, dry-run(G3), 예산(G4), 물질화, 저널, 미리보기 |
+| `vlm_trainer/engine/` | 실행 엔진 — 캐시, spawn 워커, 샘플 공간, dry-run(G3), 예산(G4), 물질화, 저널, 미리보기, 스윕 |
 | `vlm_trainer/train/` | 선언형 TrainerConfig, shard 리더, freeze 정책, 학습 루프, 추론 계약 |
 | `vlm_trainer/answer/` | 정답 Text 스키마 — 렌더러와 파서를 같은 정의에서 생성 |
 | `vlm_trainer/plugins/` | 플러그인 규약 + 더미 전문가 모델 2종(이미지 영역 / 시계열 구간) |
 | `vlm_trainer/cli/` | `vlmt` 커맨드 |
 | `solutions/dummy_ecg/` | 합성 더미 데이터로 도는 예제 Solution (Procedure 포함) |
 | `tools/` | 합성 더미 데이터 생성기 |
-| `tests/` | 완료 조건 93개 + 예제 Solution |
+| `tests/` | 완료 조건 107개 + 예제 Solution |
 | `docs/design/` | 설계 문서 13편 |
 
 ## 설계에서 구현으로 오며 바뀐 것
@@ -91,4 +101,5 @@ python -m vlm_trainer.cli.main decompile solutions/dummy_ecg/projects/01_dummy/p
 | 물질화 shard 포맷이 webdataset tar | **디렉터리 + jsonl + PNG** | 검증 대상(원자 커밋·재개·매니페스트)은 같고 읽기가 훨씬 단순하다. tar 패킹은 학습 처리량이 실제로 문제될 때 바꾼다 |
 | Phase 5의 백본이 실물 2B | **로컬 소형 백본 `tiny-vlm`**(2.3M 파라미터, 다운로드 없음)으로 학습 경로 전체를 검증 | 비전 타워·프로젝터·LoRA·다단계 freeze·체크포인트·재개는 모델 크기와 무관하게 같은 코드다. 실물 백본은 `BackboneAdapter`를 채우고 `backbone:` 한 줄을 바꾸면 된다 |
 | 프로파일 미지원 옵션은 G2가 거부 | **G4가 함께 본다** | Trainer 설정이 로드되는 지점이 G4다. 학습 시작 전이라는 성질은 같다 |
+| 레시피가 `stages[1].optimizer.lr` 같은 깊은 경로를 덮는다 | 오버라이드는 **`노드id.파라미터` 한 단계**만. Trainer 설정 변주는 `n_train.config_path`로 파일을 바꿔 표현한다 | 깊은 경로 오버레이는 화이트리스트 검사가 복잡해진다. 지금 형태로도 스윕은 성립하고, 필요해지면 그때 확장한다 |
 | 텍스트 토큰 수를 토크나이저로 잰다 | 토크나이저가 없는 동안 `chars_per_token`(기본 2.5)으로 환산하고, dry-run 실측 문자 수를 쓴다 | 백본이 붙는 Phase 5에서 실제 토크나이저로 교체한다. 선언값이 실측보다 작으면 G4가 거부하므로 낙관적으로 기울지 않는다 |
