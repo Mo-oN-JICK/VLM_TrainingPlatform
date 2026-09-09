@@ -2,9 +2,10 @@
 
 Mech-Vision의 규약을 모방한 노드 그래프 기반 파인튜닝 플랫폼. 설계 문서는 [`docs/design/`](docs/design/README.md).
 
-현재 상태: **Phase 0–2 완료** — 타입 시스템 · 레지스트리 · 컴파일러(G1/G2) · decompile 왕복 ·
-노드 카탈로그 26개 · 실행 엔진(캐시 · spawn 워커 · 격리) · dry-run(G3) · 노드 단위 미리보기 · CLI 7개 명령.
-합성 더미 데이터로 전 경로가 돈다. 다음은 Phase 3(자원 예산 게이트 G4).
+현재 상태: **Phase 0–3 완료** — 타입 시스템 · 레지스트리 · 컴파일러(G1/G2) · decompile 왕복 ·
+노드 카탈로그 26개 · 실행 엔진(캐시 · spawn 워커 · 격리) · dry-run(G3) · **자원 예산 게이트(G4)** ·
+노드 단위 미리보기 · CLI 8개 명령. **4중 게이트가 전부 동작한다.**
+합성 더미 데이터로 전 경로가 돌고, 예산을 넘는 설정은 학습 전에 거부된다. 다음은 Phase 4(물질화·재개).
 
 ## 실행
 
@@ -23,7 +24,14 @@ python -m vlm_trainer.cli.main dryrun solutions/dummy_ecg/projects/01_dummy/proj
 # 3) 노드 하나만 실행해 시각화 출력 보기 (상류만 계산한다)
 python -m vlm_trainer.cli.main preview solutions/dummy_ecg/projects/01_dummy/project.yaml --node n_sample
 
-# 4) 실행 - Output 노드까지 (dataset export + train plan)
+# 4) 예산 - G4. 단계별 VRAM과 시퀀스 길이를 학습 전에 산정한다
+python -m vlm_trainer.cli.main budget solutions/dummy_ecg/projects/01_dummy/project.yaml
+python -m vlm_trainer.cli.main budget solutions/dummy_ecg/projects/01_dummy/project.yaml \
+    --what-if backbone=dummy-7b --what-if quantization=none      # 거부되는 예
+python -m vlm_trainer.cli.main budget solutions/dummy_ecg/projects/01_dummy/project.yaml \
+    --device rtx4090_24gb                                        # 다른 PC 프로파일
+
+# 5) 실행 - Output 노드까지 (dataset export + train plan). G4에 걸리면 시작하지 않는다
 python -m vlm_trainer.cli.main run solutions/dummy_ecg/projects/01_dummy/project.yaml --limit 8 --run-id demo
 
 # 노드 라이브러리 / 노드 상세 / 스펙 되돌리기
@@ -63,4 +71,6 @@ python -m vlm_trainer.cli.main decompile solutions/dummy_ecg/projects/01_dummy/p
 | `list.map(procedure)` | 지금은 **단일 노드만** 매핑한다 | 서브그래프 실행은 엔진이 더 필요하다. 리스트 원소마다 리사이즈하는 실제 용도는 이것으로 충분하다 |
 | `text.template`이 슬롯마다 포트를 만든다 | 슬롯 값은 `context: Table` 포트 하나로 받는다 | 노드 등록은 정적이라 인스턴스마다 포트를 바꿀 수 없다. 동적 포트는 UI(Phase 7)와 함께 다시 본다 |
 | — | `adapt.image_frame` 신설 | crop을 원본과 한 리스트에 담으려면 좌표 기준을 다시 선언해야 한다. 암묵 변환을 금지했으므로 이 선언도 노드로 남는다 |
-| 프롬프트의 이미지 자리표시자 개수를 타입에 싣는다 | 지금은 `sample.assemble`이 실행 시점에 실측 대조한다 | 개수는 리스트 길이라 컴파일 시점에 확정되지 않는다. G4에서 상한으로 다시 다룬다 |
+| 프롬프트의 이미지 자리표시자 개수를 타입에 싣는다 | 지금은 `sample.assemble`이 실행 시점에 실측 대조한다. 예산 산정은 `list.concat.max_n`(타입의 리스트 상한)을 쓴다 | 실제 개수는 샘플마다 달라 컴파일 시점에 확정되지 않는다. 예산은 상한으로 보수적으로 잡는다 |
+| 예산 기준 장치가 4090 24GB | 기본 프로파일은 **`rtx3060_12gb`**, `rtx4090_24gb`는 전환만 하면 된다 | 지금 이 PC가 3060이다. 설정 한 줄로 바뀌므로 다른 PC로 옮길 때 그래프는 그대로다 |
+| 텍스트 토큰 수를 토크나이저로 잰다 | 토크나이저가 없는 동안 `chars_per_token`(기본 2.5)으로 환산하고, dry-run 실측 문자 수를 쓴다 | 백본이 붙는 Phase 5에서 실제 토크나이저로 교체한다. 선언값이 실측보다 작으면 G4가 거부하므로 낙관적으로 기울지 않는다 |

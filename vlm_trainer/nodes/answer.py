@@ -40,7 +40,7 @@ class EvidenceParams:
 )
 class EvidenceRules(Node):
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
-        with open(ctx.path(params.rules), "r", encoding="utf-8") as fh:
+        with open(ctx.asset(params.rules), "r", encoding="utf-8") as fh:
             spec = yaml.safe_load(fh) or {}
         scope = dict(inputs["stats"])
         rs = inputs.get("regions") or []

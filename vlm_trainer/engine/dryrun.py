@@ -25,6 +25,7 @@ class DryRunResult:
     quarantine: List[str] = field(default_factory=list)
     violation_ratio: float = 0.0
     measured: Dict[str, str] = field(default_factory=dict)
+    measured_chars: int = 0  # 샘플당 프롬프트+정답 문자 수(최대)
     report: Optional[RunReport] = None
     aborted: str = ""
 
@@ -70,6 +71,11 @@ def dryrun(
             res.measured[ref] = describe(v)
             res.type_mismatches.extend(check_against(declared, v, ref))
 
+    # 정적 추정(G4)이 낙관적으로 기울지 않도록 실측 문자 수를 남긴다
+    for ref, v in rep.last_values.items():
+        if isinstance(v, dict) and "prompt" in v and "answer" in v:
+            res.measured_chars = max(res.measured_chars, len(v["prompt"]) + len(v["answer"]))
+
     if rep.quarantine:
         viol = sum(1 for q in rep.quarantine if "위반" in q.cause)
         total = rep.processed + len(rep.quarantine)
@@ -98,6 +104,8 @@ def render(res: DryRunResult) -> str:
         lines += [f"  - {q}" for q in res.quarantine[:10]]
     if res.aborted:
         lines.append(f"\n중단: {res.aborted}")
+    if res.measured_chars:
+        lines.append(f"\n실측: 샘플당 프롬프트+정답 {res.measured_chars}자 (최대)")
     if res.ok:
         lines.append("\n통과. G1·G2·G3를 지났다. 남은 것은 자원 예산(G4)이다.")
     return "\n".join(lines)

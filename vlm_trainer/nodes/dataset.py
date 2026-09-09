@@ -272,12 +272,8 @@ class DatasetExport(Node):
 
 @dataclass
 class TrainerParams:
-    backbone: str = "dummy-2b"
-    adapter: str = "none"
-    quantization: str = "nf4"
-    stages: tuple = ("projector_align", "lora_ft")
+    config_path: str = "trainer.yaml"  # project.yaml 기준. 설계 문서 07의 선언형 스키마
     out_dir: str = "runs/{run_id}/train"
-    max_len: int = 4096
 
 
 @register(
@@ -290,7 +286,7 @@ class TrainerParams:
         "schema": Port(simple(BaseKind.SCHEMA), "정답 스키마"),
     },
     params=TrainerParams,
-    recipe_overridable=["backbone", "quantization", "max_len"],
+    recipe_overridable=["config_path", "out_dir"],
     preview="budget_table",
     doc=NodeDoc(
         summary="학습 실행. 그래프의 종결점이며 Output 분류에 속한다.",
@@ -305,11 +301,20 @@ class VlmTrainer(Node):
     """
 
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
+        from ..train.config import TrainerConfig
+
+        cfg = TrainerConfig.load(ctx.asset(params.config_path))
         s = inputs["sample"]
         out_dir = os.path.abspath(params.out_dir.replace("{run_id}", ctx.run_id))
         os.makedirs(out_dir, exist_ok=True)
         plan_path = os.path.join(out_dir, "train_plan.json")
-        plan = {"backbone": params.backbone, "stages": list(params.stages), "samples": 0, "chars": 0}
+        plan = {
+            "backbone": cfg.backbone,
+            "stages": [st.name for st in cfg.stages],
+            "config": cfg.digest(),
+            "samples": 0,
+            "chars": 0,
+        }
         if os.path.exists(plan_path):
             with open(plan_path, "r", encoding="utf-8") as fh:
                 plan = json.load(fh)

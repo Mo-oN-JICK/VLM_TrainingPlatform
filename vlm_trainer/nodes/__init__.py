@@ -5,6 +5,6 @@
 """
 
 from . import answer, dataset, expert, imaging, prompt, source, timeseries  # noqa: F401
-from ..plugins import dummy_experts  # noqa: F401
+from ..plugins import dummy_backbones, dummy_experts  # noqa: F401
 
 __all__ = ["source", "imaging", "timeseries", "expert", "prompt", "answer", "dataset"]

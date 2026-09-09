@@ -76,8 +76,7 @@ nodes:
   - {id: n_export, type: "io.dataset_export@1.0.0",
      params: {out_dir: "runs/{run_id}/dataset", format: jsonl, image_encoding: png}}
   - {id: n_train, type: "train.vlm_trainer@0.1.0",
-     params: {backbone: "dummy-2b", quantization: nf4, max_len: 4096,
-              out_dir: "runs/{run_id}/train"}}
+     params: {config_path: "trainer.yaml", out_dir: "runs/{run_id}/train"}}
 
 procedures:
   - id: p_crop

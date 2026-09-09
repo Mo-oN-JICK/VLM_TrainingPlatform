@@ -24,10 +24,17 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+SPEC_DIR = os.path.dirname(PROJECT)
+
+
 def _load():
     cg = compile_project(PROJECT)
-    space = samples_mod.load(cg.sample_space, os.path.dirname(PROJECT))
+    space = samples_mod.load(cg.sample_space, SPEC_DIR)
     return cg, space
+
+
+def _opts(tmp_path, **kw):
+    return RunOptions(run_id="test", cache_dir=str(tmp_path / "cache"), spec_dir=SPEC_DIR, **kw)
 
 
 def test_sample_space_splits_do_not_mix_groups():
@@ -42,8 +49,7 @@ def test_sample_space_splits_do_not_mix_groups():
 
 def test_dryrun_flows_to_sample_assemble(tmp_path):
     cg, space = _load()
-    opts = RunOptions(run_id="test", cache_dir=str(tmp_path / "cache"))
-    res = dryrun(cg, space, n=3, opts=opts)
+    res = dryrun(cg, space, n=3, opts=_opts(tmp_path))
     assert res.ok, res.type_mismatches + res.determinism_failures + [res.aborted]
     assert res.processed == 3
     assert "n_sample:sample" in res.measured
@@ -53,7 +59,7 @@ def test_dryrun_flows_to_sample_assemble(tmp_path):
 def test_second_run_is_fully_cached(tmp_path):
     cg, space = _load()
     rows = space.rows[:2]
-    opts = RunOptions(run_id="test", cache_dir=str(tmp_path / "cache"))
+    opts = _opts(tmp_path)
 
     first = execute(cg, space, rows, opts)
     assert first.processed == 2
@@ -74,7 +80,7 @@ def test_preview_computes_only_the_upstream(tmp_path):
     up = ancestors(cg, target)
     assert "n_img" not in up and "n_ts" in up
 
-    opts = RunOptions(run_id="test", cache_dir=str(tmp_path / "cache"))
+    opts = _opts(tmp_path)
     rep = execute(cg, space, space.pick(1), opts, targets=up)
     ran = {i for i in rep.order if rep.states_of(i)}
     assert ran <= up, f"상류 밖 노드가 실행되었다: {ran - up}"
@@ -87,7 +93,7 @@ def test_preview_computes_only_the_upstream(tmp_path):
 
 def test_output_nodes_are_not_run_unless_asked(tmp_path):
     cg, space = _load()
-    opts = RunOptions(run_id="test", cache_dir=str(tmp_path / "cache"))
+    opts = _opts(tmp_path)
     rep = execute(cg, space, space.pick(1), opts)
     for nid in cg.order:
         if cg.nodes[nid].kind is NodeKind.OUTPUT:
@@ -194,9 +200,8 @@ def test_dryrun_stops_when_violation_ratio_is_too_high(tmp_path):
     cg = compile_project(
         PROJECT, recipe_overrides={"n_ev.rules": "../../schemas/evidence_empty.yaml"}
     )
-    space = samples_mod.load(cg.sample_space, os.path.dirname(PROJECT))
-    opts = RunOptions(run_id="test", cache_dir=str(tmp_path / "cache"))
-    res = dryrun(cg, space, n=3, opts=opts)
+    space = samples_mod.load(cg.sample_space, SPEC_DIR)
+    res = dryrun(cg, space, n=3, opts=_opts(tmp_path))
 
     assert not res.ok
     assert res.aborted

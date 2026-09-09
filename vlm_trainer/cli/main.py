@@ -18,11 +18,13 @@ from ..core import registry
 from ..core.compiler import CompileFailed, canonical_view, compile_project
 from ..core.errors import VlmtError
 from ..core.node import NodeKind
+from ..engine import budget as budget_mod
 from ..engine import dryrun as dryrun_mod
 from ..engine import preview as preview_mod
 from ..engine import samples as samples_mod
 from ..engine.runner import RunOptions, ancestors, execute
 from ..spec.decompile import decompile, dump_yaml
+from ..train.config import TrainerConfig
 
 
 def _load_nodes(modules: List[str]) -> None:
@@ -142,7 +144,8 @@ def cmd_dryrun(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
     cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
     space = _space(a, cg)
-    opts = RunOptions(run_id=_run_id(a), extra_modules=tuple(a.nodes), cache_dir=a.cache_dir)
+    opts = RunOptions(run_id=_run_id(a), extra_modules=tuple(a.nodes), cache_dir=a.cache_dir,
+                      spec_dir=os.path.dirname(os.path.abspath(a.spec)))
     res = dryrun_mod.dryrun(cg, space, n=a.samples, opts=opts, violation_threshold=a.violation_threshold)
     print(f"샘플 공간: {len(space)}건 (인덱스 {os.path.basename(space.index_path)})")
     print(dryrun_mod.render(res))
@@ -152,6 +155,71 @@ def cmd_dryrun(a: argparse.Namespace) -> int:
         for ref, desc in res.measured.items():
             print(f"  {ref}: {desc}")
     return 0 if res.ok else 3
+
+
+def _trainer_cfg(a: argparse.Namespace, cg) -> Optional[tuple]:
+    """(TrainerConfig, train_node_id). Trainer 노드가 없으면 None."""
+    nodes = budget_mod.train_nodes(cg)
+    if not nodes:
+        return None
+    tn = nodes[0]
+    path = cg.nodes[tn].params.get("config_path") or "trainer.yaml"
+    spec_dir = os.path.dirname(os.path.abspath(a.spec))
+    cfg = TrainerConfig.load(os.path.normpath(os.path.join(spec_dir, path)))
+    if getattr(a, "device", ""):
+        cfg.budget.device = a.device
+    for kv in getattr(a, "what_if", None) or []:
+        k, _, v = kv.partition("=")
+        k, v = k.strip(), v.strip()
+        if k == "images":
+            cfg.vision.max_images_per_sample = int(v)
+        elif k == "tiles":
+            cfg.vision.max_tiles = int(v)
+            cfg.vision.tiling = int(v) > 1
+        elif k == "max_len":
+            cfg.sequence.max_len = int(v)
+        elif k == "backbone":
+            cfg.backbone = v
+        elif k == "quantization":
+            cfg.quantization.mode = v
+        elif k == "per_device":
+            for st in cfg.stages:
+                st.per_device = int(v)
+        else:
+            raise SystemExit(
+                f"--what-if 에 알 수 없는 키: {k!r} "
+                "(images|tiles|max_len|backbone|quantization|per_device)"
+            )
+    return cfg, tn
+
+
+def _measure_tokens(a: argparse.Namespace, cg, cfg) -> int:
+    """dry-run 실측 문자 수를 토큰 수로 환산한다. 정적 추정이 실측보다 낙관적이면 G4가 잡는다."""
+    space = _space(a, cg)
+    opts = RunOptions(
+        run_id=_run_id(a),
+        extra_modules=tuple(a.nodes),
+        cache_dir=a.cache_dir,
+        spec_dir=os.path.dirname(os.path.abspath(a.spec)),
+    )
+    res = dryrun_mod.dryrun(cg, space, n=1, opts=opts)
+    if not res.measured_chars:
+        return 0
+    return int(res.measured_chars / max(0.5, cfg.sequence.chars_per_token))
+
+
+def cmd_budget(a: argparse.Namespace) -> int:
+    _load_nodes(a.nodes)
+    cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
+    got = _trainer_cfg(a, cg)
+    if got is None:
+        print("이 그래프에는 Trainer 노드가 없다. 예산 검사 대상이 아니다.")
+        return 0
+    cfg, tn = got
+    measured = 0 if a.no_measure else _measure_tokens(a, cg, cfg)
+    res = budget_mod.for_graph(cg, cfg, tn, measured_text_tokens=measured)
+    print(budget_mod.render(res))
+    return 0 if res.ok else 4
 
 
 def cmd_run(a: argparse.Namespace) -> int:
@@ -167,7 +235,19 @@ def cmd_run(a: argparse.Namespace) -> int:
         use_cache=not a.no_cache,
         cache_dir=a.cache_dir,
         extra_modules=tuple(a.nodes),
+        spec_dir=os.path.dirname(os.path.abspath(a.spec)),
     )
+    # G4 — GPU를 잡기 전 마지막 문. Trainer가 있으면 예산을 먼저 본다.
+    got = _trainer_cfg(a, cg)
+    if got is not None and not a.skip_budget:
+        cfg, tn = got
+        b = budget_mod.for_graph(cg, cfg, tn, measured_text_tokens=_measure_tokens(a, cg, cfg))
+        if not b.ok and cfg.budget.policy == "fail_fast":
+            print(budget_mod.render(b), file=sys.stderr)
+            print("", file=sys.stderr)
+            print("학습을 시작하지 않았다. Output 노드는 실행되지 않는다.", file=sys.stderr)
+            return 4
+
     rep = execute(cg, space, rows, opts)
     print(f"run {opts.run_id}: {rep.processed}/{len(rows)}건 처리")
     print(f"  캐시 {rep.cache}")
@@ -203,7 +283,7 @@ def cmd_preview(a: argparse.Namespace) -> int:
         raise SystemExit(f"샘플 {a.sample!r}를 찾을 수 없다")
 
     opts = RunOptions(run_id=_run_id(a), cache_dir=a.cache_dir, extra_modules=tuple(a.nodes),
-                      use_cache=not a.no_cache)
+                      use_cache=not a.no_cache, spec_dir=os.path.dirname(os.path.abspath(a.spec)))
     rep = execute(cg, space, rows, opts, targets=ancestors(cg, a.node))
     outs = {p: v for p, v in ((p, rep.last_values.get(f"{a.node}:{p}")) for p in node.output_types)
             if v is not None}
@@ -270,7 +350,21 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--cache-dir", default=".cache")
     r.add_argument("--no-cache", action="store_true")
     r.add_argument("--run-id", default="")
+    r.add_argument("--device", default="", help="예산 프로파일 (rtx3060_12gb | rtx4090_24gb)")
+    r.add_argument("--skip-budget", action="store_true",
+                   help="예산 검사를 건너뛴다(Trainer 없는 그래프 전용)")
     r.set_defaults(func=cmd_run)
+
+    b = sub.add_parser("budget", help="G4 — 학습 전에 단계별 VRAM과 시퀀스 길이를 산정한다")
+    b.add_argument("spec")
+    b.add_argument("--set", action="append", default=[])
+    b.add_argument("--device", default="", help="rtx3060_12gb | rtx4090_24gb | a100_40gb")
+    b.add_argument("--what-if", action="append", default=[],
+                   help="images=2 tiles=4 max_len=2048 backbone=dummy-7b quantization=none per_device=4")
+    b.add_argument("--no-measure", action="store_true", help="dry-run 실측 없이 가정값으로 계산")
+    b.add_argument("--cache-dir", default=".cache")
+    b.add_argument("--run-id", default="")
+    b.set_defaults(func=cmd_budget)
 
     pv = sub.add_parser("preview", help="노드 하나만 실행해 시각화 출력을 본다")
     pv.add_argument("spec")

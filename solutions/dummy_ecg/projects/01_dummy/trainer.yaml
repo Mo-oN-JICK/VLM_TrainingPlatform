@@ -1,0 +1,54 @@
+kind: TrainerConfig
+version: 1
+
+backbone: dummy-2b          # 2B급 + QLoRA. 7B 전체 미세조정은 24GB에도 들어가지 않는다
+dtype: bf16
+quantization:
+  mode: nf4
+  compute_dtype: bf16
+  double_quant: true
+
+vision:
+  max_images_per_sample: 0   # 0이면 그래프의 ImageList 상한(list.concat.max_n)을 쓴다
+  tiling: false
+  tile_px: 448
+  max_tiles: 1
+  tokens_per_tile: 0         # 0이면 백본 어댑터가 보고한 값
+
+sequence:
+  max_len: 4096
+  truncation: forbid         # 잘라내지 않는다. 넘치면 G4가 거부한다
+  chars_per_token: 2.5
+
+loss:
+  chunked_ce: true
+  chunk: 1024
+
+stages:
+  - name: projector_align
+    trainable: {vision_tower: "false", projector: "true", llm: "false"}
+    optimizer: adamw_torch
+    lr: 1.0e-3
+    per_device: 2
+    grad_accum: 8
+    grad_checkpointing: false
+    epochs: 1
+
+  - name: lora_ft
+    init_from: projector_align
+    trainable: {vision_tower: "false", projector: "true", llm: "lora"}
+    lora:
+      r: 32
+      alpha: 64
+      targets: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+    optimizer: adamw_bnb_8bit
+    lr: 1.0e-4
+    per_device: 1
+    grad_accum: 16
+    grad_checkpointing: true
+    epochs: 3
+
+budget:
+  device: rtx3060_12gb       # 이 PC. 4090은 rtx4090_24gb 프로파일로 전환한다
+  policy: fail_fast
+  headroom_ratio: 0.10

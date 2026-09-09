@@ -46,6 +46,7 @@ class RunOptions:
     seed: int = 20260909
     extra_modules: Tuple[str, ...] = ()
     determinism_audit: bool = False
+    spec_dir: str = "."
     debug_output: bool = False
     trigger: str = "cli"  # ui | cli | external
 
@@ -134,6 +135,7 @@ def execute(
                 seed=opts.seed,
                 sample=row,
                 root=space.root,
+                spec_dir=opts.spec_dir,
             )
             d = resolve_node(node.ref)
             impl = d.impl()

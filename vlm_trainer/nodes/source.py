@@ -153,10 +153,10 @@ class TextAssetParams:
 )
 class TextAssetSource(Node):
     def fingerprint(self, ctx: RunCtx, params: Any) -> str:
-        return _stat_fingerprint(ctx.path(params.path))
+        return _stat_fingerprint(ctx.asset(params.path))
 
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
-        with open(ctx.path(params.path), "r", encoding=params.encoding) as fh:
+        with open(ctx.asset(params.path), "r", encoding=params.encoding) as fh:
             return {"text": fh.read()[: int(params.max_chars)]}
 
 
@@ -237,7 +237,7 @@ class SchemaParams:
 )
 class SchemaDefine(Node):
     def fingerprint(self, ctx: RunCtx, params: Any) -> str:
-        return _stat_fingerprint(ctx.path(params.path))
+        return _stat_fingerprint(ctx.asset(params.path))
 
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
-        return {"schema": AnswerSchema.load(ctx.path(params.path))}
+        return {"schema": AnswerSchema.load(ctx.asset(params.path))}

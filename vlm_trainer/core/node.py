@@ -77,12 +77,20 @@ class RunCtx:
     seed: int = 0
     now: str = "1970-01-01T00:00:00Z"
     sample: Dict[str, Any] = field(default_factory=dict)  # sample_space의 현재 행
-    root: str = "."  # 인덱스 파일 기준 디렉터리. Input 노드만 경로를 만든다
+    root: str = "."  # 인덱스 파일 기준 디렉터리 — 데이터 경로
+    spec_dir: str = "."  # project.yaml 기준 디렉터리 — 스펙 자산 경로
 
     def path(self, rel: str) -> str:
+        """데이터 경로. sample_space 인덱스 파일이 있는 디렉터리 기준."""
         import os
 
         return rel if os.path.isabs(rel) else os.path.normpath(os.path.join(self.root, rel))
+
+    def asset(self, rel: str) -> str:
+        """스펙 자산 경로(스키마·지식 텍스트·Trainer 설정). project.yaml 기준."""
+        import os
+
+        return rel if os.path.isabs(rel) else os.path.normpath(os.path.join(self.spec_dir, rel))
 
     def rng(self, salt: str = ""):
         import random

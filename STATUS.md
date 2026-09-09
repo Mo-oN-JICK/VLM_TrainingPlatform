@@ -4,8 +4,9 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-09
-- 마지막 커밋: Phase 2 — 노드 카탈로그 · 실행 엔진 · dry-run
-- 테스트: `python -m pytest tests -q` → **60 passed**
+- 마지막 커밋: Phase 3 — 자원 예산 게이트(G4)
+- 테스트: `python -m pytest tests -q` → **71 passed**
+- **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
 
 ---
@@ -85,38 +86,60 @@ Mech-Vision(산업용 3D 비전 노드 편집기)의 규약을 의도적으로 �
 <verdict>abnormal — 돌출 2회가 관찰되어 이상 소견으로 판단합니다.</verdict>
 ```
 
+### Phase 3 — 자원 예산 게이트 ✅
+
+- [x] `plugins/base.py`에 `BackboneSpec` / `BackboneAdapter` / `register_backbone` — `spec()`은 모델을 로드하지 않고 숫자만 답한다
+- [x] `plugins/dummy_backbones.py` — `dummy-2b`, `dummy-7b`. 실제 가중치 없이 파라미터 수·레이어·hidden·vocab·컨텍스트만 보고한다
+- [x] `train/config.py` — 선언형 TrainerConfig(양자화·비전·시퀀스·손실·단계별 freeze/optimizer/batch/checkpointing·예산). 장치 프로파일 `rtx3060_12gb` / `rtx4090_24gb` / `a100_40gb`
+- [x] `engine/budget.py` — 설계 07 §7.3 공식(W·G·O·A·Lg·C), 초과 기여 순위, 민감도 표, 컨텍스트·시퀀스 초과 검사
+- [x] **비전 정보를 포트 타입에서 읽는다** — 이미지 개수는 `list.concat.max_n`, 해상도는 ImageList의 shape. 학습을 돌려보지 않고 안다
+- [x] dry-run이 실측 문자 수를 보고하고 예산이 그것으로 토큰 수를 환산한다. 선언값이 실측보다 작으면 거부
+- [x] CLI `budget` + `--what-if` + `--device`, `run`이 Output 실행 전에 G4를 통과시킨다
+- [x] `solutions/dummy_ecg/projects/01_dummy/trainer.yaml` — 2단계(projector 정렬 → LoRA 미세조정), nf4, 3060 프로파일
+- [x] 완료 조건 4개 + 검증 11개 (`tests/test_budget.py`)
+
+**실측 결과** (dummy-2b, 이미지 3장, 실측 텍스트 394토큰):
+
+```
+자원 예산 [rtx3060_12gb] VRAM 12 GB - reserve 1.0 = 예산 11.0 GB (여유 10% 요구)
+  시퀀스: 비전 768 (= 이미지 3 x 타일 1 x 256) + 텍스트 394 (실측) = 1162 / max_len 4096
+
+  단계                        가중치      그래디언트      옵티마이저      활성화      로짓       합계  판정
+  projector_align           1.6        0.1        0.3      2.2     0.6      5.7  통과 (6.3)
+  lora_ft                   1.6        0.1        0.1      0.1     0.6      3.5  통과 (3.9)
+```
+
+7B를 양자화 없이 전체 미세조정하면 23.8 GB로 거부되고, 초과 기여 1위가 가중치(15.5 GB)임을 지목한다.
+
 ### 설계 문서
 
 - [x] `docs/design/` 13편 + README. Mech-Vision 공개 문서와 화면 캡처 3장 실측이 근거이며 `[문서확인]`/`[이미지확인]`/`[추정]`으로 구분 표기
 
 ---
 
-## 3. 다음 — Phase 3 (여기서 시작하면 된다)
+## 3. 다음 — Phase 4 (여기서 시작하면 된다)
 
-목표: **예산을 넘는 설정이 학습 시작 전에 거부되고, 무엇이 초과를 만들었는지 지목된다.**
+목표: **물질화 경계까지 구운 결과를 학습이 그것만 읽고, 중단해도 이어서 재개된다.**
 
-### 3.1 백본 어댑터
-- [ ] `plugins/base.py`에 `BackboneAdapter` 프로토콜 추가 — `spec()`은 **모델 로드 없이** 답해야 한다
-      (params_total, params_by_group, n_layers, hidden, vocab, tokens_per_tile, max_context, module_map, os_support)
-- [ ] 더미 2B 어댑터 1종. 실제 가중치 없이 숫자만 보고한다
+### 3.1 물질화
+- [ ] `engine/materialize.py` — `materialize.boundary`(예제에서는 `n_sample`)까지 전 샘플을 실행해 shard로 굽는다
+- [ ] shard 원자 커밋: `temp -> os.replace -> manifest.jsonl append`. 부분 tar가 매니페스트에 남으면 안 된다
+- [ ] `external_call` 노드(전문가 모델)는 물질화 단계에서만 살고 끝나면 프로세스째 종료 — VRAM을 완전히 반납한다
+- [ ] `train/shards.py` — shard 리더. Trainer는 원본 데이터를 다시 읽지 않는다
 
-### 3.2 예산 산정
-- [ ] `engine/budget.py` — 설계 문서 07 §7.3 공식(W/G/O/A/Lg/C)
-- [ ] 프로파일 분리: `rtx3060_12gb`(현재 PC) / `rtx4090_24gb`(다른 PC). 기본은 12GB
-- [ ] 비전 토큰 수 = 이미지 개수 x 타일 x tokens_per_tile. **이미지 개수는 `list.concat`의 `max_n`에서 온다**
-- [ ] `sequence.truncation: forbid`가 기본 — context 초과는 잘라내지 않고 거부한다
-- [ ] 초과 기여를 큰 순으로 지목 + 민감도 표(images, tiles, max_len, lora/quantization을 바꿨을 때)
-- [ ] CLI `budget` + `--what-if`
+### 3.2 저널과 재개
+- [ ] `engine/journal.py` — append-only `runs/<run_id>/journal.jsonl`. shard 커밋과 체크포인트 사실만 기록
+- [ ] `vlmt materialize --resume` — 커밋된 shard를 다시 만들지 않고 남은 샘플 키만 계산
+- [ ] 재개 전 canonical spec 해시 비교, 다르면 거부하고 무엇이 바뀌었는지 보여준다
 
 ### 3.3 완료 조건
-1. `vlmt budget`이 단계별 VRAM 표를 낸다
-2. 12GB를 넘는 설정이 **학습 시작 전에** 거부되고 초과 기여 1~3위를 지목한다
-3. context window 초과가 truncation이 아니라 거부로 처리된다
-4. dry-run의 실측 토큰 길이와 정적 추정이 대조되어, 추정이 실측보다 작으면 경고가 뜬다
+1. 물질화 도중 프로세스를 죽이고 `--resume`하면 커밋된 shard를 다시 만들지 않는다
+2. 부분 shard가 매니페스트에 남지 않는다(원자 커밋)
+3. `external_call` 노드 종료 후 워커 프로세스가 남지 않는다
+4. 스펙이 바뀐 run을 재개하려 하면 거부하고 diff를 보여준다
 
 ## 4. 그 이후 (요약 — 상세는 `docs/design/10-roadmap.md`)
 
-- **Phase 4 물질화·재개** — shard 원자 커밋, 저널, `--resume`
 - **Phase 5 Trainer·추론 계약** — 2B QLoRA 실학습, `inference_contract.json`, 추론 프롬프트가 학습 프롬프트와 바이트 단위 동일
 - **Phase 6 Parameter Recipe·스윕** — 화이트리스트는 이미 컴파일러에 있음. 스펙 파일·전개·순차 큐가 남음
 - **Phase 7 UI** — 7파티션, 수직 캔버스, Debug Output, History
@@ -129,7 +152,8 @@ Mech-Vision(산업용 3D 비전 노드 편집기)의 규약을 의도적으로 �
 | 항목 | 사실 | 대응 |
 |---|---|---|
 | GPU | RTX 3060 **12GB** (4090 아님) | Phase 3에서 프로파일 분리. stage1 projector 정렬은 `grad_checkpointing: true` + `per_device: 1`이어야 들어간다 |
-| torch | **미설치** | Phase 2까지는 필요 없다(numpy/PIL로 충분). Phase 5 전에 설치 |
+| torch | **미설치** | Phase 4까지는 필요 없다(numpy/PIL로 충분). Phase 5 전에 설치 |
+| 예산 프로파일 | 기본 `rtx3060_12gb`(이 PC). 4090은 `--device rtx4090_24gb` 또는 trainer.yaml의 `budget.device` | 그래프는 그대로다. 바뀌는 것은 Trainer 설정 한 줄 |
 | Python | 3.14.4 (`C:\Users\wnsgu\AppData\Local\Python\pythoncore-3.14-64`) | torch 휠이 3.14를 지원하는지 미확인. 안 되면 3.12 venv를 따로 만든다 |
 | 설치된 패키지 | `yaml` `pytest` `numpy` `pydantic` `PIL` 있음 | 코어는 표준 라이브러리 + yaml만 쓴다. 새 의존성은 정말 필요할 때만 |
 | CLI 실행 | 내장 노드는 자동 등록된다. `--nodes fixture_nodes`가 필요할 때만 `PYTHONPATH`에 `tests`를 넣는다 | Git Bash의 `$PWD`는 POSIX 경로라 Windows Python이 못 읽는다. **Windows 경로로 지정할 것** |

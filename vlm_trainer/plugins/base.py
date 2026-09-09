@@ -60,6 +60,74 @@ class ExpertPlugin:
         return ResourceCost(vram_mb=self.manifest.vram_mb)
 
 
+@dataclass(frozen=True)
+class BackboneSpec:
+    """백본의 숫자. 모델 가중치를 로드하지 않고 답해야 한다 — G4가 학습 전에 호출한다."""
+
+    id: str
+    params_total: float  # 파라미터 개수(단위: 개)
+    params_by_group: Dict[str, float]  # vision_tower / projector / llm / lm_head ...
+    n_layers: int
+    hidden: int
+    intermediate: int
+    vocab: int
+    tokens_per_tile: int
+    max_context: int
+    tokenizer_id: str = ""
+    os_support: Tuple[str, ...] = ("windows", "linux")
+    supports_quantization: Tuple[str, ...] = ("none", "int8", "nf4")
+    supports_attn: Tuple[str, ...] = ("sdpa", "eager")
+
+    def lora_params(self, r: int, targets: Tuple[str, ...]) -> float:
+        """LoRA 어댑터 파라미터 개수. 모듈 모양에서 계산한다."""
+        h, m = float(self.hidden), float(self.intermediate)
+        per_layer = 0.0
+        for t in targets:
+            if t in ("q_proj", "k_proj", "v_proj", "o_proj"):
+                per_layer += r * (h + h)
+            elif t in ("gate_proj", "up_proj"):
+                per_layer += r * (h + m)
+            elif t == "down_proj":
+                per_layer += r * (m + h)
+        return per_layer * self.n_layers
+
+
+class BackboneAdapter:
+    """백본 교체를 설정 한 줄로 끝내기 위한 추상 경계.
+
+    Phase 3에서는 spec()만 쓴다. build/collate/save는 Phase 5에서 붙는다.
+    """
+
+    spec_data: BackboneSpec
+
+    @classmethod
+    def spec(cls) -> BackboneSpec:
+        return cls.spec_data
+
+
+_BACKBONES: Dict[str, Type[BackboneAdapter]] = {}
+
+
+def register_backbone(cls: Type[BackboneAdapter]) -> Type[BackboneAdapter]:
+    s = cls.spec()
+    if "windows" not in s.os_support:
+        raise RegistrationError(f"{s.id}: 기본 실행 프로파일(windows_single_gpu)을 지원하지 않는다")
+    _BACKBONES[s.id] = cls
+    return cls
+
+
+def resolve_backbone(backbone_id: str) -> Type[BackboneAdapter]:
+    if backbone_id not in _BACKBONES:
+        raise RegistrationError(
+            f"백본 {backbone_id!r}를 찾을 수 없다 (등록된 것: {sorted(_BACKBONES)})"
+        )
+    return _BACKBONES[backbone_id]
+
+
+def all_backbones() -> List[BackboneSpec]:
+    return sorted((c.spec() for c in _BACKBONES.values()), key=lambda s: s.id)
+
+
 _EXPERTS: Dict[Tuple[str, str], Type[ExpertPlugin]] = {}
 
 
