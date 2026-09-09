@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from ..core.compiler import CompiledGraph, CompiledNode
 from ..core.errors import VlmtError
@@ -106,6 +106,7 @@ def execute(
     rows: Sequence[Dict[str, Any]],
     opts: Optional[RunOptions] = None,
     targets: Optional[Set[str]] = None,
+    on_sample: Optional[Callable[[str, Dict[str, Any]], None]] = None,
 ) -> RunReport:
     opts = opts or RunOptions()
     cache = CacheStore(root=opts.cache_dir, enabled=opts.use_cache)
@@ -202,6 +203,8 @@ def execute(
         if not sample_failed:
             rep.processed += 1
             rep.last_values = values
+            if on_sample is not None:
+                on_sample(key, values)
 
         if rep.quarantine_ratio > opts.quarantine_ratio_threshold and len(rep.quarantine) >= 2:
             rep.aborted = (

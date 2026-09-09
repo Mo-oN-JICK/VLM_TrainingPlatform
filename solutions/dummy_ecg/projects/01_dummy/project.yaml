@@ -134,8 +134,8 @@ edges:
   - {from: "n_schema:schema", to: "n_train:schema"}
 
 materialize:
-  boundary: [n_sample]
-  format: webdataset
+  boundary: [n_sample]        # 여기까지 미리 굽고, 학습은 그 산출물만 읽는다
+  format: jsonl               # shard 디렉터리 + jsonl. tar 패킹은 처리량이 문제될 때
   shard_size_mb: 512
 
 runtime_profile: windows_single_gpu

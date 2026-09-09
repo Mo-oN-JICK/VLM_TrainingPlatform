@@ -4,8 +4,8 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-09
-- 마지막 커밋: Phase 3 — 자원 예산 게이트(G4)
-- 테스트: `python -m pytest tests -q` → **71 passed**
+- 마지막 커밋: Phase 4 — 물질화와 재개
+- 테스트: `python -m pytest tests -q` → **81 passed**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
 
@@ -111,36 +111,57 @@ Mech-Vision(산업용 3D 비전 노드 편집기)의 규약을 의도적으로 �
 
 7B를 양자화 없이 전체 미세조정하면 23.8 GB로 거부되고, 초과 기여 1위가 가중치(15.5 GB)임을 지목한다.
 
+### Phase 4 — 물질화와 재개 ✅
+
+- [x] `engine/journal.py` — append-only 커밋 저널. `fsync`까지 하고, 크래시로 잘린 마지막 줄은 버린다
+- [x] `engine/materialize.py` — 경계 상류만 전 샘플 실행해 shard로 굽는다. **커밋 지점은 매니페스트에 줄이 붙는 순간**이고, 그 전에 죽은 shard는 고아로 보고 지운 뒤 다시 만든다
+- [x] shard 원자 커밋: `tmp -> os.replace -> manifest append + fsync`
+- [x] `--resume` — 커밋된 키를 인정하고 남은 샘플만 굽는다. 같은 키가 두 번 들어가지 않는다
+- [x] 재개 전 canonical spec 해시 비교. 다르면 거부하고 양쪽 해시를 보여준다
+- [x] **물질화가 끝나면 워커 풀을 종료**한다 — 전문가 모델이 잡고 있던 VRAM을 완전히 반납해야 학습이 시작될 수 있다
+- [x] `train/shards.py` — 산출물 리더. 매니페스트에 없는 파일은 없는 것으로 취급한다
+- [x] `runner.execute(on_sample=...)` 콜백 추가 (샘플 단위 커밋 훅)
+- [x] CLI `materialize` + `--resume` `--shard-size` `--limit` `--split`
+- [x] 완료 조건 4개 + 검증 10개 (`tests/test_materialize.py`)
+
+**실측 결과**: 6건을 shard 3개로 구운 뒤 고아 shard를 심고 `--resume` → 커밋된 6건 재사용, 새로 4건,
+고아 2개 삭제. 스펙을 바꾸고 재개하면 양쪽 spec_hash를 보여주며 거부(exit 5).
+
 ### 설계 문서
 
 - [x] `docs/design/` 13편 + README. Mech-Vision 공개 문서와 화면 캡처 3장 실측이 근거이며 `[문서확인]`/`[이미지확인]`/`[추정]`으로 구분 표기
 
 ---
 
-## 3. 다음 — Phase 4 (여기서 시작하면 된다)
+## 3. 다음 — Phase 5 (여기서 시작하면 된다)
 
-목표: **물질화 경계까지 구운 결과를 학습이 그것만 읽고, 중단해도 이어서 재개된다.**
+목표: **2B QLoRA 2단계 학습이 단일 GPU에서 완주하고, 추론 프롬프트가 학습 프롬프트와 바이트 단위로 같다.**
 
-### 3.1 물질화
-- [ ] `engine/materialize.py` — `materialize.boundary`(예제에서는 `n_sample`)까지 전 샘플을 실행해 shard로 굽는다
-- [ ] shard 원자 커밋: `temp -> os.replace -> manifest.jsonl append`. 부분 tar가 매니페스트에 남으면 안 된다
-- [ ] `external_call` 노드(전문가 모델)는 물질화 단계에서만 살고 끝나면 프로세스째 종료 — VRAM을 완전히 반납한다
-- [ ] `train/shards.py` — shard 리더. Trainer는 원본 데이터를 다시 읽지 않는다
+### 3.1 환경
+- [ ] torch 설치. Python 3.14 휠이 없으면 3.12 venv를 따로 만든다 (STATUS 5장 참조)
+- [ ] 실제 2B급 백본 모델 id 확정 + `BackboneAdapter` 구현체 1종 (`spec()`은 이미 계약이 있다)
 
-### 3.2 저널과 재개
-- [ ] `engine/journal.py` — append-only `runs/<run_id>/journal.jsonl`. shard 커밋과 체크포인트 사실만 기록
-- [ ] `vlmt materialize --resume` — 커밋된 shard를 다시 만들지 않고 남은 샘플 키만 계산
-- [ ] 재개 전 canonical spec 해시 비교, 다르면 거부하고 무엇이 바뀌었는지 보여준다
+### 3.2 학습 루프
+- [ ] `train/loop.py` — 단계 실행, `init_from`으로 단계 연결, 체크포인트(가중치 + optimizer + **데이터로더 상태**)
+- [ ] `train/freeze.py` — `trainable` 3상태(false/true/lora)와 정규식 overrides를 실제 `requires_grad`로
+- [ ] 데이터는 `train/shards.py`로만 읽는다. 원본 데이터도 그래프도 다시 읽지 않는다
+- [ ] dataloader: `start_method=spawn`, `persistent_workers=True` (Windows)
+- [ ] `train.vlm_trainer` 노드의 스텁을 실제 학습으로 교체
 
-### 3.3 완료 조건
-1. 물질화 도중 프로세스를 죽이고 `--resume`하면 커밋된 shard를 다시 만들지 않는다
-2. 부분 shard가 매니페스트에 남지 않는다(원자 커밋)
-3. `external_call` 노드 종료 후 워커 프로세스가 남지 않는다
-4. 스펙이 바뀐 run을 재개하려 하면 거부하고 diff를 보여준다
+### 3.3 추론 계약
+- [ ] `train/contract.py` — 체크포인트 옆에 `inference_contract.json` + `inference_graph.yaml`
+- [ ] 추론 그래프는 학습 그래프에서 **정답 경로를 잘라내고 프롬프트 경로만** 남긴 서브그래프로 자동 추출
+- [ ] CLI `infer-graph`
+
+### 3.4 완료 조건
+1. Triad 구조 2단계(projector 정렬 → LoRA)가 이 PC에서 완주한다
+2. 학습 중단 후 `--resume`이 step 단위로 이어지고 데이터로더 순서가 재현된다
+3. **추론 그래프로 만든 프롬프트가 학습 시 프롬프트와 바이트 단위로 동일**하다(테스트로 고정)
+4. `freeze` 정책이 실제 `requires_grad` 상태와 일치함을 테스트가 확인한다
+5. Windows 미지원 옵션을 고르면 G2가 대체안과 함께 거부한다
 
 ## 4. 그 이후 (요약 — 상세는 `docs/design/10-roadmap.md`)
 
-- **Phase 5 Trainer·추론 계약** — 2B QLoRA 실학습, `inference_contract.json`, 추론 프롬프트가 학습 프롬프트와 바이트 단위 동일
 - **Phase 6 Parameter Recipe·스윕** — 화이트리스트는 이미 컴파일러에 있음. 스펙 파일·전개·순차 큐가 남음
 - **Phase 7 UI** — 7파티션, 수직 캔버스, Debug Output, History
 - **Phase 8 확장** — 다중 GPU, 원격, 캐시 백엔드
@@ -152,7 +173,7 @@ Mech-Vision(산업용 3D 비전 노드 편집기)의 규약을 의도적으로 �
 | 항목 | 사실 | 대응 |
 |---|---|---|
 | GPU | RTX 3060 **12GB** (4090 아님) | Phase 3에서 프로파일 분리. stage1 projector 정렬은 `grad_checkpointing: true` + `per_device: 1`이어야 들어간다 |
-| torch | **미설치** | Phase 4까지는 필요 없다(numpy/PIL로 충분). Phase 5 전에 설치 |
+| torch | **미설치** | Phase 4까지는 필요 없었다. **Phase 5의 첫 작업이 설치다** |
 | 예산 프로파일 | 기본 `rtx3060_12gb`(이 PC). 4090은 `--device rtx4090_24gb` 또는 trainer.yaml의 `budget.device` | 그래프는 그대로다. 바뀌는 것은 Trainer 설정 한 줄 |
 | Python | 3.14.4 (`C:\Users\wnsgu\AppData\Local\Python\pythoncore-3.14-64`) | torch 휠이 3.14를 지원하는지 미확인. 안 되면 3.12 venv를 따로 만든다 |
 | 설치된 패키지 | `yaml` `pytest` `numpy` `pydantic` `PIL` 있음 | 코어는 표준 라이브러리 + yaml만 쓴다. 새 의존성은 정말 필요할 때만 |

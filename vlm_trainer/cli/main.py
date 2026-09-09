@@ -19,12 +19,14 @@ from ..core.compiler import CompileFailed, canonical_view, compile_project
 from ..core.errors import VlmtError
 from ..core.node import NodeKind
 from ..engine import budget as budget_mod
+from ..engine import materialize as materialize_mod
 from ..engine import dryrun as dryrun_mod
 from ..engine import preview as preview_mod
 from ..engine import samples as samples_mod
 from ..engine.runner import RunOptions, ancestors, execute
 from ..spec.decompile import decompile, dump_yaml
 from ..train.config import TrainerConfig
+from ..train import shards as shards_mod
 
 
 def _load_nodes(modules: List[str]) -> None:
@@ -268,6 +270,35 @@ def cmd_run(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_materialize(a: argparse.Namespace) -> int:
+    _load_nodes(a.nodes)
+    cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
+    space = _space(a, cg)
+    ro = RunOptions(
+        run_id=_run_id(a),
+        cache_dir=a.cache_dir,
+        extra_modules=tuple(a.nodes),
+        spec_dir=os.path.dirname(os.path.abspath(a.spec)),
+    )
+    mo = materialize_mod.MaterializeOptions(
+        out_dir=a.out_dir,
+        shard_size=a.shard_size,
+        resume=a.resume,
+        limit=a.limit,
+        split=a.split,
+    )
+    rep = materialize_mod.materialize(cg, space, mo, ro)
+    print(f"run {ro.run_id}")
+    print(materialize_mod.render(rep))
+    if rep.ok:
+        st = shards_mod.stats(rep.out_dir)
+        print(
+            f"  산출물: shard {st.shards}개 · 샘플 {st.samples}건 · 이미지 {st.images}장 "
+            f"(샘플당 최대 {st.max_images_per_sample}) · 평균 {st.avg_chars:.0f}자"
+        )
+    return 0 if rep.ok else 5
+
+
 def cmd_preview(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
     cg = compile_project(a.spec, recipe_overrides=_overrides(a.set))
@@ -365,6 +396,18 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--cache-dir", default=".cache")
     b.add_argument("--run-id", default="")
     b.set_defaults(func=cmd_budget)
+
+    m = sub.add_parser("materialize", help="물질화 경계까지 구워 shard로 남긴다 (학습은 이것만 읽는다)")
+    m.add_argument("spec")
+    m.add_argument("--out-dir", default="", help="기본값 runs/<run_id>/materialized")
+    m.add_argument("--shard-size", type=int, default=64)
+    m.add_argument("--resume", action="store_true", help="커밋된 shard를 인정하고 남은 샘플만 굽는다")
+    m.add_argument("--limit", type=int, default=0)
+    m.add_argument("--split", default="")
+    m.add_argument("--set", action="append", default=[])
+    m.add_argument("--cache-dir", default=".cache")
+    m.add_argument("--run-id", default="")
+    m.set_defaults(func=cmd_materialize)
 
     pv = sub.add_parser("preview", help="노드 하나만 실행해 시각화 출력을 본다")
     pv.add_argument("spec")
