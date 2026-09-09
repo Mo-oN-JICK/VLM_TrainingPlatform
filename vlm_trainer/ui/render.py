@@ -87,7 +87,24 @@ def _summary(cg: CompiledGraph, nid: str, limit: int = 3) -> str:
     return ", ".join(items)
 
 
-def render(cg: CompiledGraph, *, title: str = "", note: str = "") -> str:
+def _state_of(report: Any, nid: str) -> Tuple[str, str]:
+    """(상태 이름, 부가 라벨). 실행 보고가 없으면 pending."""
+    if report is None:
+        return "pending", ""
+    st = report.states_of(nid)
+    if not st:
+        return "pending", ""
+    for name in ("failed", "partial", "running", "cached", "success", "skipped"):
+        if st.get(name):
+            extra = f"{st[name]}건"
+            ms = report.node_ms.get(nid, 0.0)
+            if ms and name == "success":
+                extra += f" · {ms:.0f}ms"
+            return name, extra
+    return "pending", ""
+
+
+def render(cg: CompiledGraph, *, title: str = "", note: str = "", report: Any = None) -> str:
     placed = _layout(cg)
     max_lane = max((p.lane for p in placed.values()), default=0)
     width = max((p.x for p in placed.values()), default=0) + CARD_W + PAD
@@ -125,6 +142,7 @@ def render(cg: CompiledGraph, *, title: str = "", note: str = "") -> str:
         d = resolve_node(n.ref)
         tag = {NodeKind.INPUT: "I", NodeKind.PROCESSING: "P", NodeKind.OUTPUT: "O"}[n.kind]
         shape = {NodeKind.INPUT: "inp", NodeKind.PROCESSING: "prc", NodeKind.OUTPUT: "out"}[n.kind]
+        state, state_extra = _state_of(report, nid)
 
         # 입력 칩은 선언이 아니라 **컴파일이 확정한 타입**을 보여준다.
         # 제네릭이 남아 있으면 그 자체가 눈에 띄어야 한다.
@@ -148,11 +166,14 @@ def render(cg: CompiledGraph, *, title: str = "", note: str = "") -> str:
             f'<div class="node {shape}" style="left:{pl.x}px;top:{pl.y}px" '
             f'title="{html.escape(nid)} · {html.escape(n.ref)}">'
             f'<div class="ports top">{chips_in}</div>'
-            f'<div class="card" style="border-top:3px solid {T.category_color(n.category)}">'
+            f'<div class="card" style="border-top:3px solid {T.category_color(n.category)};'
+            f'border-left:4px solid {T.STATE.get(state, "#4A4A4A")}">'
             f'<div class="hd"><span class="nm">{html.escape(nid)}</span>'
             f'<span class="badge b{tag}">{tag}</span></div>'
             f'<div class="ref">{html.escape(n.ref)}</div>'
             f'<div class="sum">{html.escape(_summary(cg, nid))}</div>'
+            f'<div class="st"><span class="sdot" style="background:{T.STATE.get(state, "#4A4A4A")}">'
+            f'</span>{state}{" · " + html.escape(state_extra) if state_extra else ""}</div>'
             f"</div>"
             f'<div class="ports bot">{chips_out}</div>'
             f"</div>"
@@ -192,6 +213,30 @@ def render(cg: CompiledGraph, *, title: str = "", note: str = "") -> str:
             + "</details>"
         )
 
+    # ── Debug Output — 토글이 켜져 있을 때만 값이 있다 ──────────────
+    previews = getattr(report, "previews", {}) or {}
+    debug = "".join(
+        f'<details open><summary>{html.escape(nid)} '
+        f'<em>{html.escape(getattr(previews[nid], "kind", ""))}</em></summary>'
+        f'<pre class="pv">{html.escape(getattr(previews[nid], "text", ""))}</pre></details>'
+        for nid in cg.order
+        if nid in previews
+    )
+    debug_block = (
+        f'<h4>Debug Output</h4>{debug}'
+        if debug
+        else '<h4>Debug Output</h4><div class="doc">토글이 꺼져 있어 미리보기를 만들지 않았다.</div>'
+    )
+
+    quarantine = ""
+    if report is not None and getattr(report, "quarantine", None):
+        rows = "".join(
+            f'<div class="row"><span class="k">{html.escape(q.sample_key)}</span>'
+            f'<span class="v">@{html.escape(q.node_id)} {html.escape(q.cause[:90])}</span></div>'
+            for q in report.quarantine[:12]
+        )
+        quarantine = f'<h4>격리 {len(report.quarantine)}건</h4>{rows}'
+
     counts = {
         "I": sum(1 for i in cg.order if cg.nodes[i].kind is NodeKind.INPUT),
         "P": sum(1 for i in cg.order if cg.nodes[i].kind is NodeKind.PROCESSING),
@@ -208,6 +253,8 @@ def render(cg: CompiledGraph, *, title: str = "", note: str = "") -> str:
         w=width,
         h=height,
         details="".join(details),
+        debug=debug_block,
+        quarantine=quarantine,
         spec_hash=cg.spec_hash,
         nodes=len(cg.nodes),
         edges=len(cg.edges),
@@ -216,15 +263,18 @@ def render(cg: CompiledGraph, *, title: str = "", note: str = "") -> str:
         cp=counts["P"],
         co=counts["O"],
         note=html.escape(note or "compile OK"),
+        runline=html.escape(
+            f"처리 {report.processed}건 · 캐시 {report.cache}" if report is not None else "실행 전"
+        ),
         profile=html.escape(cg.runtime_profile),
     )
 
 
-def write(cg: CompiledGraph, path: str, *, title: str = "", note: str = "") -> str:
+def write(cg: CompiledGraph, path: str, *, title: str = "", note: str = "", report: Any = None) -> str:
     path = os.path.abspath(path)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write(render(cg, title=title, note=note))
+        fh.write(render(cg, title=title, note=note, report=report))
     return path
 
 
@@ -267,6 +317,11 @@ svg.wires{{position:absolute;inset:0;pointer-events:none}}
 .bI{{color:{T.PORT['Image']}}} .bP{{color:#8A9196}} .bO{{color:{T.PORT['Table']}}}
 .ref,.sum{{color:{T.NODE['muted']};font-size:11px;white-space:nowrap;overflow:hidden;
           text-overflow:ellipsis}}
+.st{{margin-top:3px;font-size:10.5px;color:#8A9196;display:flex;align-items:center;gap:5px}}
+.sdot{{width:7px;height:7px;border-radius:50%;display:inline-block}}
+pre.pv{{background:{T.SURFACE['canvas']};border:1px solid {T.SURFACE['line']};border-radius:3px;
+       padding:6px 8px;margin:4px 0;font-size:11px;line-height:1.4;color:#A8B0B6;
+       white-space:pre-wrap;max-height:220px;overflow:auto}}
 .sum{{margin-top:3px}}
 details{{border-bottom:1px solid {T.SURFACE['line']};padding:6px 0}}
 summary{{cursor:pointer;font-size:12.5px;color:#C6CCD1}}
@@ -302,10 +357,12 @@ _TEMPLATE = """<!doctype html>
     {cards}
   </div></div>
   <div class="side">
+    {debug}
+    {quarantine}
     <h4>Node Quick Info</h4>
     {details}
   </div>
 </div>
-<div class="log"><b>{note}</b> &nbsp; spec_hash {spec_hash}</div>
+<div class="log"><b>{note}</b> &nbsp; {runline} &nbsp; spec_hash {spec_hash}</div>
 </body></html>
 """

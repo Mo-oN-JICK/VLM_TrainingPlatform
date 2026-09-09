@@ -21,6 +21,7 @@ from ..core.node import NodeError, NodeKind, RunCtx
 from ..core.registry import resolve as resolve_node
 from . import samples as samples_mod
 from . import worker
+from . import preview as preview_mod
 from .cache import CacheStore, sample_key_hash
 from .values import value_hash
 
@@ -70,6 +71,7 @@ class RunReport:
     aborted: str = ""
     last_values: Dict[str, Any] = field(default_factory=dict)
     determinism_failures: List[str] = field(default_factory=list)
+    previews: Dict[str, Any] = field(default_factory=dict)  # 노드 -> Preview (토글이 켜졌을 때만)
 
     def count(self, node_id: str, state: str) -> None:
         self.node_state.setdefault(node_id, {})
@@ -98,6 +100,21 @@ def ancestors(cg: CompiledGraph, node_id: str) -> Set[str]:
         out.add(cur)
         stack.extend(incoming.get(cur, ()))
     return out
+
+
+def _maybe_preview(rep: RunReport, opts: RunOptions, nid: str, d: Any, outputs: Dict[str, Any]) -> None:
+    """Debug Output 규약 — 토글이 꺼져 있으면 **생성조차 하지 않는다**.
+
+    외부에서 트리거된 실행에서는 값과 무관하게 만들지 않는다. 설계 문서 08 §8.5.
+    """
+    if not preview_mod.allowed(opts.trigger, opts.debug_output):
+        return
+    if d.kind is NodeKind.OUTPUT:
+        return  # Output은 부작용이 있어 미리보기하지 않는다
+    try:
+        rep.previews[nid] = preview_mod.render(nid, d.preview or "generic", outputs)
+    except Exception:
+        pass  # 미리보기 실패가 실행을 막아서는 안 된다
 
 
 def execute(
@@ -159,6 +176,7 @@ def execute(
                 if hit:
                     for port, v in cached_out.items():
                         values[f"{nid}:{port}"] = v
+                    _maybe_preview(rep, opts, nid, d, cached_out)
                     rep.count(nid, CACHED)
                     continue
 
@@ -196,6 +214,7 @@ def execute(
                     return rep
                 break
 
+            _maybe_preview(rep, opts, nid, d, out)
             rep.node_ms[nid] = rep.node_ms.get(nid, 0.0) + (time.perf_counter() - t0) * 1000
             for port, v in out.items():
                 values[f"{nid}:{port}"] = v

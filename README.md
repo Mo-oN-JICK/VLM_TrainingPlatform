@@ -8,7 +8,8 @@ Mech-Vision의 규약을 모방한 노드 그래프 기반 파인튜닝 플랫�
 추론 계약 · **Parameter Recipe와 스윕** · CLI 13개 명령. **4중 게이트가 전부 동작한다.**
 합성 더미 데이터로 전 경로가 GPU에서 돌고, 추론 그래프가 만든 프롬프트는 학습 때와 바이트 단위로 같으며,
 그래프 하나 위에서 레시피만 바꾼 실험 여러 개가 물질화를 공유하며 순차로 돈다.
-`vlmt view`가 컴파일된 그래프를 한 장의 HTML로 그린다(서버·프레임워크 없음).
+`vlmt view`가 컴파일된 그래프를 한 장의 HTML로 그리고, `vlmt run --view --debug-output`은
+거기에 실행 상태와 노드별 Debug Output을 함께 칠한다(서버·프레임워크 없음).
 남은 것은 실물 2B 백본 어댑터(Phase 5의 마지막 조각)와 편집 가능한 UI(Phase 7).
 
 실행 환경은 `.venv`(Python 3.12 + torch 2.14.0+cu130)다. `python` 대신 `.venv\\Scripts\\python.exe`를 쓴다.
@@ -62,6 +63,9 @@ python -m vlm_trainer.cli.main sweep solutions/dummy_ecg/projects/01_dummy/proje
 # 11) 그래프 뷰어 - 캔버스 규약을 눈으로 확인한다 (읽기 전용)
 python -m vlm_trainer.cli.main view solutions/dummy_ecg/projects/01_dummy/project.yaml --open
 
+# 12) 실행 상태 + Debug Output을 칠한 뷰 (토글이 꺼져 있으면 미리보기를 만들지도 않는다)
+python -m vlm_trainer.cli.main run solutions/dummy_ecg/projects/01_dummy/project.yaml --run-id vw --limit 3 --debug-output --view -
+
 # 노드 라이브러리 / 노드 상세 / 스펙 되돌리기
 python -m vlm_trainer.cli.main nodes
 python -m vlm_trainer.cli.main show image.crop_by_regions
@@ -86,7 +90,7 @@ python -m vlm_trainer.cli.main decompile solutions/dummy_ecg/projects/01_dummy/p
 | `vlm_trainer/cli/` | `vlmt` 커맨드 |
 | `solutions/dummy_ecg/` | 합성 더미 데이터로 도는 예제 Solution (Procedure 포함) |
 | `tools/` | 합성 더미 데이터 생성기 |
-| `tests/` | 완료 조건 119개 + 예제 Solution |
+| `tests/` | 완료 조건 123개 + 예제 Solution |
 | `docs/design/` | 설계 문서 13편 |
 
 ## 설계에서 구현으로 오며 바뀐 것

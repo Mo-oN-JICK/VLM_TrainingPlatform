@@ -264,6 +264,7 @@ def cmd_run(a: argparse.Namespace) -> int:
             print("학습을 시작하지 않았다. Output 노드는 실행되지 않는다.", file=sys.stderr)
             return 4
 
+    opts.debug_output = a.debug_output
     rep = execute(cg, space, rows, opts)
     print(f"run {opts.run_id}: {rep.processed}/{len(rows)}건 처리")
     print(f"  캐시 {rep.cache}")
@@ -277,6 +278,15 @@ def cmd_run(a: argparse.Namespace) -> int:
         print(f"격리 {len(rep.quarantine)}건 (비율 {rep.quarantine_ratio:.1%}):")
         for q in rep.quarantine[:10]:
             print(f"  {q.sample_key} @{q.node_id}: {q.cause}")
+    if a.view:
+        from ..ui import render as render_mod
+
+        out = a.view if a.view != "-" else os.path.join("runs", opts.run_id, "graph.html")
+        path = render_mod.write(
+            cg, out, title=cg.name or cg.id, note=f"run {opts.run_id}", report=rep
+        )
+        print(f"  그래프 뷰 -> {path}")
+
     if rep.aborted:
         print()
         print(f"중단: {rep.aborted}")
@@ -586,6 +596,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--device", default="", help="예산 프로파일 (rtx3060_12gb | rtx4090_24gb)")
     r.add_argument("--skip-budget", action="store_true",
                    help="예산 검사를 건너뛴다(Trainer 없는 그래프 전용)")
+    r.add_argument("--view", default="", help="실행 상태를 칠한 그래프 HTML을 남긴다 ('-'면 runs/<id>/graph.html)")
+    r.add_argument("--debug-output", action="store_true",
+                   help="Debug Output 토글. 꺼져 있으면 미리보기를 생성조차 하지 않는다")
     r.set_defaults(func=cmd_run)
 
     b = sub.add_parser("budget", help="G4 — 학습 전에 단계별 VRAM과 시퀀스 길이를 산정한다")

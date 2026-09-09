@@ -136,3 +136,62 @@ def test_write_produces_a_standalone_file(cg, tmp_path):
     assert body.startswith("<!doctype html>")
     # 자체 완결이어야 한다 — 외부 스크립트나 스타일시트를 부르지 않는다
     assert "<script" not in body and "<link" not in body
+
+
+# ── 실행 상태와 Debug Output 규약 ───────────────────────────────────────
+
+
+def _run(cg, tmp_path, **kw):
+    from vlm_trainer.engine import samples as samples_mod
+    from vlm_trainer.engine.runner import RunOptions, execute
+
+    spec_dir = os.path.dirname(PROJECT)
+    space = samples_mod.load(cg.sample_space, spec_dir)
+    opts = RunOptions(run_id="v", cache_dir=str(tmp_path / "c"), spec_dir=spec_dir, **kw)
+    return execute(cg, space, space.pick(1), opts)
+
+
+def test_debug_output_off_generates_nothing(cg, tmp_path):
+    """토글이 꺼져 있으면 미리보기를 만들지도 않는다 — 표시만 감추는 게 아니다."""
+    rep = _run(cg, tmp_path, debug_output=False, trigger="ui")
+    assert rep.previews == {}
+
+
+def test_debug_output_on_renders_per_node_previews(cg, tmp_path):
+    rep = _run(cg, tmp_path, debug_output=True, trigger="ui")
+    assert rep.previews
+
+    # 설계 문서 08 §8.4 — 노드 타입마다 "시각화 출력"이 다르다
+    assert rep.previews["n_prompt"].kind == "prompt_render"
+    assert "렌더된 최종 프롬프트" in rep.previews["n_prompt"].text
+    assert rep.previews["n_answer"].kind == "answer_render"
+    assert "<trend>" in rep.previews["n_answer"].text
+    assert rep.previews["n_exp_ts"].kind == "regions_overlay"
+    assert "지목" in rep.previews["n_exp_ts"].text
+    assert rep.previews["n_stats"].kind == "table"
+
+    # Output 노드는 부작용이 있어 미리보기하지 않는다
+    for nid in cg.order:
+        if cg.nodes[nid].kind is NodeKind.OUTPUT:
+            assert nid not in rep.previews
+
+
+def test_external_trigger_never_shows_debug_output(cg, tmp_path):
+    """외부에서 트리거된 실행에서는 토글 값과 무관하게 만들지 않는다."""
+    rep = _run(cg, tmp_path, debug_output=True, trigger="external")
+    assert rep.previews == {}
+
+
+def test_view_paints_node_states_and_debug_panel(cg, tmp_path):
+    rep = _run(cg, tmp_path, debug_output=True, trigger="ui")
+    page = render_mod.render(cg, report=rep)
+
+    assert T.STATE["success"] in page
+    assert "success · 1건" in page
+    assert "DEBUG OUTPUT" in page.upper()
+    assert "렌더된 최종 프롬프트" in page
+
+    # 실행 전에는 전부 pending이고 Debug Output은 비어 있다고 말한다
+    blank = render_mod.render(cg)
+    assert "미리보기를 만들지 않았다" in blank
+    assert "pending" in blank
