@@ -373,6 +373,22 @@ def cmd_train(a: argparse.Namespace) -> int:
     return 0 if rep.ok else 6
 
 
+def cmd_view(a: argparse.Namespace) -> int:
+    from ..ui import render as render_mod
+
+    _load_nodes(a.nodes)
+    cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
+    out = a.out or os.path.join("runs", "view", f"{cg.id or 'graph'}.html")
+    path = render_mod.write(cg, out, title=cg.name or cg.id, note=f"compile OK · {len(cg.nodes)} nodes")
+    print(f"그래프 뷰 -> {path}")
+    print(f"  레인 {max(cg.lanes.values()) + 1}단 · 노드 {len(cg.nodes)} · 배선 {len(cg.edges)}")
+    if a.open:
+        import webbrowser
+
+        webbrowser.open(f"file:///{path.replace(os.sep, '/')}")
+    return 0
+
+
 def cmd_recipe(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
     book = recipe_mod.load(a.spec)
@@ -594,6 +610,13 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--cache-dir", default=".cache")
     m.add_argument("--run-id", default="")
     m.set_defaults(func=cmd_materialize)
+
+    vw = sub.add_parser("view", help="컴파일된 그래프를 한 장의 HTML로 그린다 (읽기 전용)")
+    vw.add_argument("spec")
+    vw.add_argument("--set", action="append", default=[])
+    vw.add_argument("--out", default="")
+    vw.add_argument("--open", action="store_true", help="브라우저로 연다")
+    vw.set_defaults(func=cmd_view)
 
     rc = sub.add_parser("recipe", help="Parameter Recipe 관리 (list/show/diff/expand/set-active)")
     rc.add_argument("action", choices=["list", "show", "diff", "expand", "set-active"])
