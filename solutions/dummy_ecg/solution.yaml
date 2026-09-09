@@ -1,0 +1,12 @@
+kind: Solution
+spec_version: 1
+id: dummy_ecg
+name: "합성 더미 데이터 검증 과제"
+description: "실데이터가 없는 동안 배선·타입·엔진을 검증하기 위한 Solution."
+
+defaults:
+  adapt.image_resize: {mode: bilinear, keep_aspect: true}
+
+runtime_profile: windows_single_gpu
+cache:
+  max_gb: 8

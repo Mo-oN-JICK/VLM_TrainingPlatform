@@ -76,6 +76,13 @@ class RunCtx:
     scratch: Optional[str] = None
     seed: int = 0
     now: str = "1970-01-01T00:00:00Z"
+    sample: Dict[str, Any] = field(default_factory=dict)  # sample_space의 현재 행
+    root: str = "."  # 인덱스 파일 기준 디렉터리. Input 노드만 경로를 만든다
+
+    def path(self, rel: str) -> str:
+        import os
+
+        return rel if os.path.isabs(rel) else os.path.normpath(os.path.join(self.root, rel))
 
     def rng(self, salt: str = ""):
         import random
@@ -97,8 +104,8 @@ class Node:
         """선언한 출력 타입을 반환한다. 심볼 dim 해소가 필요하면 재정의한다."""
         return {name: p.type for name, p in self.definition.outputs.items()}
 
-    def fingerprint(self, params: Any) -> str:
-        """Input 노드 전용. 외부 상태의 지문."""
+    def fingerprint(self, ctx: RunCtx, params: Any) -> str:
+        """Input 노드 전용. 외부 상태(경로 + 크기 + mtime)의 지문."""
         raise NotImplementedError
 
     def preview(self, ctx: RunCtx, params: Any, outputs: Dict[str, Any]) -> Any:

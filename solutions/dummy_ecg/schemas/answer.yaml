@@ -1,0 +1,44 @@
+kind: AnswerSchema
+id: dummy_stepwise
+version: "1.0.0"
+render: tagged
+locale: ko
+
+steps:
+  - id: trend
+    label: "추세"
+    type: enum
+    values: [rising, falling, flat, unstable]
+    evidence: required
+
+  - id: periodicity
+    label: "주기성"
+    type: object
+    fields:
+      present: {type: bool}
+      period_n: {type: int, range: [0, 100000], required_if: "present == True"}
+    evidence: required
+
+  - id: spike
+    label: "스파이크"
+    type: object
+    fields:
+      found: {type: bool}
+      count: {type: int, range: [0, 200]}
+      max_z: {type: float}
+    evidence: required
+
+  - id: verdict
+    label: "최종 판정"
+    type: enum
+    values: [normal, abnormal, inconclusive]
+    depends_on: [trend, periodicity, spike]
+    evidence: required
+    rules:
+      - "spike.found and spike.max_z >= 5 => verdict != 'normal'"
+      - "trend == 'unstable' => verdict != 'normal'"
+
+constraints:
+  max_tokens: 320
+  step_order: strict
+  vocabulary: closed

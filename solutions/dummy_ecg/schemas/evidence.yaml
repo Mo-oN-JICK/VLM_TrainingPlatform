@@ -1,0 +1,32 @@
+kind: EvidenceRules
+version: "1.0.0"
+for_schema: dummy_stepwise
+
+# 규칙 평가는 순수하다. 입력은 ts.stats의 수치와 Regions 통계뿐이고,
+# 슬롯은 수치 포맷팅만 한다. LLM 윤문은 기본 경로에 두지 않는다.
+steps:
+  trend:
+    - when: "trend_slope > 0.05"
+      then: "기저선이 1000표본당 {trend_slope} 단위로 올라갑니다."
+    - when: "trend_slope < -0.05"
+      then: "기저선이 1000표본당 {trend_slope} 단위로 내려갑니다."
+    - default: "기저선 변동이 {trend_slope}로 크지 않습니다."
+
+  periodicity:
+    - when: "acf_peak >= 0.5"
+      then: "자기상관 최대값 {acf_peak}에서 주기 {acf_period_n}표본이 관찰됩니다."
+    - default: "자기상관 최대값이 {acf_peak}로 뚜렷한 되풀이가 없습니다."
+
+  spike:
+    - when: "spike_count > 0"
+      then: "z>{z_thresh}를 넘는 돌출이 {spike_count}회, 최대 z={spike_max_z}입니다."
+    - when: "region_count > 0"
+      then: "전문가 모델이 구간 {region_count}개를 지목했고 최고 점수는 {region_top_score}입니다."
+    - default: "임계 이상 돌출이 관찰되지 않습니다."
+
+  verdict:
+    - when: "spike_count > 0"
+      then: "돌출 {spike_count}회가 관찰되어 이상 소견으로 판단합니다."
+    - when: "acf_peak < 0.2"
+      then: "되풀이 구조가 약해 이상 소견 쪽으로 판단합니다."
+    - default: "세 관찰이 모두 기준 범위 안이라 특이 소견이 없다고 봅니다."

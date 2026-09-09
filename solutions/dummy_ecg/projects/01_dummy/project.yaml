@@ -1,0 +1,145 @@
+spec_version: 1
+kind: Project
+id: "01_dummy"
+name: "더미 데이터 검증 레시피"
+
+# 그래프 밖의 샘플 공간 선언. Input 노드는 배선 대신 여기서 값을 길어온다.
+# 경로는 모두 이 인덱스 파일이 있는 디렉터리 기준이다.
+sample_space:
+  index: "../../data/dummy/index.jsonl"
+  key: sample_id
+  filter: "quality_flag == 'ok'"
+  splits:
+    strategy: group_holdout
+    group_by: patient_id      # 같은 환자가 train과 val에 동시에 들어가지 않는다
+    ratios: {train: 0.8, val: 0.2}
+    seed: 20260909
+
+nodes:
+  # ── Input 레인 ────────────────────────────────────────────────────────
+  - {id: n_ts, type: "source.timeseries@1.0.0",
+     params: {column: series_path, format: csv, hz: 100.0, channels: 3}}
+  - {id: n_img, type: "source.image@1.0.0", params: {column: image_path}}
+  - {id: n_kb, type: "source.text_asset@1.0.0",
+     params: {path: "../../knowledge/ecg_rules.md", max_chars: 2400}}
+  - {id: n_schema, type: "schema.define@1.0.0", params: {path: "../../schemas/answer.yaml"}}
+  - {id: n_meta, type: "source.metadata@1.0.0", params: {columns: [patient_id, label, _split]}}
+
+  # ── Processing 레인 ──────────────────────────────────────────────────
+  - {id: n_stats, type: "ts.stats@1.0.0", params: {z_thresh: 3.0, channel: 0}}
+  - {id: n_exp_ts, type: "expert.propose@1.0.0",
+     params: {plugin: "dummy_interval_proposer@0.1.0", topk: 2, score_threshold: 0.0}}
+  - {id: n_plot, type: "ts.plot@1.0.0",
+     params: {size: [640, 320], channel: 0, mark_regions: true, hz: 100.0}}
+  - {id: n_plot_rs, type: "adapt.image_resize@1.0.0",
+     params: {size: [448, 448], mode: bilinear, keep_aspect: true}}
+  - {id: n_plot_list, type: "list.wrap@1.0.0", params: {}}
+  - {id: n_images, type: "list.concat@1.0.0", params: {max_n: 3, on_overflow: fail}}
+
+  - id: n_prompt
+    type: "text.template@1.0.0"
+    params:
+      template: |
+        아래 파형 이미지와 확대 이미지를 보고 정해진 순서대로만 답하십시오.
+        (1) 추세 (2) 되풀이 구조 (3) 돌출 (4) 종합 판정
+        참고 수치: 기저선 변동 {trend_slope}, 자기상관 최대값 {acf_peak},
+        임계 z={z_thresh}에서 돌출 {spike_count}회.
+  - {id: n_prompt_kb, type: "prompt.knowledge_inject@1.0.0",
+     params: {position: before, header: "## 판독 보조 규칙", max_chars: 2400, dedup: true}}
+  - {id: n_prompt_img, type: "prompt.image_slots@1.0.0",
+     params: {placeholder: "<image>", policy: prepend}}
+
+  - {id: n_ev, type: "answer.evidence_rules@1.0.0",
+     params: {rules: "../../schemas/evidence.yaml", precision: 3}}
+  - id: n_answer
+    type: "answer.stepwise@1.0.0"
+    params:
+      render: tagged
+      mapping:
+        trend: "'rising' if trend_slope > 0.05 else ('falling' if trend_slope < -0.05 else 'flat')"
+        periodicity:
+          present: "acf_peak >= 0.5"
+          period_n: "acf_period_n"
+        spike:
+          found: "spike_count > 0"
+          count: "spike_count"
+          max_z: "spike_max_z"
+        verdict: "'abnormal' if (spike_count > 0 or acf_peak < 0.2) else 'normal'"
+  - {id: n_validate, type: "answer.validate@1.0.0",
+     params: {on_violation: quarantine, max_tokens: 320}}
+  - {id: n_guard, type: "answer.leakage_guard@1.0.0",
+     params: {mode: normalized, on_leak: fail}}
+  - {id: n_sample, type: "sample.assemble@1.0.0",
+     params: {id_from: sample_id, require_validated: true, placeholder: "<image>"}}
+
+  # ── Output 레인 ──────────────────────────────────────────────────────
+  - {id: n_export, type: "io.dataset_export@1.0.0",
+     params: {out_dir: "runs/{run_id}/dataset", format: jsonl, image_encoding: png}}
+  - {id: n_train, type: "train.vlm_trainer@0.1.0",
+     params: {backbone: "dummy-2b", quantization: nf4, max_len: 4096,
+              out_dir: "runs/{run_id}/train"}}
+
+procedures:
+  - id: p_crop
+    ref: "expert_crop@1.0.0"
+    params: {plugin: "dummy_region_proposer@0.1.0", topk: 2, score_threshold: 0.0,
+             padding_ratio: 0.15, max_n: 2}
+
+edges:
+  # 시계열 -> 통계 / 구간 지목 / 파형 렌더
+  - {from: "n_ts:series", to: "n_stats:series"}
+  - {from: "n_ts:series", to: "n_exp_ts:subject"}
+  - {from: "n_ts:series", to: "n_plot:series"}
+  - {from: "n_exp_ts:regions", to: "n_plot:regions"}
+
+  # 파형 이미지 -> 고정 크기 -> 리스트
+  - {from: "n_plot:plot", to: "n_plot_rs:image"}
+  - {from: "n_plot_rs:image", to: "n_plot_list:item"}
+
+  # 원본 이미지 -> 전문가 지목 -> crop (Procedure)
+  - {from: "n_img:image", to: "p_crop:subject"}
+  - {from: "n_img:image", to: "p_crop:image"}
+
+  # 파형 1장 + crop 2장 = 학습에 들어갈 이미지 목록
+  - {from: "n_plot_list:items", to: "n_images:a"}
+  - {from: "p_crop:crops", to: "n_images:b"}
+
+  # 프롬프트 조립
+  - {from: "n_stats:stats", to: "n_prompt:context"}
+  - {from: "n_prompt:text", to: "n_prompt_kb:text"}
+  - {from: "n_kb:text", to: "n_prompt_kb:knowledge"}
+  - {from: "n_prompt_kb:text", to: "n_prompt_img:text"}
+  - {from: "n_images:out", to: "n_prompt_img:images"}
+
+  # 정답 Text 생성과 검증
+  - {from: "n_stats:stats", to: "n_ev:stats"}
+  - {from: "n_exp_ts:regions", to: "n_ev:regions"}
+  - {from: "n_schema:schema", to: "n_answer:schema"}
+  - {from: "n_stats:stats", to: "n_answer:fields"}
+  - {from: "n_ev:evidence", to: "n_answer:evidence"}
+  - {from: "n_answer:answer", to: "n_validate:answer"}
+  - {from: "n_schema:schema", to: "n_validate:schema"}
+
+  # 누설 차단 — taint를 제거하는 유일한 노드
+  - {from: "n_prompt_img:text", to: "n_guard:prompt"}
+  - {from: "n_validate:answer", to: "n_guard:answer"}
+  - {from: "n_schema:schema", to: "n_guard:schema"}
+
+  # 샘플 조립과 출력
+  - {from: "n_images:out", to: "n_sample:images"}
+  - {from: "n_guard:prompt", to: "n_sample:prompt"}
+  - {from: "n_validate:answer", to: "n_sample:answer"}
+  - {from: "n_meta:meta", to: "n_sample:meta"}
+  - {from: "n_sample:sample", to: "n_export:sample"}
+  - {from: "n_sample:sample", to: "n_train:sample"}
+  - {from: "n_schema:schema", to: "n_train:schema"}
+
+materialize:
+  boundary: [n_sample]
+  format: webdataset
+  shard_size_mb: 512
+
+runtime_profile: windows_single_gpu
+debug:
+  debug_output: false
+  data_storage: {enabled: false}

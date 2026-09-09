@@ -1,0 +1,15 @@
+kind: EvidenceRules
+version: "1.0.0"
+for_schema: dummy_stepwise
+
+# 일부러 망가뜨린 규칙 파일. 근거 문장을 만들지 않으므로 스키마 검증이 전부 실패한다.
+# dry-run의 위반율 게이트가 학습 전에 멈추는지 확인하는 데 쓴다.
+steps:
+  trend:
+    - default: ""
+  periodicity:
+    - default: ""
+  spike:
+    - default: ""
+  verdict:
+    - default: ""

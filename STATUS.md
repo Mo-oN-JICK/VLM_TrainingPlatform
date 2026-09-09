@@ -4,8 +4,9 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-09
-- 마지막 커밋: `026639a` — Phase 0–1 코어 구현
-- 테스트: `python -m pytest tests -q` → **51 passed**
+- 마지막 커밋: Phase 2 — 노드 카탈로그 · 실행 엔진 · dry-run
+- 테스트: `python -m pytest tests -q` → **60 passed**
+- 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
 
 ---
 
@@ -58,58 +59,63 @@ Mech-Vision(산업용 3D 비전 노드 편집기)의 규약을 의도적으로 �
 - [x] `vlm_trainer/cli/main.py` — `compile` `decompile` `nodes` `show`
 - [x] `tests/` 51개 — 완료 조건 전부 커버. `tests/fixture_nodes.py`(테스트용 노드), `tests/data/solution/`(Procedure 포함 예제 Solution)
 
+### Phase 2 — 노드 카탈로그와 실행 엔진 ✅
+
+- [x] `tools/make_dummy_dataset.py` — 합성 더미 데이터. 추세·주기·돌출을 심어서 만들고, **이미지 크기를 샘플마다 다르게** 해 가변(dyn) 차원 경로를 실제로 태운다. seed 고정
+- [x] `solutions/dummy_ecg/` — 예제 Solution. Procedure(`expert_crop@1.0.0`) 포함, 노드 25개 그래프, 정답 스키마 + 근거 규칙 + 도메인 지식 자산
+- [x] `vlm_trainer/answer/schema.py` — AnswerSchema. **렌더러와 파서를 같은 정의에서 생성**하고 9종 위반을 검사한다
+- [x] `vlm_trainer/plugins/` — 플러그인 규약 + 더미 전문가 2종. 이미지 영역 지목과 시계열 구간 지목이 **같은 `expert.propose` 노드**로 들어오고 타입만 갈라진다
+- [x] 노드 26개 — `source.*`(5) `adapt.*`(3) `image.*` `ts.*`(2) `expert.propose` `text/prompt.*`(3) `answer.*`(4) `list.*`(3) `sample.assemble` `io.dataset_export` `train.vlm_trainer`(스텁) `schema.define`
+- [x] `engine/cache.py` — 짧은 해시 경로 `.cache/<2자>/<16자>/`, 원자 교체, Input은 파일 지문을 키에 포함
+- [x] `engine/runner.py` — 위상 실행, 3분류별 정책, 노드 상태 6종, (노드, 샘플) 단위 격리, quarantine 비율 임계
+- [x] `engine/worker.py` — spawn 워커. `external_call` 노드를 별도 프로세스에서 돌리고 크래시를 `NodeError`로 바꾼다
+- [x] `engine/dryrun.py` — G3. 실측 대조 + 결정성 감사 + 정답 위반율 게이트
+- [x] `engine/preview.py` — 노드 타입별 시각화 출력(썸네일 / 시계열 / 지목 오버레이 / 렌더된 최종 프롬프트 / 검증 결과가 붙은 정답 / 샘플 카드)
+- [x] `engine/samples.py` — sample_space. 그룹 홀드아웃 split(같은 환자가 두 split에 들어가지 않는다), filter, 결정적 표본 추출
+- [x] CLI `dryrun` `run` `preview` 추가
+- [x] 완료 조건 6개 전부 테스트로 고정 (`tests/test_engine.py`)
+
+**실측 결과**: 22건(필터 통과) 중 8건 실행 시 전 노드 success, 두 번째 실행은 Output을 뺀 전 노드가 `cached`.
+정답 Text 예시:
+
+```
+<trend>rising — 기저선이 1000표본당 5.991 단위로 올라갑니다.</trend>
+<periodicity>present=true, period_n=10 — 자기상관 최대값 0.836에서 주기 10표본이 관찰됩니다.</periodicity>
+<spike>found=true, count=2, max_z=4.23 — z>3.000를 넘는 돌출이 2회, 최대 z=4.227입니다.</spike>
+<verdict>abnormal — 돌출 2회가 관찰되어 이상 소견으로 판단합니다.</verdict>
+```
+
 ### 설계 문서
 
 - [x] `docs/design/` 13편 + README. Mech-Vision 공개 문서와 화면 캡처 3장 실측이 근거이며 `[문서확인]`/`[이미지확인]`/`[추정]`으로 구분 표기
 
 ---
 
-## 3. 다음 — Phase 2 (여기서 시작하면 된다)
+## 3. 다음 — Phase 3 (여기서 시작하면 된다)
 
-목표: **합성 더미 데이터로 Triad 구조가 `sample.assemble`까지 흐르고 dry-run(G3)을 통과한다.**
+목표: **예산을 넘는 설정이 학습 시작 전에 거부되고, 무엇이 초과를 만들었는지 지목된다.**
 
-### 3.1 더미 데이터 생성기
-- [ ] `tools/make_dummy_dataset.py` — `data/dummy/`에 생성
-  - 이미지 N장(PIL로 합성 파형/도형, 크기 제각각으로 만들어 `DYN` 경로를 실제로 태울 것)
-  - 시계열 CSV N개(추세 + 주기 + 스파이크를 파라미터로 심어서, 정답 Text의 정오답을 검증할 수 있게)
-  - `index.jsonl` — `{sample_id, patient_id, image_path, ecg_path, label, quality_flag}`
-  - seed 고정. 같은 seed면 같은 데이터
+### 3.1 백본 어댑터
+- [ ] `plugins/base.py`에 `BackboneAdapter` 프로토콜 추가 — `spec()`은 **모델 로드 없이** 답해야 한다
+      (params_total, params_by_group, n_layers, hidden, vocab, tokens_per_tile, max_context, module_map, os_support)
+- [ ] 더미 2B 어댑터 1종. 실제 가중치 없이 숫자만 보고한다
 
-### 3.2 노드 (최소 12개부터, 필요할 때 늘린다)
-- [ ] `nodes/source/` — `source.image`, `source.timeseries`, `source.text_asset`, `source.field`, `schema.define`
-- [ ] `nodes/expert/` — `expert.propose` + 더미 `ExpertPlugin`(이미지용/시계열용 각 1개, `deterministic: true`)
-- [ ] `nodes/image/` — `image.crop_by_regions`
-- [ ] `nodes/adapt/` — `adapt.image_resize`, `adapt.frame`
-- [ ] `nodes/timeseries/` — `ts.stats`, `ts.plot`
-- [ ] `nodes/text/` — `text.template`, `prompt.knowledge_inject`, `prompt.image_slots`
-- [ ] `nodes/answer/` — `answer.evidence_rules`, `answer.stepwise`, `answer.validate`, `answer.leakage_guard`
-- [ ] `nodes/data/` — `sample.assemble`
-- [ ] `nodes/io/` — `io.dataset_export`(Output)
-- [ ] `nodes/train/` — `train.vlm_trainer`(Phase 5까지는 스텁. `budget_table` 미리보기만)
-- [ ] 전부 `vlm_trainer/nodes/__init__.py`에서 임포트되어 `load_builtin_nodes()`로 등록되게 할 것
+### 3.2 예산 산정
+- [ ] `engine/budget.py` — 설계 문서 07 §7.3 공식(W/G/O/A/Lg/C)
+- [ ] 프로파일 분리: `rtx3060_12gb`(현재 PC) / `rtx4090_24gb`(다른 PC). 기본은 12GB
+- [ ] 비전 토큰 수 = 이미지 개수 x 타일 x tokens_per_tile. **이미지 개수는 `list.concat`의 `max_n`에서 온다**
+- [ ] `sequence.truncation: forbid`가 기본 — context 초과는 잘라내지 않고 거부한다
+- [ ] 초과 기여를 큰 순으로 지목 + 민감도 표(images, tiles, max_len, lora/quantization을 바꿨을 때)
+- [ ] CLI `budget` + `--what-if`
 
-### 3.3 실행 엔진
-- [ ] `engine/cache.py` — 캐시 키(설계 08 §8.3 공식), `.cache/<2자>/<16자>/` 짧은 해시 경로, LRU GC
-- [ ] `engine/scheduler.py` — 위상 실행, 노드 상태(pending/queued/running/success/cached/failed/skipped/partial), 3분류별 정책
-- [ ] `engine/worker.py` — spawn 워커 풀, GPU 배타 락(`.gpu.lock`), 크래시 감지
-- [ ] `engine/isolate.py` — 샘플 quarantine, `quarantine_ratio_threshold`(기본 5%)
-- [ ] `engine/dryrun.py` — G3: 샘플 N건 전 노드 통과, 선언 타입 vs 실측 대조, **결정성 감사**(2회 실행 해시 비교), 스키마 위반율 집계
-- [ ] `engine/preview.py` — 노드 타입별 렌더러(설계 08 §8.4 표), Debug Output 게이팅(외부 트리거는 항상 off)
-- [ ] CLI `dryrun`, `preview` 추가
-
-### 3.4 Phase 2 완료 조건
-1. 더미 스펙(샘플 20건)이 `vlmt dryrun`을 통과하고 `sample.assemble`까지 값이 흐른다
-2. 같은 명령을 두 번 실행하면 두 번째는 전 노드가 `cached`
-3. `vlmt preview --node n_crop`이 상류만 계산하고, 두 번째 호출에서는 대상 노드만 실행
-4. 워커 프로세스를 강제 종료해도 엔진은 살아 있고 그 노드만 `failed`
-5. 의도적으로 비결정적인 테스트 노드를 결정성 감사가 잡아낸다
-6. 정답 Text가 스키마를 위반하도록 규칙을 망가뜨리면 dry-run이 위반율로 중단한다
-
----
+### 3.3 완료 조건
+1. `vlmt budget`이 단계별 VRAM 표를 낸다
+2. 12GB를 넘는 설정이 **학습 시작 전에** 거부되고 초과 기여 1~3위를 지목한다
+3. context window 초과가 truncation이 아니라 거부로 처리된다
+4. dry-run의 실측 토큰 길이와 정적 추정이 대조되어, 추정이 실측보다 작으면 경고가 뜬다
 
 ## 4. 그 이후 (요약 — 상세는 `docs/design/10-roadmap.md`)
 
-- **Phase 3 자원 예산 G4** — `engine/budget.py`, `BackboneAdapter.spec()`. 완료 조건: 예산 초과 설정이 학습 시작 전에 거부되고 초과 기여를 큰 순으로 지목. **기준값을 3060 12GB / 4090 24GB 두 프로파일로 분리할 것**
 - **Phase 4 물질화·재개** — shard 원자 커밋, 저널, `--resume`
 - **Phase 5 Trainer·추론 계약** — 2B QLoRA 실학습, `inference_contract.json`, 추론 프롬프트가 학습 프롬프트와 바이트 단위 동일
 - **Phase 6 Parameter Recipe·스윕** — 화이트리스트는 이미 컴파일러에 있음. 스펙 파일·전개·순차 큐가 남음
@@ -126,7 +132,9 @@ Mech-Vision(산업용 3D 비전 노드 편집기)의 규약을 의도적으로 �
 | torch | **미설치** | Phase 2까지는 필요 없다(numpy/PIL로 충분). Phase 5 전에 설치 |
 | Python | 3.14.4 (`C:\Users\wnsgu\AppData\Local\Python\pythoncore-3.14-64`) | torch 휠이 3.14를 지원하는지 미확인. 안 되면 3.12 venv를 따로 만든다 |
 | 설치된 패키지 | `yaml` `pytest` `numpy` `pydantic` `PIL` 있음 | 코어는 표준 라이브러리 + yaml만 쓴다. 새 의존성은 정말 필요할 때만 |
-| CLI 실행 | `--nodes fixture_nodes`가 필요하면 `PYTHONPATH`에 repo 루트와 `tests`를 넣어야 한다 | Git Bash의 `$PWD`는 POSIX 경로라 Windows Python이 못 읽는다. **Windows 경로로 지정할 것** |
+| CLI 실행 | 내장 노드는 자동 등록된다. `--nodes fixture_nodes`가 필요할 때만 `PYTHONPATH`에 `tests`를 넣는다 | Git Bash의 `$PWD`는 POSIX 경로라 Windows Python이 못 읽는다. **Windows 경로로 지정할 것** |
+| 자산 경로 | 스펙 안의 파일 경로(`knowledge/`, `schemas/`)는 **sample_space 인덱스 파일이 있는 디렉터리 기준**이다 | 루트가 하나여야 Input 노드의 지문 계산이 단순해진다. 예제에서 `../../schemas/...`로 쓰는 이유 |
+| 더미 데이터 | git에 넣지 않는다(`.gitignore`) | seed 고정이라 `tools/make_dummy_dataset.py`로 언제든 같은 데이터를 다시 만든다 |
 | 경로 길이 | Windows MAX_PATH | 캐시·물질화는 서술적 이름 금지, 짧은 해시 경로 |
 | 프로세스 | spawn (fork 없음) | 노드 구현은 모듈 최상위에. 레지스트리가 등록 시점에 검사한다 |
 

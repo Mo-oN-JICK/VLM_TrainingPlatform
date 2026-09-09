@@ -56,7 +56,7 @@ class SourceParams:
     preview="image",
 )
 class ImageSource(Node):
-    def fingerprint(self, params: Any) -> str:
+    def fingerprint(self, ctx: RunCtx, params: Any) -> str:
         return f"dummy:{params.column}"
 
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
@@ -78,7 +78,7 @@ class TsSourceParams:
     params=TsSourceParams,
 )
 class TsSource(Node):
-    def fingerprint(self, params: Any) -> str:
+    def fingerprint(self, ctx: RunCtx, params: Any) -> str:
         return f"dummy:{params.column}"
 
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
@@ -99,7 +99,7 @@ class LabelParams:
     params=LabelParams,
 )
 class LabelSource(Node):
-    def fingerprint(self, params: Any) -> str:
+    def fingerprint(self, ctx: RunCtx, params: Any) -> str:
         return f"dummy:{params.column}"
 
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
@@ -122,7 +122,7 @@ class TextAssetParams:
     recipe_overridable=["path"],
 )
 class TextAsset(Node):
-    def fingerprint(self, params: Any) -> str:
+    def fingerprint(self, ctx: RunCtx, params: Any) -> str:
         return f"dummy:{params.path}"
 
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
@@ -320,3 +320,55 @@ class ImgSinkParams:
 class ImageSink(Node):
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
         return {}
+
+
+# ── 엔진 검증용 (Phase 2) ───────────────────────────────────────────────
+
+
+@dataclass
+class CrashParams:
+    mode: str = "hard"  # hard = 프로세스 즉시 종료
+
+
+@register(
+    type="test.crasher",
+    version="1.0.0",
+    category="Expert Models",
+    kind=NodeKind.PROCESSING,
+    inputs={"text": Port(text())},
+    outputs={"text": Port(text())},
+    params=CrashParams,
+    external_call=True,  # 격리 실행 대상
+)
+class Crasher(Node):
+    """워커 프로세스를 강제로 죽인다. 엔진이 살아남고 이 노드만 failed가 되어야 한다."""
+
+    def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
+        import os
+
+        if params.mode == "hard":
+            os._exit(9)
+        return {"text": inputs["text"]}
+
+
+@dataclass
+class NonDetParams:
+    pass
+
+
+@register(
+    type="test.nondet",
+    version="1.0.0",
+    category="Adapters",
+    kind=NodeKind.PROCESSING,
+    inputs={"text": Port(text())},
+    outputs={"text": Port(text())},
+    params=NonDetParams,
+)
+class NonDeterministic(Node):
+    """결정성을 선언해 놓고 지키지 않는 노드. 결정성 감사가 잡아내야 한다."""
+
+    def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
+        import random
+
+        return {"text": f"{inputs['text']}-{random.random()}"}
