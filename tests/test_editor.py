@@ -966,3 +966,72 @@ def test_the_editor_materializes_and_then_trains(ed_with_data, tmp_path, monkeyp
     assert os.path.exists(
         os.path.join(tmp_path, "runs", ed.run_id, "train", "inference_contract.json")
     )
+
+
+# ── 물질화 경계와 실행 프로파일 ─────────────────────────────────────────
+
+
+def test_an_empty_boundary_is_not_a_way_to_skip_the_check(ed):
+    """검사를 끄는 방법이 '경계를 안 적는 것'이어서는 안 된다."""
+    assert ed.set_boundary("n_sample", False)["ok"]
+    assert not ed.valid
+    assert "물질화 경계가 비어 있다" in ed.error
+    assert not ed.save()["ok"]
+
+    assert ed.set_boundary("n_sample", True)["ok"]
+    assert ed.valid
+
+
+def test_the_check_sees_inside_procedures(ed):
+    """바깥 그래프의 배선만 보면 Procedure 안에서 외부 모델을 부르는 노드가 빠진다."""
+    ed.set_boundary("n_sample", False)
+    assert "p_crop/n_exp" in ed.error and "n_exp_ts" in ed.error
+
+
+def test_a_graph_that_does_not_train_is_not_asked_about_a_boundary():
+    """루프가 없으면 '루프 안에서 돈다'는 위험 자체가 없다."""
+    from vlm_trainer.core.compiler import compile_project
+
+    demo = os.path.join(ROOT, "tests", "data", "solution", "projects", "01_demo", "project.yaml")
+    if not os.path.exists(demo):
+        pytest.skip("데모 스펙이 없다")
+    cg = compile_project(demo)  # 경계가 있든 없든 학습 노드가 없으면 통과한다
+    assert cg.order
+
+
+def test_toggling_the_boundary_is_recorded_like_any_edit(ed):
+    before = len(ed.history)
+    ed.set_boundary("n_sample", False)
+    assert len(ed.history) == before + 1
+    assert "물질화 경계에서 제거" in ed.history_view()[-1]["label"]
+    assert ed.undo()["ok"] and ed.valid
+
+
+def test_the_same_node_is_not_added_twice(ed):
+    res = ed.set_boundary("n_sample", True)
+    assert not res["ok"] and "이미 경계에 있다" in res["reason"]
+    res = ed.set_boundary("없는노드", True)
+    assert not res["ok"] and "그런 노드가 없다" in res["reason"]
+
+
+def test_the_profile_can_be_switched_from_the_editor(ed):
+    assert ed.graph.runtime_profile == "windows_single_gpu"
+    assert "linux_multi_gpu" in ed.profiles()
+
+    assert ed.set_profile("linux_multi_gpu")["ok"]
+    assert ed.graph.runtime_profile == "linux_multi_gpu"
+    assert ed.save()["ok"]
+    assert Editor.open(ed.path).graph.runtime_profile == "linux_multi_gpu"
+
+
+def test_the_page_shows_the_boundary_and_offers_the_profile(ed):
+    from vlm_trainer.ui import render as render_mod
+
+    page = render_mod.render_editor(ed)
+    assert page.count('class="mat"') == 1, "경계에 있는 노드가 카드에 표시된다"
+    # 노드마다 하나씩, 거기에 함수 정의 하나
+    assert page.count("vlmtBoundary(") == len(ed.compiled.nodes) + 1
+    assert 'class="prof"' in page and "linux_multi_gpu" in page
+
+    viewer = render_mod.render(ed.compiled)
+    assert "vlmtBoundary(" not in viewer and 'class="prof"' not in viewer

@@ -4,8 +4,8 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-10
-- 마지막 커밋: 편집기가 Debug Output 이미지·새 프로젝트·Sample Space·학습까지 다룬다
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **251 passed**
+- 마지막 커밋: 물질화 경계와 실행 프로파일을 UI에서 고친다 (+ 빈 경계 우회로 차단)
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **258 passed**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -421,9 +421,20 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 - [x] 검증 (`tests/test_scaffold.py` 7개 + `test_editor.py` 확장). 물질화→학습을 실제로 완주하는
       끝에서 끝까지 검사 포함
 
-**UI만으로 되는 것**: 새 프로젝트 → 노드·배선·파라미터 → Sample Space → 레시피 → Save →
-Run(상태·미리보기 라이브) → Materialize → Train(loss 라이브) → History 되감기.
-**아직 YAML**: `materialize.boundary`, `runtime_profile`, Trainer 설정(`trainer.yaml`).
+- [x] **물질화 경계 토글** — 노드마다 체크박스, 경계에 든 카드에는 표식(◧). 경계는 그래프 밖의
+      한 줄이지만 어느 노드까지 미리 굽는지를 정한다
+- [x] **실행 프로파일 드롭다운** — G4가 이 한 줄을 보고 판단하는데, 보여주기만 하면 틀린 값을
+      발견하고도 YAML을 열어야 한다
+- [x] **빈 경계가 검사를 끄는 우회로였다** — `if boundary:`라 경계가 비면 external_call 배치
+      검사가 통째로 건너뛰어졌다. 학습 노드가 있는 그래프에서 경계가 비면 이제 거부한다.
+      검사를 끄는 방법이 "경계를 안 적는 것"이어서는 안 된다
+- [x] 같은 검사가 **Procedure 안을 못 보고 있었다** — 바깥 그래프의 `edges`로만 배선 여부를
+      판단해 `p_crop/n_exp` 같은 노드가 빠졌다. 인라인된 배선을 본다
+
+**UI만으로 되는 것**: 새 프로젝트 → 노드·배선·파라미터 → Sample Space → 물질화 경계 →
+실행 프로파일 → 레시피 → Save → Run(상태·미리보기 라이브) → Materialize → Train(loss 라이브)
+→ History 되감기.
+**아직 YAML**: Trainer 설정(`trainer.yaml` — 단계·LoRA·옵티마이저·예산).
 
 ---
 

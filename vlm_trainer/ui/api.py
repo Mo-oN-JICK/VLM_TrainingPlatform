@@ -465,6 +465,52 @@ class Editor:
 
         return self._try(go, f"노드 삭제 {node_id}")
 
+    # ── 물질화 경계와 실행 프로파일 ──────────────────────────────────────
+    #
+    # 둘 다 그래프 밖의 한 줄이지만 게이트가 그 한 줄을 보고 판단한다.
+    # 경계가 비어 있으면 외부 모델이 학습 루프 안에서 돌고, 프로파일이 틀리면
+    # 이 기계에서 돌지 않는 설정으로 몇 시간을 태운다.
+
+    def set_boundary(self, node_id: str, on: bool) -> Dict[str, Any]:
+        '''노드 하나를 물질화 경계에 넣거나 뺀다. 경계까지가 미리 굽는 구간이다.'''
+        if node_id not in (self.compiled.nodes if self.compiled else {}):
+            return {"ok": False, "reason": f"그런 노드가 없다: {node_id}"}
+        before = list(self.graph.materialize.boundary)
+        if on and node_id in before:
+            return {"ok": False, "reason": f"{node_id}는 이미 경계에 있다"}
+        if not on and node_id not in before:
+            return {"ok": False, "reason": f"{node_id}는 경계에 없다"}
+
+        def go() -> None:
+            b = list(self.graph.materialize.boundary)
+            self.graph.materialize.boundary = (
+                b + [node_id] if on else [x for x in b if x != node_id]
+            )
+
+        def back() -> None:
+            self.graph.materialize.boundary = before
+
+        verb = "경계에 추가" if on else "경계에서 제거"
+        return self._try(go, f"물질화 {verb} {node_id}", undo=back)
+
+    def set_profile(self, profile: str) -> Dict[str, Any]:
+        before = self.graph.runtime_profile
+
+        def go() -> None:
+            self.graph.runtime_profile = str(profile)
+
+        def back() -> None:
+            self.graph.runtime_profile = before
+
+        return self._try(go, f"runtime_profile = {profile}", undo=back)
+
+    def profiles(self) -> List[str]:
+        from ..train.config import PROFILE_UNSUPPORTED
+
+        known = sorted(PROFILE_UNSUPPORTED)
+        cur = self.graph.runtime_profile
+        return known if cur in known else [cur] + known
+
     # ── Sample Space ────────────────────────────────────────────────────
     #
     # 그래프 밖의 선언이지만 그래프만큼 자주 틀린다. key 하나가 어긋나면 컴파일은 통과하고
@@ -993,6 +1039,9 @@ class Editor:
             "occupied": occupied_inputs(cg),
             "recipe": self.recipe_view(),
             "sample_space": self.sample_space_view(),
+            "boundary": list(self.graph.materialize.boundary),
+            "profile": self.graph.runtime_profile,
+            "profiles": self.profiles(),
             "overlaid": [f"{n}:{p}" for (n, p) in self._overlay_paths()],
             "history": self.history_view(),
             "cursor": self.cursor,

@@ -116,6 +116,10 @@ def render(
     banner: str = "",
     editor: Any = None,
 ) -> str:
+    # 물질화 경계는 그래프 밖의 한 줄이지만 어느 노드까지 미리 굽는지를 정한다.
+    # 카드에 보이지 않으면 그 한 줄이 어디에 걸리는지 알 수 없다.
+    graph = getattr(editor, "graph", None) if editor is not None else None
+    boundary = set(graph.materialize.boundary) if graph is not None else set()
     placed = _layout(cg)
     max_lane = max((p.lane for p in placed.values()), default=0)
     width = max((p.x for p in placed.values()), default=0) + CARD_W + PAD
@@ -184,6 +188,8 @@ def render(
             f'border-left:4px solid {T.STATE.get(state, "#4A4A4A")}">'
             f'<div class="hd"><span class="nm">{html.escape(nid)}</span>'
             f'<span class="badge b{tag}">{tag}</span>'
+            + ('<span class="mat" title="물질화 경계 — 여기까지 미리 굽는다">&#9640;</span>'
+               if nid in boundary else "")
             + (f"<span class=\"del\" onclick=\"vlmtRemove('{nid}')\">&times;</span>" if editable else "")
             + "</div>"
             f'<div class="ref">{html.escape(n.ref)}</div>'
@@ -284,7 +290,7 @@ def render(
 
     return _TEMPLATE.format(
         title=html.escape(head),
-        params=_params_panel(cg, overlaid) if editable else '',
+        params=_params_panel(cg, overlaid, boundary) if editable else '',
         history=history,
         recipe=recipe,
         space=space,
@@ -311,7 +317,7 @@ def render(
         runline=html.escape(
             f"처리 {report.processed}건 · 캐시 {report.cache}" if report is not None else "실행 전"
         ),
-        profile=html.escape(cg.runtime_profile),
+        profile=_profile_control(cg, editor, editable),
     )
 
 
@@ -448,6 +454,12 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .tgl{{display:flex;gap:4px;align-items:center;font-size:11px;color:#A8B0B6;margin-left:6px}}
 .tgl input[type=number]{{width:44px;background:{T.SURFACE['canvas']};color:#D8DCDF;
       border:1px solid {T.SURFACE['line']};font-size:11px;padding:1px 4px}}
+.prof{{background:{T.SURFACE['canvas']};color:#D8DCDF;border:1px solid {T.SURFACE['line']};
+      font-size:11px;padding:1px 4px}}
+.mat{{color:#57F7E6;font-size:11px;margin-left:4px}}
+.matt{{margin-left:auto;font-size:10.5px;color:#8FE3F5;display:flex;gap:3px;align-items:center;
+      font-weight:400}}
+.phd{{display:flex;gap:6px;align-items:center}}
 .pvimg{{max-width:100%;display:block;margin:4px 0;border:1px solid {T.SURFACE['line']};
       background:{T.SURFACE['canvas']};image-rendering:auto}}
 .runline{{margin-left:10px;font-size:11px;color:{T.STATE['running']};
@@ -739,6 +751,18 @@ async function vlmtRun() {
 
 // 버튼 하나가 CLI 명령 하나다. 편집기가 물질화와 학습을 엮어 돌리지 않는다 —
 // 엮는 순간 CLI에 없는 경로가 하나 생긴다.
+async function vlmtBoundary(node, on) {
+  const {code, data} = await post('/api/boundary', {node: node, on: on});
+  if (code === 200) { sessionStorage.setItem('sel', node); location.reload(); }
+  else toast('거부: ' + (data.reason || ''), true);
+}
+
+async function vlmtProfile(profile) {
+  const {code, data} = await post('/api/profile', {profile: profile});
+  if (code === 200) location.reload();
+  else toast('프로파일 거부: ' + (data.reason || ''), true);
+}
+
 async function vlmtMaterialize() {
   const {code, data} = await post('/api/materialize', {});
   if (code !== 200) { toast('물질화 거부: ' + (data.reason || ''), true); return; }
@@ -938,6 +962,19 @@ def _library_panel(editable: bool) -> str:
     return "".join(out)
 
 
+def _profile_control(cg: CompiledGraph, editor: Any, editable: bool) -> str:
+    """실행 프로파일. 편집 모드에서는 고를 수 있다 — G4가 이 한 줄을 보고 판단하므로
+    보여주기만 하면 틀린 값을 발견하고도 YAML을 열어야 한다."""
+    cur = cg.runtime_profile
+    if not editable or editor is None:
+        return html.escape(cur)
+    opts = "".join(
+        f'<option value="{html.escape(p)}"{" selected" if p == cur else ""}>{html.escape(p)}</option>'
+        for p in editor.profiles()
+    )
+    return f'<select class="prof" onchange="vlmtProfile(this.value)">{opts}</select>'
+
+
 def _sample_space_panel(editor: Any) -> str:
     '''Sample Space 패널.
 
@@ -1069,7 +1106,7 @@ def _history_panel(editor: Any) -> str:
     return '<h4>History</h4>' + ("".join(reversed(rows)) or '<div class="doc">기록이 없다.</div>')
 
 
-def _params_panel(cg: CompiledGraph, overlaid: Any = ()) -> str:
+def _params_panel(cg: CompiledGraph, overlaid: Any = (), boundary: Any = ()) -> str:
     """노드마다 Node Parameters 블록. 카드를 고르면 그 블록만 보인다.
 
     레시피가 덮고 있는 파라미터는 표식을 단다 — 그 값을 고치면 스펙이 아니라
@@ -1119,7 +1156,14 @@ def _params_panel(cg: CompiledGraph, overlaid: Any = ()) -> str:
 
         blocks.append(
             f'<div class="params" data-node="{html.escape(nid)}">'
-            f'<div class="phd">{html.escape(nid)} <em>{html.escape(n.ref)}</em></div>'
+            f'<div class="phd">{html.escape(nid)} <em>{html.escape(n.ref)}</em>'
+            + (
+                '<label class="matt" title="여기까지 미리 굽고, 학습은 그 산출물만 읽는다">'
+                f'<input type="checkbox" {"checked" if nid in boundary else ""} '
+                + "onchange=\"vlmtBoundary('" + html.escape(nid) + "',this.checked)\">"
+                + "물질화 경계</label>"
+            )
+            + "</div>"
             + ("".join(rows) or '<div class="doc">파라미터가 없다.</div>')
             + "</div>"
         )

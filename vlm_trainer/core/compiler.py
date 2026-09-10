@@ -421,6 +421,26 @@ def compile_graph(
 
     # 7) external_call은 물질화 경계 앞에 있어야 한다
     boundary = [b for b in g.materialize.boundary if b in compiled]
+    # **인라인된** 배선을 본다. 바깥 그래프의 edges만 보면 Procedure 안에서
+    # 외부 모델을 부르는 노드가 통째로 빠진다.
+    wired_all = {e.src_node for e in edges} | {e.dst_node for e in edges}
+    externals = [i for i in order if defs[i].external_call and i in wired_all]
+    # 학습 루프가 있는 그래프에서만 묻는다. 루프가 없으면 "루프 안에서 돈다"는 위험 자체가 없고,
+    # 게이트가 실제로 없는 위험을 말하기 시작하면 게이트를 믿지 않게 된다.
+    trains = any(not defs[i].per_sample for i in order)
+    if externals and trains and not boundary and not draft:
+        # 경계가 비어 있으면 아래 검사가 통째로 건너뛰어진다. 그러면 외부 모델을 부르는
+        # 그래프가 아무 말 없이 통과하고, 학습 루프 안에서 전문가 모델이 VRAM을 요구한다.
+        # 검사를 끄는 방법이 "경계를 안 적는 것"이어서는 안 된다.
+        errors.append(
+            PolicyError(
+                f"외부 모델을 호출하는 노드가 있는데 물질화 경계가 비어 있다: {externals}\n"
+                "  경계가 없으면 그 노드들이 학습 루프 안에서 돈다.\n"
+                "  이 검사가 없었다면: 학습 중 전문가 모델이 VRAM을 요구해 OOM 또는 심한 감속이 난다.\n"
+                "  materialize.boundary에 미리 구울 마지막 노드를 적어라 "
+                "(편집기에서는 노드의 '물질화 경계' 토글)."
+            )
+        )
     if boundary:
         pre: Set[str] = set()
         stack = list(boundary)
@@ -432,9 +452,8 @@ def compile_graph(
             stack.extend(e.src_node for e in incoming[cur])
         # 아직 아무 데도 물리지 않은 노드는 경계 앞뒤가 정해지지 않았다.
         # 편집 중에만 판단을 미루고, 배선되는 순간 다시 본다.
-        wired = {e.src_node for e in g.edges} | {e.dst_node for e in g.edges}
         for nid in order:
-            if draft and nid not in wired:
+            if draft and nid not in wired_all:
                 continue
             if defs[nid].external_call and nid not in pre:
                 errors.append(
