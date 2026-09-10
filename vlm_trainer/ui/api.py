@@ -709,7 +709,7 @@ class Editor:
                 "quarantine": data.get("quarantine", []),
                 "quarantine_total": data.get("quarantine_total", 0),
                 "cache": data.get("cache", {}),
-                "previews": data.get("previews", {}),
+                "previews": self._preview_urls(data.get("previews", {})),
             }
         )
         for nid in (self.compiled.order if self.compiled else []):
@@ -718,6 +718,35 @@ class Editor:
         if not alive and self.proc is not None and self.proc.returncode and not self.stopped:
             out["console"] = self._console_tail()
         return out
+
+    def _preview_urls(self, previews: Dict[str, Any]) -> Dict[str, Any]:
+        """디스크 경로를 페이지가 부를 수 있는 주소로. 파일명만 남긴다 —
+        경로를 그대로 실어 보내면 서버가 아무 파일이나 내주는 문이 된다."""
+        out: Dict[str, Any] = {}
+        for nid, p in previews.items():
+            row = dict(p)
+            path = str(row.pop("image_path", "") or "")
+            row["image"] = f"/preview/{os.path.basename(path)}" if path else ""
+            out[nid] = row
+        return out
+
+    @property
+    def preview_dir(self) -> str:
+        return os.path.join(os.getcwd(), "runs", self.run_id, "preview") if self.run_id else ""
+
+    def preview_file(self, name: str) -> Optional[bytes]:
+        """이번 실행의 미리보기 폴더 안에 있는 파일만 내준다."""
+        base = self.preview_dir
+        if not base or not name:
+            return None
+        p = os.path.abspath(os.path.join(base, os.path.basename(name)))
+        if os.path.dirname(p) != os.path.abspath(base) or not p.lower().endswith(".png"):
+            return None  # 경로를 벗어나려는 시도
+        try:
+            with open(p, "rb") as fh:
+                return fh.read()
+        except OSError:
+            return None
 
     def _read_progress(self) -> Optional[Dict[str, Any]]:
         if not self.progress_path or not os.path.exists(self.progress_path):

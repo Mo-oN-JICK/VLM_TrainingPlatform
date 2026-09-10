@@ -88,6 +88,11 @@ def make_handler(editor: Editor, page: Any):
         def do_GET(self) -> None:  # noqa: N802
             if self.path in ("/", "/index.html"):
                 return self._send(200, page(editor).encode("utf-8"), "text/html")
+            if self.path.startswith("/preview/"):
+                data = editor.preview_file(self.path.split("?")[0][len("/preview/"):])
+                if data is None:
+                    return self._send(404, {"ok": False, "reason": "그 미리보기가 없다"})
+                return self._send(200, data, "image/png")
             if self.path.startswith("/api/"):
                 code, payload = handle(editor, self.path.split("?")[0], {})
                 return self._send(code, payload)

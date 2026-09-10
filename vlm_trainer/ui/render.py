@@ -443,6 +443,8 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .tgl{{display:flex;gap:4px;align-items:center;font-size:11px;color:#A8B0B6;margin-left:6px}}
 .tgl input[type=number]{{width:44px;background:{T.SURFACE['canvas']};color:#D8DCDF;
       border:1px solid {T.SURFACE['line']};font-size:11px;padding:1px 4px}}
+.pvimg{{max-width:100%;display:block;margin:4px 0;border:1px solid {T.SURFACE['line']};
+      background:{T.SURFACE['canvas']};image-rendering:auto}}
 .runline{{margin-left:10px;font-size:11px;color:{T.STATE['running']};
       font-family:ui-monospace,Consolas,monospace}}
 .runline.bad{{color:{T.STATE['failed']}}}
@@ -746,6 +748,7 @@ function vlmtDebugOut(previews) {
   if (!ids.length) return;
   box.innerHTML = ids.map(nid =>
     '<details open><summary>' + nid + ' <em>' + (previews[nid].kind || '') + '</em></summary>' +
+    (previews[nid].image ? '<img class="pvimg" src="' + previews[nid].image + '?t=' + Date.now() + '">' : '') +
     '<pre class="pv"></pre></details>').join('');
   ids.forEach((nid, i) => { box.querySelectorAll('pre.pv')[i].textContent = previews[nid].text || ''; });
 }

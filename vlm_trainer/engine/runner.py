@@ -53,6 +53,7 @@ class RunOptions:
     debug_output: bool = False
     trigger: str = "cli"  # ui | cli | external
     cache_backend: str = "local"  # 저장 백엔드. 키 계산은 백엔드와 무관하다
+    preview_dir: str = ""  # Debug Output 이미지가 저장될 자리. 비면 텍스트만 남는다
     progress_path: str = ""  # 진행 상황 스냅샷. 비어 있으면 남기지 않는다
     progress_every: float = 0.4  # 초. 샘플마다 fsync하지 않기 위한 간격
 
@@ -185,7 +186,9 @@ def _maybe_preview(rep: RunReport, opts: RunOptions, nid: str, d: Any, outputs: 
     if d.kind is NodeKind.OUTPUT:
         return  # Output은 부작용이 있어 미리보기하지 않는다
     try:
-        rep.previews[nid] = preview_mod.render(nid, d.preview or "generic", outputs)
+        # out_dir이 있어야 PNG가 남는다. 없으면 "이미지 [360, 720, 3] uint8"이라는 글자만
+        # 남는데, 크롭이 어긋났는지 종횡비가 망가졌는지는 그 글자로 알 수 없다.
+        rep.previews[nid] = preview_mod.render(nid, d.preview or "generic", outputs, opts.preview_dir)
     except Exception:
         pass  # 미리보기 실패가 실행을 막아서는 안 된다
 

@@ -752,3 +752,70 @@ def test_the_journal_stays_readable(ed):
     assert set(lines[-1]) == {"at", "label", "spec_hash", "diff"}
     assert lines[-1]["diff"] == ["-    z_thresh: 3.0", "+    z_thresh: 4.5"]
     assert lines[-1]["at"].startswith("20"), "세션을 넘으려면 날짜가 있어야 한다"
+
+
+# ── Debug Output 이미지 ─────────────────────────────────────────────────
+
+
+def test_previews_are_served_only_from_this_runs_folder(ed, tmp_path, monkeypatch):
+    """경로를 그대로 실어 보내면 서버가 아무 파일이나 내주는 문이 된다."""
+    monkeypatch.chdir(tmp_path)
+    ed.run_id = "ui_test"
+    os.makedirs(ed.preview_dir, exist_ok=True)
+    with open(os.path.join(ed.preview_dir, "n_img.png"), "wb") as fh:
+        fh.write(b"PNG-ish")
+    with open(tmp_path / "secret.txt", "w", encoding="utf-8") as fh:
+        fh.write("남의 파일")
+
+    assert ed.preview_file("n_img.png") == b"PNG-ish"
+    for probe in ("../../secret.txt", r"..\..\secret.txt", "n_img.txt", "", "secret.txt"):
+        assert ed.preview_file(probe) is None, probe
+
+
+def test_preview_paths_become_urls_not_disk_paths(ed):
+    urls = ed._preview_urls(
+        {"n_img": {"kind": "image", "text": "t", "image_path": r"C:\runs\x\preview\n_img.png"},
+         "n_kb": {"kind": "text", "text": "t", "image_path": ""}}
+    )
+    assert urls["n_img"]["image"] == "/preview/n_img.png"
+    assert "image_path" not in urls["n_img"], "디스크 경로를 페이지로 내보내지 않는다"
+    assert urls["n_kb"]["image"] == ""
+
+
+def test_the_run_writes_preview_images_when_the_toggle_is_on(ed_with_data, tmp_path, monkeypatch):
+    """Debug Output이 그림을 보여주지 못하면 크롭이 어긋났는지 알 수 없다."""
+    import time as _time
+
+    ed = ed_with_data
+    monkeypatch.chdir(tmp_path)
+    assert ed.run_start(limit=1, debug_output=True)["ok"]
+
+    for _ in range(600):
+        st = ed.run_state()
+        if not st["running"]:
+            break
+        _time.sleep(0.1)
+
+    assert st["phase"] == "done", st.get("console", "")
+    imgs = {k: v["image"] for k, v in st["previews"].items() if v.get("image")}
+    assert imgs, "이미지 미리보기가 하나도 없다"
+    assert ed.preview_file(os.path.basename(imgs["n_img"])), "서버가 그 파일을 못 찾는다"
+
+
+def test_no_preview_images_when_the_toggle_is_off(ed_with_data, tmp_path, monkeypatch):
+    """토글이 꺼져 있으면 **생성조차 하지 않는다** (Mech-Vision 규약)."""
+    import time as _time
+
+    ed = ed_with_data
+    monkeypatch.chdir(tmp_path)
+    assert ed.run_start(limit=1, debug_output=False)["ok"]
+
+    for _ in range(600):
+        st = ed.run_state()
+        if not st["running"]:
+            break
+        _time.sleep(0.1)
+
+    assert st["phase"] == "done"
+    assert not st["previews"]
+    assert not os.path.isdir(ed.preview_dir) or not os.listdir(ed.preview_dir)

@@ -277,6 +277,7 @@ def cmd_run(a: argparse.Namespace) -> int:
         spec_dir=os.path.dirname(os.path.abspath(a.spec)),
         trigger=getattr(a, "trigger", "cli"),
         cache_backend=getattr(a, "cache_backend", "local"),
+        preview_dir=os.path.join("runs", _run_id(a), "preview"),
         progress_path=_progress_path(a, _run_id(a)),
     )
     # G4 — GPU를 잡기 전 마지막 문. Trainer가 있으면 예산을 먼저 본다.
