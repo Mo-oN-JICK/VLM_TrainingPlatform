@@ -5,7 +5,7 @@
 
 - 최종 갱신: 2026-09-10
 - 마지막 커밋: 토큰 수를 토크나이저로 센다 (3a 준비)
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **200 passed**
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **202 passed**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
