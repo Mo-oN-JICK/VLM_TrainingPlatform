@@ -161,8 +161,15 @@ def estimate(
 
     # ── 시퀀스 길이 ──────────────────────────────────────────────────
     res.images = int(cfg.vision.max_images_per_sample or images)
-    tpt = int(cfg.vision.tokens_per_tile or spec.tokens_per_tile)
+    # 백본이 격자를 알면 **선언한 타일 크기로** 계산한다. 고정값을 들고 있다가
+    # 타일을 키우면 예산이 조용히 낙관적으로 기운다.
+    tpt = int(cfg.vision.tokens_per_tile or spec.tokens_for_tile(cfg.vision.tile_px))
     res.tokens_per_tile = tpt
+    if not cfg.vision.tokens_per_tile and spec.patch_px:
+        res.notes.append(
+            f"타일당 비전 토큰 {tpt}는 타일 {cfg.vision.tile_px}px / 패치 {spec.patch_px}px "
+            f"/ merge {spec.spatial_merge}로 계산한 값이다 (이 백본은 해상도에 따라 변한다)"
+        )
     tiles = 1
     if cfg.vision.tiling:
         tiles = int(cfg.vision.max_tiles)

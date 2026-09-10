@@ -56,11 +56,21 @@ def count(text: str, tokenizer_id: str) -> Optional[int]:
         return None
 
 
+# 비율을 못 믿을 때 쓰는 값. 바닥값으로 **정상 비율을 덮지 않는다** —
+# 바이트 토크나이저는 한글 한 글자가 3토큰이라 0.34가 맞는 값이다.
+FALLBACK_RATIO = 2.5
+
+
 def estimate(chars: int, chars_per_token: float) -> int:
-    """비율 환산 + 안전 여유. 실측이 없을 때만 쓴다."""
+    """비율 환산 + 안전 여유. 실측이 없을 때만 쓴다.
+
+    0 이하만 걸러낸다. 예전에는 `max(0.5, ratio)`로 바닥을 깔았는데, 그것이
+    바이트 토크나이저의 0.34를 0.5로 덮어 추정을 32% 낙관적으로 만들었다.
+    """
     if chars <= 0:
         return 0
-    return int(chars / max(0.5, chars_per_token) * ESTIMATE_MARGIN + 0.5)
+    ratio = chars_per_token if chars_per_token > 0 else FALLBACK_RATIO
+    return int(chars / ratio * ESTIMATE_MARGIN + 0.5)
 
 
 def measure(text: str, chars: int, cfg_seq: Any, tokenizer_id: str = "") -> Tuple[int, str]:

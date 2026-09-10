@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 
+import builtins
+
 import pytest
 
 from vlm_trainer.core.errors import RegistrationError
@@ -92,17 +94,25 @@ def test_budget_uses_the_real_config(tmp_path):
     assert not over.ok and "예산 초과" in "\n".join(over.errors)
 
 
-def test_training_entry_points_require_transformers():
-    """transformers가 없으면 무엇을 설치해야 하는지 말한다 — 조용히 실패하지 않는다."""
+def test_training_entry_points_require_transformers(monkeypatch):
+    """transformers가 없으면 무엇을 설치해야 하는지 말한다 — 조용히 실패하지 않는다.
+
+    설치 여부에 따라 건너뛰지 않는다. 환경이 바뀌면 조용히 사라지는 검사는
+    있으나 마나다 — 임포트를 없는 것처럼 만들어 언제나 돌린다.
+    """
     pytest.importorskip("torch")
     cls = resolve_backbone(f"hf:{FAKE}")
-    try:
-        import transformers  # noqa: F401
-    except ImportError:
-        with pytest.raises(RegistrationError, match="transformers"):
-            cls.build(object(), object())
-    else:
-        pytest.skip("transformers가 설치되어 있어 이 경로는 실물 모델로 검증해야 한다")
+
+    real_import = builtins.__import__
+
+    def no_transformers(name, *a, **k):
+        if name == "transformers" or name.startswith("transformers."):
+            raise ImportError("설치되지 않은 것으로 친다")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", no_transformers)
+    with pytest.raises(RegistrationError, match="transformers"):
+        cls.build(object(), object())
 
 
 def test_module_groups_sorts_children_by_common_names():

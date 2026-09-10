@@ -74,9 +74,24 @@ class BackboneSpec:
     tokens_per_tile: int
     max_context: int
     tokenizer_id: str = ""
+    # 타일당 토큰이 **고정이 아닌** 모델(Qwen2-VL 같은 동적 해상도)을 위한 격자.
+    # patch_px가 0이면 tokens_per_tile이 그대로 답이다.
+    patch_px: int = 0
+    spatial_merge: int = 1
     os_support: Tuple[str, ...] = ("windows", "linux")
     supports_quantization: Tuple[str, ...] = ("none", "int8", "nf4")
     supports_attn: Tuple[str, ...] = ("sdpa", "eager")
+
+    def tokens_for_tile(self, tile_px: int) -> int:
+        """타일 하나가 만드는 비전 토큰 수.
+
+        동적 해상도 모델은 타일 크기에 따라 값이 변한다. 고정값 하나를 들고 있으면
+        타일을 키운 순간 예산이 조용히 낙관적으로 기운다 — G4가 막아야 할 바로 그 상황이다.
+        """
+        if not self.patch_px or tile_px <= 0:
+            return self.tokens_per_tile
+        grid = tile_px // self.patch_px
+        return max(1, (grid // max(1, self.spatial_merge)) ** 2)
 
     def lora_params(self, r: int, targets: Tuple[str, ...]) -> float:
         """LoRA 어댑터 파라미터 개수. 모듈 모양에서 계산한다."""

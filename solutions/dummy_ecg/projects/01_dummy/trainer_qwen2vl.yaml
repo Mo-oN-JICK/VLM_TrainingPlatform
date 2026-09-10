@@ -1,7 +1,7 @@
 kind: TrainerConfig
 version: 1
 
-backbone: dummy-2b          # 2B급 + QLoRA. 7B 전체 미세조정은 24GB에도 들어가지 않는다
+backbone: hf:Qwen/Qwen2-VL-2B-Instruct          # 2B급 + QLoRA. 7B 전체 미세조정은 24GB에도 들어가지 않는다
 dtype: bf16
 quantization:
   mode: nf4
@@ -18,9 +18,8 @@ vision:
 sequence:
   max_len: 4096
   truncation: forbid         # 잘라내지 않는다. 넘치면 G4가 거부한다
-  chars_per_token: 1.5      # 한국어 혼합 텍스트의 BPE 실측 근사. 2.5는 37% 낙관적이었다
-                           # (Qwen2-VL 토크나이저 기준 987자 = 627토큰).
-                           # 토크나이저가 손에 있으면 이 값을 쓰지 않고 센다
+  chars_per_token: 1.5      # Qwen2-VL 토크나이저로 실측한 값(한국어 혼합 987자 = 627토큰).
+                           # 2.5는 37% 낙관적이었다. 토크나이저가 있으면 이 값을 쓰지 않고 센다
 
 loss:
   chunked_ce: true

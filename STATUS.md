@@ -4,8 +4,8 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-10
-- 마지막 커밋: 토큰 수를 토크나이저로 센다 (3a 준비)
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **202 passed**
+- 마지막 커밋: Qwen2-VL-2B 실물 백본으로 G4까지 (3a 실험)
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **203 passed**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -341,16 +341,25 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 
 ## 3. 다음 — 둘 중 하나를 고른다
 
-### 3a. 실물 모델로 첫 학습 (어댑터 코드는 이미 있다)
-- [ ] **모델 id 확정** — 이것만 사람이 정하면 된다. 2B급 VLM, Windows에서 도는 것
-- [ ] `python -m pip install transformers accelerate peft bitsandbytes safetensors sentencepiece`
-- [ ] `huggingface-cli download <id>` 후 `vlmt backbones --add hf:<id>`로 형상 확인
-- [ ] `trainer.yaml`의 `backbone:`을 그 id로. 그래프도 스펙도 손대지 않는다
-- [ ] `vlmt budget` → 3060 12GB에서 nf4 QLoRA가 들어가는지 확인 → `vlmt train`
+### 3a. 실물 모델 — **Qwen2-VL-2B로 G4까지 확인했다** (2026-09-10)
+- [x] **모델 확정: `Qwen/Qwen2-VL-2B-Instruct`.** 사용자 결정: "실험만 하는 정도,
+      4090 PC로 옮긴 뒤에 따로 추가 개발"
+- [x] `python -m pip install transformers accelerate safetensors` (transformers 5.17.0)
+- [x] **가중치는 받지 않았다.** config + 토크나이저만 ~11MB. `spec()`이 가중치를 열지 않는다는
+      계약 덕분에 이것만으로 G4가 답한다
+- [x] `vlmt backbones --add hf:Qwen/Qwen2-VL-2B-Instruct` → 2.56B · 28층 · hidden 1536 ·
+      타일당 256 · 컨텍스트 32768 (전부 config에서 읽은 값)
+- [x] `trainer_qwen2vl.yaml`의 `backbone:` 한 줄. **그래프도 스펙도 손대지 않았다**
+- [x] `vlmt budget` → 3060 12GB에서 두 단계 모두 통과 (projector_align 6.8GB, lora_ft 4.4GB
+      / 예산 11.0GB). 텍스트 627토큰은 **Qwen 토크나이저가 실제로 센 값**이다
+- [ ] `vlmt train` — 가중치 4.4GB와 Qwen2-VL 전용 collate(프로세서·image grid)가 필요하다.
+      **4090 PC에서 따로 개발하기로 한 부분이다**
+- [ ] bitsandbytes는 설치하지 않았다. 지금 torch가 cu130이라 호환 빌드가 없을 수 있다
 - [x] ~~`chars_per_token` 추정을 실제 토크나이저 카운트로 교체~~ — `train/tokens.py`.
       토크나이저가 있으면 dry-run이 실제로 만든 텍스트를 세고, 없으면 비율 환산에 안전 여유를
       얹는다. 예산 보고서가 `(토크나이저)` / `(문자 환산)` / `(선언)` / `(가정)`을 구분해 적는다
 - 완료 조건: 같은 그래프·같은 스펙에서 `backbone:` 한 줄만 바꿔 학습이 완주한다
+  (**G4까지는 그 조건이 성립한다.** 학습 완주는 가중치와 collate가 붙은 뒤)
 
 ### 3b. Phase 7 마무리 — 편집기의 남은 절반
 - [x] ~~노드 추가/삭제 UI~~ — 클릭 추가와 드래그 추가 둘 다 된다 (4차)
@@ -373,6 +382,9 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 | GPU | RTX 3060 **12GB** (4090 아님) | Phase 3에서 프로파일 분리. stage1 projector 정렬은 `grad_checkpointing: true` + `per_device: 1`이어야 들어간다 |
 | torch | **`.venv`에 설치됨** (2.14.0+cu130, CUDA True) | 3.14 host에는 없다. 항상 `.venv\Scripts\python.exe`를 쓴다 |
 | `uv venv`는 pip를 넣지 않는다 | 활성화해도 `pip`가 venv 밖으로 샌다 | venv 안에서는 **항상 `python -m pip`**. 이 venv에는 pip를 넣어 두었다 |
+| `chars_per_token` 환산 | Qwen2-VL 토크나이저로 재 보니 한국어 혼합 987자 = **627토큰**. `2.5` 비율은 394토큰(**37% 낙관적**), 안전 여유를 얹어도 454(28% 낙관적) | 토크나이저가 있으면 **센다**(`train/tokens.py`). 없으면 환산하되 보고서가 `(문자 환산)`이라고 밝힌다. dummy_ecg의 값은 1.5로 교정했다 |
+| 비율의 바닥값 | `max(0.5, chars_per_token)`이 바이트 토크나이저의 정당한 값 `0.34`를 0.5로 덮어 추정이 **32% 낙관적**이었다(2270 vs 3338) | 0 이하만 걸러낸다. 바닥값으로 정상 비율을 덮지 않는다 |
+| Qwen2-VL의 타일당 토큰 | config에 `image_size`가 없어 어댑터가 기본값 256으로 떨어졌다. 448px 타일에서 우연히 맞았을 뿐, 672px면 576이 맞는데 256을 답한다 | `BackboneSpec.patch_px`/`spatial_merge`를 실어 **선언한 타일 크기로** 계산한다 |
 | 브라우저 자동화 | 스크린샷(1568px)과 뷰포트(1920px) 좌표계가 다르고, 툴바 높이(y≈40)에는 이벤트가 도달하지 않으며 키 입력은 페이지에 전달되지 않는다 | 좌표는 `1568/innerWidth`로 환산한다. 키 경로는 페이지 안에서 이벤트를 던져 확인한다 |
 | 예산 프로파일 | 기본 `rtx3060_12gb`(이 PC). 4090은 `--device rtx4090_24gb` 또는 trainer.yaml의 `budget.device` | 그래프는 그대로다. 바뀌는 것은 Trainer 설정 한 줄 |
 | Python | 3.14.4 (`C:\Users\wnsgu\AppData\Local\Python\pythoncore-3.14-64`) | torch 휠이 3.14를 지원하는지 미확인. 안 되면 3.12 venv를 따로 만든다 |

@@ -64,8 +64,22 @@ def find_config(ref: str) -> str:
     )
 
 
+def _vision_grid(cfg: Dict[str, Any]) -> Tuple[int, int]:
+    """(패치 픽셀, spatial merge). 없으면 (0, 1) — 타일당 토큰이 고정이라는 뜻이다."""
+    v = cfg.get("vision_config") or cfg.get("vision_tower_config") or {}
+    patch = v.get("patch_size") or v.get("spatial_patch_size")
+    if not isinstance(patch, int) or patch <= 0:
+        return 0, 1
+    merge = v.get("spatial_merge_size") or cfg.get("spatial_merge_size") or 1
+    return int(patch), max(1, int(merge))
+
+
 def _vision_tokens(cfg: Dict[str, Any]) -> int:
-    """타일 하나가 만드는 비전 토큰 수. 모델 계열마다 이름이 다르다."""
+    """타일 하나가 만드는 비전 토큰 수. 모델 계열마다 이름이 다르다.
+
+    config가 타일 크기를 말하지 않는 모델(동적 해상도)이 있다. 그때는 여기서 고정값을
+    지어내지 않고 `patch_px`를 함께 실어 보내, 예산이 **선언한 타일 크기로** 계산하게 한다.
+    """
     v = cfg.get("vision_config") or cfg.get("vision_tower_config") or {}
     if isinstance(v.get("num_image_tokens"), int):
         return int(v["num_image_tokens"])
@@ -74,7 +88,7 @@ def _vision_tokens(cfg: Dict[str, Any]) -> int:
         grid = (img // patch) ** 2
         merge = v.get("spatial_merge_size") or cfg.get("spatial_merge_size") or 1
         return max(1, grid // (int(merge) ** 2))
-    return 256  # 보수적 기본값. 실물 모델에서는 config가 답한다
+    return 256  # 격자를 알면 예산이 이 값을 쓰지 않는다
 
 
 def _params_from_config(cfg: Dict[str, Any]) -> Tuple[float, Dict[str, float]]:
@@ -90,7 +104,10 @@ def _params_from_config(cfg: Dict[str, Any]) -> Tuple[float, Dict[str, float]]:
 
     attn = 4 * h * h
     mlp = 3 * h * inter
-    llm = n * (attn + mlp) + 2 * vocab * h  # 임베딩 + lm_head
+    # tie_word_embeddings면 lm_head가 임베딩과 같은 행렬이다. 두 번 세면
+    # 2B 모델에서 0.23B가 허공에서 생긴다 — 들어갈 학습을 막는 쪽으로 틀린다.
+    embed_copies = 1 if cfg.get("tie_word_embeddings") or text.get("tie_word_embeddings") else 2
+    llm = n * (attn + mlp) + embed_copies * vocab * h
 
     v = cfg.get("vision_config") or {}
     vh = _pick(v, _HIDDEN, 1024)
@@ -120,7 +137,11 @@ def spec_from_config(path: str, model_id: str) -> BackboneSpec:
         vocab=_pick(text, _VOCAB, 32000),
         tokens_per_tile=_vision_tokens(cfg),
         max_context=_pick(text, _CTX, 4096),
-        tokenizer_id=model_id,
+        # 토크나이저 이름은 AutoTokenizer가 그대로 받을 수 있어야 한다.
+        # 우리 접두어(`hf:`)는 백본 id의 것이지 모델 이름의 일부가 아니다.
+        tokenizer_id=model_id[len(PREFIX):] if model_id.startswith(PREFIX) else model_id,
+        patch_px=_vision_grid(cfg)[0],
+        spatial_merge=_vision_grid(cfg)[1],
         supports_quantization=("none", "int8", "nf4"),
         supports_attn=("sdpa", "eager"),
     )

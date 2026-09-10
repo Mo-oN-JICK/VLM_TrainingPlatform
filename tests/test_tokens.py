@@ -132,3 +132,10 @@ def test_a_declared_count_smaller_than_the_measured_one_is_refused():
     cfg.sequence = Sequence(text_tokens=500)
     res = budget_mod.estimate(cfg, images=1, measured_text_tokens=1200, measured_how="tokenizer")
     assert any("작다" in e for e in res.errors)
+
+
+def test_a_small_ratio_is_not_clamped():
+    """바이트 토크나이저는 한글 한 글자가 3토큰이다 — 0.34가 맞는 값이지,
+    걸러낼 값이 아니다. 바닥값이 이것을 덮으면 추정이 32% 낙관적으로 나온다."""
+    assert tokens_mod.estimate(987, 0.34) > tokens_mod.estimate(987, 0.5)
+    assert tokens_mod.estimate(987, 0.34) == int(987 / 0.34 * tokens_mod.ESTIMATE_MARGIN + 0.5)
