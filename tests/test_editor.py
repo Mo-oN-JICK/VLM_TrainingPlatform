@@ -33,7 +33,22 @@ def ed(tmp_path):
     데이터는 컴파일에 필요 없으므로 뺀다.
     """
     work = tmp_path / "dummy_ecg"
-    shutil.copytree(SOLUTION, work, ignore=shutil.ignore_patterns("data", "runs", "*.lock.yaml"))
+    # edit_history.jsonl은 append-only라 앞선 세션의 기록이 딸려오면 안 된다
+    shutil.copytree(
+        SOLUTION,
+        work,
+        ignore=shutil.ignore_patterns("data", "runs", "*.lock.yaml", "edit_history.jsonl"),
+    )
+    return Editor.open(str(work / "projects" / "01_dummy" / "project.yaml"))
+
+
+@pytest.fixture
+def ed_with_data(tmp_path):
+    """데이터까지 복사한다. 실제로 그래프를 돌리는 테스트 하나만 쓴다."""
+    work = tmp_path / "dummy_ecg"
+    shutil.copytree(
+        SOLUTION, work, ignore=shutil.ignore_patterns("runs", "*.lock.yaml", "edit_history.jsonl")
+    )
     return Editor.open(str(work / "projects" / "01_dummy" / "project.yaml"))
 
 
@@ -531,3 +546,140 @@ def test_click_targets_are_big_enough_to_hit(ed):
         block = css.split(handle, 1)[1].split("}", 1)[0]
         assert "line-height:20px" in block or "line-height:16px" in block, handle
         assert "min-width:20px" in block or "min-width:16px" in block, handle
+
+
+# ── 실행 ────────────────────────────────────────────────────────────────
+
+
+def test_run_uses_the_same_cli_command(ed):
+    """편집기에 전용 실행 경로는 없다. 사람이 터미널에 그대로 쳐도 같아야 한다."""
+    ed.extra_modules = ("fixture_nodes",)
+    ed.recipe_select(2)
+    cmd = ed.run_command(limit=4, debug_output=True)
+
+    assert cmd[1:4] == ["-m", "vlm_trainer.cli.main", "run"]
+    assert cmd[4] == ed.path
+    assert "--trigger" in cmd and cmd[cmd.index("--trigger") + 1] == "ui"
+    assert "--debug-output" in cmd
+    assert cmd[cmd.index("--nodes") + 1] == "fixture_nodes"
+    # 화면에 보이는 값 그대로 돈다 — 오버레이는 CLI의 --set 으로 넘어간다
+    assert "n_stats.z_thresh=4.5" in cmd
+
+
+def test_run_is_refused_while_the_spec_on_disk_differs(ed):
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    res = ed.run_start()
+    assert not res["ok"] and "저장하지 않은 변경" in res["reason"]
+    assert "화면과 다른 그래프가 돈다" in res["detail"]
+
+    assert ed.save()["ok"]
+    assert ed.run_command()  # 저장한 뒤에는 막을 이유가 없다
+
+
+def test_run_is_refused_while_the_graph_is_incomplete(ed):
+    ed.add_node("ts.stats@1.0.0")
+    res = ed.run_start()
+    assert not res["ok"] and "필수 입력" in res["detail"]
+
+
+def test_progress_snapshot_round_trips(ed):
+    from vlm_trainer.engine import runner as runner_mod
+
+    rep = runner_mod.RunReport(order=list(ed.compiled.order))
+    rep.count("n_stats", runner_mod.SUCCESS)
+    rep.node_ms["n_stats"] = 12.5
+    rep.processed = 3
+    rep.quarantine.append(runner_mod.Quarantined("s1", "n_ev", "이유", "힌트"))
+
+    data = runner_mod.snapshot(rep, run_id="r1", total=4, phase="running")
+    back = runner_mod.report_from_snapshot(data)
+
+    assert back.states_of("n_stats") == {"success": 1}
+    assert back.node_ms["n_stats"] == 12.5
+    assert back.quarantine[0].node_id == "n_ev"
+    from vlm_trainer.ui.render import state_of
+
+    state, extra = state_of(back, "n_stats")
+    assert state == "success" and "1건" in extra
+
+
+def test_run_state_reads_the_snapshot_a_run_leaves(ed, tmp_path):
+    import json as _json
+
+    from vlm_trainer.engine import runner as runner_mod
+
+    rep = runner_mod.RunReport(order=list(ed.compiled.order))
+    for nid in ed.compiled.order:
+        rep.count(nid, runner_mod.SUCCESS)
+    rep.processed = 2
+
+    ed.progress_path = str(tmp_path / "progress.json")
+    with open(ed.progress_path, "w", encoding="utf-8") as fh:
+        _json.dump(runner_mod.snapshot(rep, run_id="r1", total=2, phase="done"), fh)
+
+    st = ed.run_state()
+    assert st["running"] is False and st["phase"] == "done"
+    assert st["processed"] == 2
+    assert st["states"]["n_stats"]["state"] == "success"
+
+
+def test_a_half_written_snapshot_is_ignored(ed, tmp_path):
+    """진행 파일은 원자 교체로 쓰이지만, 읽는 쪽도 깨진 내용에 죽지 않아야 한다."""
+    ed.progress_path = str(tmp_path / "progress.json")
+    with open(ed.progress_path, "w", encoding="utf-8") as fh:
+        fh.write('{"phase": "run')
+
+    st = ed.run_state()
+    assert st["states"] == {} and st["running"] is False
+
+
+def test_the_editor_actually_runs_the_graph(ed_with_data, tmp_path, monkeypatch):
+    """끝에서 끝까지 — 편집기가 띄운 프로세스가 진행 파일을 남기고 상태가 칠해진다.
+
+    저장소 밖에서 돌린다. 하위 프로세스가 CWD에 기대 임포트하면 여기서 걸린다.
+    """
+    import time as _time
+
+    ed = ed_with_data
+    monkeypatch.chdir(tmp_path)
+    assert ed.run_start(limit=2)["ok"]
+
+    for _ in range(600):  # 최대 60초
+        st = ed.run_state()
+        if not st["running"]:
+            break
+        _time.sleep(0.1)
+
+    assert st["phase"] == "done", st.get("console", "")
+    assert st["exit"] == 0, st.get("console", "")
+    assert st["states"]["n_answer"]["state"] in ("success", "cached")
+
+
+def test_a_stopped_run_is_not_reported_as_a_failure(ed_with_data, tmp_path, monkeypatch):
+    """사람이 멈춘 것과 죽은 것은 다르다. 빨간 글씨로 같이 묶으면 신호가 죽는다."""
+    import time as _time
+
+    ed = ed_with_data
+    monkeypatch.chdir(tmp_path)
+    assert ed.run_start(limit=24)["ok"]
+    assert ed.run_stop()["ok"]
+
+    for _ in range(300):
+        st = ed.run_state()
+        if not st["running"]:
+            break
+        _time.sleep(0.1)
+
+    assert st["stopped"] is True
+    assert "console" not in st, "중지는 실패가 아니므로 콘솔 꼬리를 들이밀지 않는다"
+
+
+def test_run_handlers_are_declared_like_the_rest(ed):
+    import re
+
+    from vlm_trainer.ui import render as render_mod
+
+    page = render_mod.render_editor(ed)
+    called = set(re.findall(r'onclick="(vlmt\w+)\(', page))
+    declared = set(re.findall(r"(?:async )?function (vlmt\w+)\(", page))
+    assert {"vlmtRun", "vlmtRunStop"} <= called <= declared

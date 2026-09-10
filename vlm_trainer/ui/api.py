@@ -11,6 +11,8 @@ from __future__ import annotations
 import difflib
 import json
 import os
+import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,6 +23,7 @@ from ..core.graph import Edge, GraphModel, NodeInstance
 from ..core.node import NodeKind
 from ..core.registry import all_defs, resolve as resolve_node
 from ..core.unify import unify_ports
+from ..engine import runner as runner_mod
 from ..spec import recipe as recipe_mod
 from ..spec.decompile import decompile, dump_yaml
 import yaml
@@ -134,6 +137,13 @@ class Editor:
     overlay: Dict[str, Any] = field(default_factory=dict)
     history: List[HistoryEntry] = field(default_factory=list)
     cursor: int = -1
+    # 실행은 하위 프로세스다. 편집기는 그 진행 파일을 읽기만 한다
+    extra_modules: Tuple[str, ...] = ()
+    proc: Optional[Any] = None
+    run_id: str = ""
+    progress_path: str = ""
+    console_path: str = ""
+    stopped: bool = False
 
     @staticmethod
     def open(path: str) -> "Editor":
@@ -502,6 +512,137 @@ class Editor:
             "recipes": rows,
             "overlay": [row(p, v) for p, v in sorted(self.overlay.items())],
         }
+
+    # ── 실행 ────────────────────────────────────────────────────────────
+    #
+    # 편집기는 실행 경로를 따로 갖지 않는다. `vlmt run`을 그대로 하위 프로세스로 띄우고
+    # 그 프로세스가 남기는 진행 스냅샷을 읽을 뿐이다. UI에서만 되는 실행은 존재하지 않는다.
+
+    def run_command(self, limit: int = 8, debug_output: bool = False) -> List[str]:
+        """띄울 명령. 사람이 터미널에 그대로 쳐도 같은 결과가 나와야 한다."""
+        cmd = [
+            sys.executable, "-m", "vlm_trainer.cli.main",
+            "run", self.path,
+            "--run-id", self.run_id or "ui",
+            "--limit", str(int(limit)),
+            "--trigger", "ui",
+            "--skip-budget",
+        ]
+        if debug_output:
+            cmd.append("--debug-output")
+        for mod in self.extra_modules:
+            cmd += ["--nodes", mod]
+        # 화면에 보이는 값 그대로 돈다. 레시피 오버레이는 CLI의 --set 으로 넘긴다.
+        for path, value in sorted(self.overlay.items()):
+            cmd += ["--set", f"{path}={json.dumps(value, ensure_ascii=False)}"]
+        return cmd
+
+    def run_start(self, limit: int = 8, debug_output: bool = False) -> Dict[str, Any]:
+        if self.proc is not None and self.proc.poll() is None:
+            return {"ok": False, "reason": "이미 실행 중이다"}
+        if not self.valid:
+            return {"ok": False, "reason": _short(self.error), "detail": self.error}
+        if self.dirty:
+            # 실행은 디스크의 스펙을 돈다. 화면과 다른 것을 돌리면 결과를 믿을 수 없다.
+            return {
+                "ok": False,
+                "reason": "저장하지 않은 변경이 있다 — 실행은 디스크의 스펙을 돈다",
+                "detail": (
+                    "편집기의 그래프와 project.yaml이 다르다. 지금 실행하면 화면과 다른 그래프가 돈다.\n"
+                    "  이 검사가 없었다면: 방금 고친 값이 아니라 예전 값으로 돈 결과를 보고 판단하게 된다.\n"
+                    "  Save를 먼저 누른다."
+                ),
+            }
+
+        self.stopped = False
+        self.run_id = "ui_" + time.strftime("%Y%m%dT%H%M%S")
+        run_dir = os.path.join(os.getcwd(), "runs", self.run_id)
+        os.makedirs(run_dir, exist_ok=True)
+        self.progress_path = os.path.join(run_dir, "progress.json")
+        self.console_path = os.path.join(run_dir, "console.log")
+        cmd = self.run_command(limit, debug_output)
+        # 하위 프로세스가 부모와 같은 vlm_trainer를 임포트해야 한다. 저장소를 설치하지 않고
+        # 쓰는 것이 이 프로젝트의 기본 형태라, CWD에 기대면 다른 디렉터리에서 띄운 편집기의
+        # 실행이 조용히 실패한다.
+        env = dict(os.environ)
+        pkg_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        env["PYTHONPATH"] = os.pathsep.join(
+            [p for p in (pkg_root, env.get("PYTHONPATH", "")) if p]
+        )
+        try:
+            fh = open(self.console_path, "w", encoding="utf-8")
+            self.proc = subprocess.Popen(
+                cmd, stdout=fh, stderr=subprocess.STDOUT, cwd=os.getcwd(), env=env
+            )
+        except OSError as exc:
+            return {"ok": False, "reason": f"실행을 띄우지 못했다: {exc}"}
+        return {"ok": True, "run_id": self.run_id, "command": " ".join(cmd)}
+
+    def run_stop(self) -> Dict[str, Any]:
+        if self.proc is None or self.proc.poll() is not None:
+            return {"ok": False, "reason": "실행 중이 아니다"}
+        self.stopped = True  # 사람이 멈춘 것과 죽은 것은 다르다
+        self.proc.terminate()
+        return {"ok": True}
+
+    def run_state(self) -> Dict[str, Any]:
+        """스냅샷을 읽어 카드에 칠할 상태로. 실행이 없으면 비어 있는 답이다."""
+        from .render import state_of
+
+        alive = self.proc is not None and self.proc.poll() is None
+        out: Dict[str, Any] = {
+            "running": alive,
+            "run_id": self.run_id,
+            "exit": None if (self.proc is None or alive) else self.proc.returncode,
+            "stopped": self.stopped and self.proc is not None and not alive,
+            "states": {},
+            "processed": 0,
+            "total": 0,
+            "phase": "",
+            "aborted": "",
+            "quarantine": [],
+        }
+        data = self._read_progress()
+        if data is None:
+            if not alive and self.proc is not None and not self.stopped:
+                out["console"] = self._console_tail()
+            return out
+
+        rep = runner_mod.report_from_snapshot(data)
+        out.update(
+            {
+                "processed": data.get("processed", 0),
+                "total": data.get("total", 0),
+                "phase": data.get("phase", ""),
+                "aborted": data.get("aborted", ""),
+                "quarantine": data.get("quarantine", []),
+                "quarantine_total": data.get("quarantine_total", 0),
+                "cache": data.get("cache", {}),
+                "previews": data.get("previews", {}),
+            }
+        )
+        for nid in (self.compiled.order if self.compiled else []):
+            state, extra = state_of(rep, nid)
+            out["states"][nid] = {"state": state, "extra": extra}
+        if not alive and self.proc is not None and self.proc.returncode and not self.stopped:
+            out["console"] = self._console_tail()
+        return out
+
+    def _read_progress(self) -> Optional[Dict[str, Any]]:
+        if not self.progress_path or not os.path.exists(self.progress_path):
+            return None
+        try:
+            with open(self.progress_path, "r", encoding="utf-8") as fh:
+                return json.load(fh)
+        except (OSError, ValueError):
+            return None  # 원자 교체 사이에 읽었을 뿐이다. 다음 폴링에서 잡힌다
+
+    def _console_tail(self, n: int = 12) -> str:
+        try:
+            with open(self.console_path, "r", encoding="utf-8", errors="replace") as fh:
+                return "".join(fh.readlines()[-n:])
+        except OSError:
+            return ""
 
     def save(self) -> Dict[str, Any]:
         if self.compiled is None:

@@ -150,6 +150,14 @@ def _space(a: argparse.Namespace, cg) -> samples_mod.SampleSpace:
     return samples_mod.load(cg.sample_space, os.path.dirname(os.path.abspath(a.spec)))
 
 
+def _progress_path(a: argparse.Namespace, run_id: str) -> str:
+    """진행 상황 스냅샷의 자리. CLI 실행도 남긴다 — 다른 터미널이나 편집기가 지켜볼 수 있다."""
+    p = getattr(a, "progress", "")
+    if p == "off":
+        return ""
+    return p or os.path.join("runs", run_id, "progress.json")
+
+
 def _run_id(a: argparse.Namespace) -> str:
     import time
 
@@ -252,6 +260,8 @@ def cmd_run(a: argparse.Namespace) -> int:
         cache_dir=a.cache_dir,
         extra_modules=tuple(a.nodes),
         spec_dir=os.path.dirname(os.path.abspath(a.spec)),
+        trigger=getattr(a, "trigger", "cli"),
+        progress_path=_progress_path(a, _run_id(a)),
     )
     # G4 — GPU를 잡기 전 마지막 문. Trainer가 있으면 예산을 먼저 본다.
     got = _trainer_cfg(a, cg)
@@ -387,7 +397,7 @@ def cmd_edit(a: argparse.Namespace) -> int:
     from ..ui import server as server_mod
 
     _load_nodes(a.nodes)
-    server_mod.serve(a.spec, port=a.port, open_browser=a.open)
+    server_mod.serve(a.spec, port=a.port, open_browser=a.open, extra_modules=tuple(a.nodes))
     return 0
 
 
@@ -623,6 +633,10 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--view", default="", help="실행 상태를 칠한 그래프 HTML을 남긴다 ('-'면 runs/<id>/graph.html)")
     r.add_argument("--debug-output", action="store_true",
                    help="Debug Output 토글. 꺼져 있으면 미리보기를 생성조차 하지 않는다")
+    r.add_argument("--trigger", default="cli", choices=("cli", "ui", "external"),
+                   help="누가 이 실행을 띄웠나. Debug Output 규약이 여기에 달려 있다")
+    r.add_argument("--progress", default="",
+                   help="진행 상황 스냅샷 경로 (기본 runs/<run-id>/progress.json, 'off'면 남기지 않는다)")
     r.set_defaults(func=cmd_run)
 
     b = sub.add_parser("budget", help="G4 — 학습 전에 단계별 VRAM과 시퀀스 길이를 산정한다")

@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -50,6 +52,8 @@ class RunOptions:
     spec_dir: str = "."
     debug_output: bool = False
     trigger: str = "cli"  # ui | cli | external
+    progress_path: str = ""  # 진행 상황 스냅샷. 비어 있으면 남기지 않는다
+    progress_every: float = 0.4  # 초. 샘플마다 fsync하지 않기 위한 간격
 
 
 @dataclass
@@ -84,6 +88,74 @@ class RunReport:
     def quarantine_ratio(self) -> float:
         total = self.processed + len(self.quarantine)
         return len(self.quarantine) / total if total else 0.0
+
+
+def snapshot(rep: RunReport, *, run_id: str, total: int, phase: str) -> Dict[str, Any]:
+    """실행 중의 상태를 다른 프로세스가 읽을 수 있는 형태로."""
+    return {
+        "run_id": run_id,
+        "phase": phase,  # running | done | aborted
+        "at": time.time(),
+        "total": total,
+        "processed": rep.processed,
+        "order": list(rep.order),
+        "node_state": {k: dict(v) for k, v in rep.node_state.items()},
+        "node_ms": dict(rep.node_ms),
+        "cache": dict(rep.cache),
+        "aborted": rep.aborted,
+        "quarantine": [
+            {"sample_key": q.sample_key, "node_id": q.node_id, "cause": q.cause, "hint": q.hint}
+            for q in rep.quarantine[:20]
+        ],
+        "quarantine_total": len(rep.quarantine),
+        # 미리보기는 토글이 켜졌을 때만 존재한다. 긴 텍스트는 잘라서 싣는다 —
+        # 스냅샷은 관찰용이지 값의 저장소가 아니다.
+        "previews": {
+            nid: {
+                "kind": getattr(p, "kind", ""),
+                "text": (getattr(p, "text", "") or "")[:2000],
+                "image_path": getattr(p, "image_path", ""),
+            }
+            for nid, p in rep.previews.items()
+        },
+    }
+
+
+def report_from_snapshot(data: Dict[str, Any]) -> RunReport:
+    """스냅샷을 다시 RunReport로. 뷰가 실행 중이든 끝난 뒤든 같은 코드로 그리게 하려는 것이다."""
+    rep = RunReport(order=list(data.get("order") or []))
+    rep.node_state = {k: dict(v) for k, v in (data.get("node_state") or {}).items()}
+    rep.node_ms = dict(data.get("node_ms") or {})
+    rep.cache = dict(data.get("cache") or {})
+    rep.processed = int(data.get("processed") or 0)
+    rep.aborted = str(data.get("aborted") or "")
+    rep.quarantine = [
+        Quarantined(q.get("sample_key", ""), q.get("node_id", ""), q.get("cause", ""), q.get("hint", ""))
+        for q in (data.get("quarantine") or [])
+    ]
+    rep.previews = {
+        nid: preview_mod.Preview(nid, p.get("kind", ""), p.get("text", ""), p.get("image_path", ""))
+        for nid, p in (data.get("previews") or {}).items()
+    }
+    return rep
+
+
+def write_progress(rep: RunReport, opts: "RunOptions", total: int, phase: str) -> None:
+    """진행 상황을 원자 교체로 남긴다.
+
+    실행 중인 그래프를 다른 프로세스(편집기, 다른 터미널)가 볼 수 있게 하는 유일한 통로다.
+    실패해도 실행을 막지 않는다 — 관찰이 실행을 죽여서는 안 된다.
+    """
+    if not opts.progress_path:
+        return
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(opts.progress_path)) or ".", exist_ok=True)
+        tmp = opts.progress_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(snapshot(rep, run_id=opts.run_id, total=total, phase=phase), fh, ensure_ascii=False)
+        os.replace(tmp, opts.progress_path)
+    except OSError:
+        pass
 
 
 def ancestors(cg: CompiledGraph, node_id: str) -> Set[str]:
@@ -136,6 +208,9 @@ def execute(
     else:
         # per_sample=False Output(학습)은 샘플 루프가 아니라 train 단계에서 한 번 돈다
         plan = [i for i in plan if resolve_node(cg.nodes[i].ref).per_sample]
+
+    last_write = 0.0
+    write_progress(rep, opts, len(rows), "running")
 
     for row in rows:
         key = str(row[space.key])
@@ -202,6 +277,7 @@ def execute(
                 rep.quarantine.append(Quarantined(key, nid, e.cause, e.hint))
                 if opts.on_sample_error == "abort":
                     rep.aborted = f"{nid} 실패로 중단: {e.cause}"
+                    write_progress(rep, opts, len(rows), "aborted")
                     return rep
                 break
             except Exception as e:  # 노드가 계약을 어기고 일반 예외를 던진 경우
@@ -211,6 +287,7 @@ def execute(
                 rep.quarantine.append(Quarantined(key, nid, f"{type(e).__name__}: {e}"))
                 if opts.on_sample_error == "abort":
                     rep.aborted = f"{nid} 실패로 중단: {e}"
+                    write_progress(rep, opts, len(rows), "aborted")
                     return rep
                 break
 
@@ -228,6 +305,11 @@ def execute(
             if on_sample is not None:
                 on_sample(key, values)
 
+        now = time.time()
+        if now - last_write >= opts.progress_every:
+            last_write = now
+            write_progress(rep, opts, len(rows), "running")
+
         if rep.quarantine_ratio > opts.quarantine_ratio_threshold and len(rep.quarantine) >= 2:
             rep.aborted = (
                 f"quarantine 비율 {rep.quarantine_ratio:.1%}가 임계 "
@@ -237,4 +319,5 @@ def execute(
             break
 
     rep.cache = cache.stats
+    write_progress(rep, opts, len(rows), "aborted" if rep.aborted else "done")
     return rep

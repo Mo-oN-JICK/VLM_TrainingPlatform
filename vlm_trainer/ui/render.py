@@ -88,7 +88,7 @@ def _summary(cg: CompiledGraph, nid: str, limit: int = 3) -> str:
     return ", ".join(items)
 
 
-def _state_of(report: Any, nid: str) -> Tuple[str, str]:
+def state_of(report: Any, nid: str) -> Tuple[str, str]:
     """(상태 이름, 부가 라벨). 실행 보고가 없으면 pending."""
     if report is None:
         return "pending", ""
@@ -153,7 +153,7 @@ def render(
         d = resolve_node(n.ref)
         tag = {NodeKind.INPUT: "I", NodeKind.PROCESSING: "P", NodeKind.OUTPUT: "O"}[n.kind]
         shape = {NodeKind.INPUT: "inp", NodeKind.PROCESSING: "prc", NodeKind.OUTPUT: "out"}[n.kind]
-        state, state_extra = _state_of(report, nid)
+        state, state_extra = state_of(report, nid)
 
         # 입력 칩은 선언이 아니라 **컴파일이 확정한 타입**을 보여준다.
         # 제네릭이 남아 있으면 그 자체가 눈에 띄어야 한다.
@@ -235,9 +235,9 @@ def render(
         if nid in previews
     )
     debug_block = (
-        f'<h4>Debug Output</h4>{debug}'
-        if debug
-        else '<h4>Debug Output</h4><div class="doc">토글이 꺼져 있어 미리보기를 만들지 않았다.</div>'
+        '<h4>Debug Output</h4><div id="debugout">'
+        + (debug or '<div class="doc">토글이 꺼져 있어 미리보기를 만들지 않았다.</div>')
+        + "</div>"
     )
 
     quarantine = ""
@@ -265,6 +265,7 @@ def render(
         occupied_json = json.dumps(sorted({e.dst for e in cg.edges}))
         scripts = (
             f"<script>window.COMPAT = {compat_json}; window.OCCUPIED = {occupied_json}; "
+            f"window.STATE_COLORS = {json.dumps(T.STATE)}; "
             'window.EDITABLE = "1";</script>'
             f"<script>{_EDITOR_JS}</script>"
         )
@@ -436,6 +437,15 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .padd{{cursor:pointer;color:#6F7478;margin-left:4px;font-size:12px;
       min-width:16px;line-height:16px;text-align:center;border-radius:2px}}
 .padd:hover{{color:#57F7E6;background:{T.NODE['bg']}}}
+.btn.go{{border-color:{T.STATE['running']};color:{T.STATE['running']}}}
+.btn:disabled{{opacity:.45;cursor:default}}
+.sep{{width:1px;height:16px;background:{T.SURFACE['line']};margin:0 4px}}
+.tgl{{display:flex;gap:4px;align-items:center;font-size:11px;color:#A8B0B6;margin-left:6px}}
+.tgl input[type=number]{{width:44px;background:{T.SURFACE['canvas']};color:#D8DCDF;
+      border:1px solid {T.SURFACE['line']};font-size:11px;padding:1px 4px}}
+.runline{{margin-left:10px;font-size:11px;color:{T.STATE['running']};
+      font-family:ui-monospace,Consolas,monospace}}
+.runline.bad{{color:{T.STATE['failed']}}}
 .hrow{{border-left:2px solid transparent;padding:4px 8px;margin-bottom:2px;cursor:pointer;
       font-size:11.5px;color:#A8B0B6;display:grid;grid-template-columns:58px 1fr 64px;gap:6px}}
 .hrow:hover{{background:{T.NODE['bg']}}}
@@ -507,6 +517,13 @@ _EDITOR_TOOLS = (
     '<button class="btn" onclick="vlmtRedo()">Redo</button>'
     '<button class="btn" onclick="vlmtSave()">Save</button>'
     '<button class="btn" onclick="location.reload()">Reload</button>'
+    '<span class="sep"></span>'
+    '<button class="btn go" id="runbtn" onclick="vlmtRun()">Run</button>'
+    '<button class="btn" id="stopbtn" onclick="vlmtRunStop()" disabled>Stop</button>'
+    '<label class="tgl" title="꺼져 있으면 미리보기를 생성조차 하지 않는다">'
+    '<input type="checkbox" id="dbgout">Debug Output</label>'
+    '<label class="tgl">샘플 <input type="number" id="runlimit" value="8" min="1" max="999"></label>'
+    '<span class="runline" id="runline"></span>'
     '<span class="hint">출력 칩을 끌어 입력 칩에 놓는다 · 입력 칩 우클릭으로 배선 제거</span>'
 )
 
@@ -678,6 +695,91 @@ async function vlmtRecipeActive(id) {
   const {code, data} = await post('/api/recipe/active', {id: id});
   if (code === 200) location.reload(); else toast(data.reason || '', true);
 }
+
+// ── 실행 ────────────────────────────────────────────────────────────────
+// 편집기는 실행 경로를 따로 갖지 않는다. 서버가 `vlmt run`을 그대로 띄우고,
+// 우리는 그 프로세스가 남기는 진행 스냅샷을 폴링해 카드에 칠하기만 한다.
+let runTimer = null;
+
+async function vlmtRun() {
+  const limit = +(document.getElementById('runlimit') || {}).value || 8;
+  const dbg = !!(document.getElementById('dbgout') || {}).checked;
+  const {code, data} = await post('/api/run', {limit: limit, debug_output: dbg});
+  if (code !== 200) { toast('실행 거부: ' + (data.reason || ''), true); return; }
+  toast('실행 시작 · ' + data.run_id);
+  // 지난 실행의 미리보기를 남겨두지 않는다. 토글이 꺼진 실행에서 옛 값이 보이면
+  // "꺼져 있으면 만들지 않는다"는 규약이 화면에서 무너진다.
+  const box = document.getElementById('debugout');
+  if (box) box.innerHTML = '<div class="doc">' +
+    (dbg ? '실행 중 — 미리보기를 기다린다.' : '토글이 꺼져 있어 미리보기를 만들지 않았다.') + '</div>';
+  vlmtRunPoll();
+}
+
+async function vlmtRunStop() {
+  const {code, data} = await post('/api/run/stop', {});
+  if (code !== 200) toast(data.reason || '', true);
+}
+
+function vlmtPaint(states) {
+  for (const [nid, st] of Object.entries(states || {})) {
+    const node = document.querySelector('.node[data-node="' + CSS.escape(nid) + '"]');
+    if (!node) continue;
+    const color = window.STATE_COLORS[st.state] || '#4A4A4A';
+    const card = node.querySelector('.card');
+    if (card) card.style.borderLeftColor = color;
+    const line = node.querySelector('.st');
+    if (line) {
+      line.innerHTML = '<span class="sdot" style="background:' + color + '"></span>' +
+        st.state + (st.extra ? ' · ' + st.extra : '');
+    }
+  }
+}
+
+function vlmtDebugOut(previews) {
+  // Debug Output 규약: 토글이 꺼져 있으면 애초에 만들어지지 않는다.
+  // 여기서 감추는 것이 아니라, 받을 것이 없는 것이다.
+  const box = document.getElementById('debugout');
+  if (!box || !previews) return;
+  const ids = Object.keys(previews);
+  if (!ids.length) return;
+  box.innerHTML = ids.map(nid =>
+    '<details open><summary>' + nid + ' <em>' + (previews[nid].kind || '') + '</em></summary>' +
+    '<pre class="pv"></pre></details>').join('');
+  ids.forEach((nid, i) => { box.querySelectorAll('pre.pv')[i].textContent = previews[nid].text || ''; });
+}
+
+async function vlmtRunPoll() {
+  if (runTimer) clearTimeout(runTimer);
+  const {code, data} = await post('/api/run/state', {});
+  if (code !== 200) return;
+
+  vlmtPaint(data.states);
+  vlmtDebugOut(data.previews);
+  const line = document.getElementById('runline');
+  const run = document.getElementById('runbtn'), stop = document.getElementById('stopbtn');
+  if (run) run.disabled = !!data.running;
+  if (stop) stop.disabled = !data.running;
+
+  if (line) {
+    if (data.running || data.phase) {
+      const q = data.quarantine_total ? ' · 격리 ' + data.quarantine_total : '';
+      const tail = data.running ? '' : (data.stopped ? ' · 중지' : (data.aborted ? ' · 중단' :
+                   (data.exit ? ' · 실패(exit ' + data.exit + ')' : ' · 끝')));
+      line.textContent = data.run_id + ' ' + data.processed + '/' + data.total + q + tail;
+      line.className = 'runline' + (data.aborted || (data.exit && !data.stopped) ? ' bad' : '');
+    } else {
+      line.textContent = '';
+    }
+  }
+  if (data.aborted) toast('중단: ' + data.aborted, true);
+  else if (!data.running && data.exit && !data.stopped)
+    toast('실행 실패 (exit ' + data.exit + ')\n' + (data.console || ''), true);
+
+  if (data.running) runTimer = setTimeout(vlmtRunPoll, 700);
+}
+
+// 페이지를 새로 열어도 돌고 있는 실행을 이어서 본다
+window.addEventListener('DOMContentLoaded', vlmtRunPoll);
 
 async function vlmtUndo() {
   const {code, data} = await post('/api/undo', {});

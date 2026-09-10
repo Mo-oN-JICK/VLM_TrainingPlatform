@@ -10,7 +10,7 @@ import json
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 from .api import Editor
 
@@ -18,7 +18,8 @@ ROUTES = ("/api/state", "/api/library", "/api/connect", "/api/disconnect",
           "/api/param", "/api/add", "/api/remove", "/api/save",
           "/api/undo", "/api/redo", "/api/rewind",
           "/api/recipe/select", "/api/recipe/add-path", "/api/recipe/drop-path",
-          "/api/recipe/store", "/api/recipe/delete", "/api/recipe/active")
+          "/api/recipe/store", "/api/recipe/delete", "/api/recipe/active",
+          "/api/run", "/api/run/state", "/api/run/stop")
 
 
 def handle(editor: Editor, path: str, body: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
@@ -27,6 +28,8 @@ def handle(editor: Editor, path: str, body: Dict[str, Any]) -> Tuple[int, Dict[s
         return 200, editor.state()
     if path == "/api/library":
         return 200, {"ok": True, "nodes": editor.library()}
+    if path == "/api/run/state":
+        return 200, editor.run_state()
     if path == "/api/connect":
         res = editor.connect(body["from"], body["to"])
     elif path == "/api/disconnect":
@@ -57,6 +60,10 @@ def handle(editor: Editor, path: str, body: Dict[str, Any]) -> Tuple[int, Dict[s
         res = editor.recipe_delete(body["id"])
     elif path == "/api/recipe/active":
         res = editor.recipe_set_active(body.get("id"))
+    elif path == "/api/run":
+        res = editor.run_start(body.get("limit", 8), bool(body.get("debug_output")))
+    elif path == "/api/run/stop":
+        res = editor.run_stop()
     else:
         return 404, {"ok": False, "reason": f"알 수 없는 경로 {path}"}
 
@@ -98,10 +105,13 @@ def make_handler(editor: Editor, page: Any):
     return Handler
 
 
-def serve(project_path: str, port: int = 8770, open_browser: bool = False) -> None:
+def serve(project_path: str, port: int = 8770, open_browser: bool = False,
+          extra_modules: Tuple[str, ...] = ()) -> None:
     from . import render as render_mod
 
     editor = Editor.open(project_path)
+    # 편집기를 띄울 때 준 --nodes 를 하위 프로세스에도 그대로 넘긴다
+    editor.extra_modules = tuple(extra_modules)
     page = lambda ed: render_mod.render_editor(ed)  # noqa: E731
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(editor, page))
     url = f"http://127.0.0.1:{port}/"
