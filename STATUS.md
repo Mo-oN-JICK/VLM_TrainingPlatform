@@ -4,8 +4,8 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-10
-- 마지막 커밋: Phase 8 확장 지점 — 캐시 백엔드 이음매와 다중 GPU 인터페이스
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **226 passed**
+- 마지막 커밋: 편집기가 Debug Output 이미지·새 프로젝트·Sample Space·학습까지 다룬다
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **251 passed**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -398,6 +398,32 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 - [x] 스펙에서 `runtime_profile` 한 줄과 `distributed` 블록만 바꿔 확인했다. **그래프는 그대로다**
 
 **남은 것**: 실제 다중 GPU 실행(이 PC에 장치가 하나다), fsdp/deepspeed의 예산 모델, 원격 실행
+
+---
+
+## 4b. 편집기 마무리 — UI가 실제로 한 바퀴를 돈다 ✅ (2026-09-10)
+
+- [x] **Debug Output이 이미지를 보여준다.** 러너가 `preview.render()`를 `out_dir` 없이 불러
+      PNG가 한 장도 저장되지 않고 있었다. 크롭이 어긋났는지 종횡비가 망가졌는지는
+      `이미지 [360, 720, 3] uint8`이라는 글자로 알 수 없다.
+      `runs/<id>/preview/`에 남기고 패널이 `<img>`로 그린다. 토글이 꺼져 있으면 여전히 만들지 않는다.
+      서버는 **이번 실행 폴더 안의 `.png`만** 내준다
+- [x] **`vlmt new`** — 빈 Solution/Project 껍데기. 편집기는 스펙을 *편집하는* 뷰라 열 파일이
+      하나는 있어야 하는데, 그 하나를 손으로 쓰게 두면 새 도메인의 첫 관문이 YAML 받아쓰기가 된다.
+      노드도 배선도 넣지 않는다. 있는 파일은 덮지 않는다
+- [x] **Sample Space 패널** — index·key·filter·splits를 UI에서 고치고, 값을 보여주는 데서
+      그치지 않고 **실제로 읽어 본다**(건수·열·split 분포). key 하나가 어긋나면 컴파일은 통과하고
+      실행 첫 샘플에서 죽는데 그때는 이미 편집기를 닫은 뒤다. 읽히지 않는 편집은 **기록 전에** 거부한다
+      (기록 후에 되돌리면 저널에 이미 줄이 들어가 거부된 편집이 History에 남는다 — 실제로 그랬다)
+- [x] **Materialize / Train 버튼** — **버튼 하나가 CLI 명령 하나다.** 편집기가 두 단계를 엮어
+      돌리지 않는다. 학습 진행은 `train_progress.json`으로 나오고 툴바에 `stage`·`step`·`loss`가 흐른다.
+      물질화 없이 Train을 누르면 무엇을 먼저 해야 하는지, 터미널로도 된다는 것을 말한다
+- [x] 검증 (`tests/test_scaffold.py` 7개 + `test_editor.py` 확장). 물질화→학습을 실제로 완주하는
+      끝에서 끝까지 검사 포함
+
+**UI만으로 되는 것**: 새 프로젝트 → 노드·배선·파라미터 → Sample Space → 레시피 → Save →
+Run(상태·미리보기 라이브) → Materialize → Train(loss 라이브) → History 되감기.
+**아직 YAML**: `materialize.boundary`, `runtime_profile`, Trainer 설정(`trainer.yaml`).
 
 ---
 
