@@ -52,6 +52,7 @@ class RunOptions:
     spec_dir: str = "."
     debug_output: bool = False
     trigger: str = "cli"  # ui | cli | external
+    cache_backend: str = "local"  # 저장 백엔드. 키 계산은 백엔드와 무관하다
     progress_path: str = ""  # 진행 상황 스냅샷. 비어 있으면 남기지 않는다
     progress_every: float = 0.4  # 초. 샘플마다 fsync하지 않기 위한 간격
 
@@ -198,7 +199,7 @@ def execute(
     on_sample: Optional[Callable[[str, Dict[str, Any]], None]] = None,
 ) -> RunReport:
     opts = opts or RunOptions()
-    cache = CacheStore(root=opts.cache_dir, enabled=opts.use_cache)
+    cache = CacheStore(root=opts.cache_dir, enabled=opts.use_cache, backend=opts.cache_backend)
     rep = RunReport(order=list(cg.order))
     space_fp = samples_mod.fingerprint(space)
 

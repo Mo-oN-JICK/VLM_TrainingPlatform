@@ -66,6 +66,7 @@ class BudgetResult:
     tokens_per_tile: int = 0
     s_vision: int = 0
     s_text: int = 0
+    world_size: int = 1
     text_estimated: bool = True
     text_source: str = "가정"  # 가정 | 선언 | 문자 환산 | 토크나이저
     max_len: int = 0
@@ -181,6 +182,7 @@ def estimate(
                 f"{image_hw[0]}x{image_hw[1]} / {cfg.vision.tile_px}px 기준 {need})"
             )
     res.tiles = tiles
+    res.world_size = cfg.distributed.effective_multiplier()
     res.s_vision = res.images * tiles * tpt
 
     if cfg.sequence.text_tokens:
@@ -389,6 +391,14 @@ def render(res: BudgetResult) -> str:
         "",
         f"  {'단계':<20}{'가중치':>9}{'그래디언트':>11}{'옵티마이저':>11}{'활성화':>9}{'로짓':>8}{'합계':>9}  판정",
     ]
+    if res.world_size > 1:
+        # DDP는 장치마다 모델을 통째로 들고 있다. 아래 숫자는 **장치 하나**의 것이고,
+        # 늘어나는 것은 유효 배치다. 이것을 적지 않으면 장치를 늘려 VRAM이 준다고 읽는다.
+        lines.insert(
+            2,
+            f"  다중 GPU: 장치 {res.world_size}개 (ddp) — 아래 VRAM은 장치 하나 기준이다. "
+            f"유효 배치가 {res.world_size}배가 된다",
+        )
     for s in res.stages:
         need = s.required(res.headroom_ratio)
         verdict = "통과" if need <= res.limit else "거부"

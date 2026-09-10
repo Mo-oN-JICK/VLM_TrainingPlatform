@@ -276,6 +276,7 @@ def cmd_run(a: argparse.Namespace) -> int:
         extra_modules=tuple(a.nodes),
         spec_dir=os.path.dirname(os.path.abspath(a.spec)),
         trigger=getattr(a, "trigger", "cli"),
+        cache_backend=getattr(a, "cache_backend", "local"),
         progress_path=_progress_path(a, _run_id(a)),
     )
     # G4 — GPU를 잡기 전 마지막 문. Trainer가 있으면 예산을 먼저 본다.
@@ -642,6 +643,8 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--split", default="")
     r.add_argument("--set", action="append", default=[])
     r.add_argument("--cache-dir", default=".cache")
+    r.add_argument("--cache-backend", default="local",
+                   help="캐시 저장 백엔드 (local | memory). 키 계산은 백엔드와 무관하다")
     r.add_argument("--no-cache", action="store_true")
     r.add_argument("--run-id", default="")
     r.add_argument("--device", default="", help="예산 프로파일 (rtx3060_12gb | rtx4090_24gb)")

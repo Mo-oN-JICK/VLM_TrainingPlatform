@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import os
 import pickle
-import shutil
 from dataclasses import dataclass, field
 from hashlib import blake2b
 from typing import Any, Dict, List, Optional, Tuple
+
+from .storage import resolve_backend
 
 DEFAULT_DIR = ".cache"
 
@@ -26,55 +27,63 @@ def sample_key_hash(*parts: str) -> str:
 
 @dataclass
 class CacheStore:
+    """무엇이 바뀌면 다시 계산해야 하는가에 대한 유일한 답.
+
+    **키는 여기서만 정해진다.** 백엔드는 그 키에 바이트를 넣고 꺼낼 뿐이라, 저장소를
+    갈아 끼워도 캐시 키는 한 글자도 달라지지 않는다. 이 경계가 흐려지면 백엔드 교체가
+    캐시를 통째로 무효로 만들거나, 더 나쁘게는 서로 다른 계산이 같은 키를 공유한다.
+    """
+
     root: str = DEFAULT_DIR
     enabled: bool = True
+    backend: str = "local"
     hits: int = 0
     misses: int = 0
     writes: int = 0
+    store: Any = None
+
+    def __post_init__(self) -> None:
+        if self.store is None:
+            self.store = resolve_backend(self.backend, self.root)
+
+    def key_for(self, node_key: str, sample_hash: str) -> str:
+        """캐시 키. 백엔드와 무관하다 — 이 함수의 결과가 곧 캐시의 정체성이다."""
+        k = node_key.split(":")[-1]  # "b2:abcd..." 에서 해시 부분만
+        return f"{k[:2]}/{k[2:18]}/{sample_hash}.pkl"
 
     def path_for(self, node_key: str, sample_hash: str) -> str:
-        k = node_key.split(":")[-1]  # "b2:abcd..." 에서 해시 부분만
-        return os.path.join(self.root, k[:2], k[2:18], f"{sample_hash}.pkl")
+        """로컬 백엔드에서의 실제 경로. 진단용이다."""
+        return os.path.join(self.root, *self.key_for(node_key, sample_hash).split("/"))
 
     def get(self, node_key: str, sample_hash: str) -> Tuple[bool, Any]:
         if not self.enabled:
             return False, None
-        p = self.path_for(node_key, sample_hash)
-        if not os.path.exists(p):
+        raw = self.store.read(self.key_for(node_key, sample_hash))
+        if raw is None:
             self.misses += 1
             return False, None
         try:
-            with open(p, "rb") as fh:
-                v = pickle.load(fh)
-            self.hits += 1
-            return True, v
+            v = pickle.loads(raw)
         except Exception:
             self.misses += 1
             return False, None
+        self.hits += 1
+        return True, v
 
     def put(self, node_key: str, sample_hash: str, value: Any) -> None:
         if not self.enabled:
             return
-        p = self.path_for(node_key, sample_hash)
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        tmp = p + ".tmp"
-        with open(tmp, "wb") as fh:
-            pickle.dump(value, fh, protocol=pickle.HIGHEST_PROTOCOL)
-        os.replace(tmp, p)  # 원자 교체 — Windows에서 부분 파일이 남지 않는다
+        self.store.write(
+            self.key_for(node_key, sample_hash),
+            pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL),
+        )
         self.writes += 1
 
     def clear(self, node_key: Optional[str] = None) -> int:
-        if not os.path.isdir(self.root):
-            return 0
         if node_key is None:
-            n = sum(len(files) for _, _, files in os.walk(self.root))
-            shutil.rmtree(self.root, ignore_errors=True)
-            return n
+            return self.store.delete_prefix("")
         k = node_key.split(":")[-1]
-        d = os.path.join(self.root, k[:2], k[2:18])
-        n = len(os.listdir(d)) if os.path.isdir(d) else 0
-        shutil.rmtree(d, ignore_errors=True)
-        return n
+        return self.store.delete_prefix(f"{k[:2]}/{k[2:18]}")
 
     @property
     def stats(self) -> Dict[str, int]:

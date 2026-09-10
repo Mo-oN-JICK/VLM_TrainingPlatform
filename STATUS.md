@@ -4,8 +4,8 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-10
-- 마지막 커밋: Qwen2-VL-2B 실물 백본으로 G4까지 (3a 실험)
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **203 passed**
+- 마지막 커밋: Phase 8 확장 지점 — 캐시 백엔드 이음매와 다중 GPU 인터페이스
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **226 passed**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -368,10 +368,33 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 - [x] ~~세션을 넘는 History 복원~~ — 저널 + 내용 주소 스냅샷 저장소 (7차)
 - 완료 조건: UI만으로 그래프 하나를 처음부터 만들어 CLI로 실행한다 — **충족**. **3b 전체가 끝났다.**
 
-## 4. 그 이후 (요약 — 상세는 `docs/design/10-roadmap.md`)
+## 4. Phase 8 — 확장 지점 ✅ (인터페이스 수준)
 
-- **Phase 7 UI** — 7파티션, 수직 캔버스, Debug Output, History
-- **Phase 8 확장** — 다중 GPU, 원격, 캐시 백엔드
+완료 조건 두 개를 `tests/test_phase8.py` 23개로 고정했다.
+
+**1. 캐시 백엔드를 갈아도 키가 같다**
+- [x] `engine/storage.py` — `StorageBackend` 프로토콜, `LocalFiles`(기본)와 `InMemory`.
+      바이트를 어디에 두는가만 답한다
+- [x] **키 계산은 `CacheStore`에만 있다.** 이 경계가 흐려지면 백엔드 교체가 캐시를 통째로
+      무효로 만들거나, 더 나쁘게는 서로 다른 계산이 같은 키를 공유한다
+- [x] CLI `run --cache-backend {local,memory}`. 파이썬에서만 고를 수 있는 기능은 반쯤 만든 것이다
+
+**2. 다중 GPU가 인터페이스 수준에서 동작하되 기본은 단일 GPU**
+- [x] `Distributed(enabled, strategy, world_size)`. 켜지 않았는데 world_size가 2 이상이거나,
+      켰는데 1이거나, strategy가 어긋나면 **전부 거부한다**
+- [x] **모르는 전략은 아는 척하지 않는다** — fsdp/deepspeed는 가중치를 장치에 쪼개 장치당
+      VRAM이 달라지는데 그 계산이 없다. 단일 GPU 숫자로 통과시키면 G4가 존재할 이유가 사라지므로
+      거부한다. 지금 예산이 답할 수 있는 것은 ddp뿐이다
+- [x] 프로파일 `linux_multi_gpu` 추가. 기본 `windows_single_gpu`는 여전히 `distributed:true`를
+      거부한다. 확장 프로파일이 기본과 다른 점은 다중 GPU 하나뿐이다 —
+      **프로파일 표는 "안 도는 것"만 담는다. 느린 것(disk offload)은 넣지 않는다.**
+      게이트가 취향을 말하기 시작하면 게이트를 믿지 않게 된다
+- [x] `world_size`가 `digest()`에 들어간다. 장치 수만 바꾼 다른 학습이 같은 해시를 쓰면 재현이 무너진다
+- [x] 예산 보고서가 "아래 VRAM은 **장치 하나 기준**이고 유효 배치가 N배가 된다"고 적는다.
+      적지 않으면 장치를 늘려 VRAM이 준다고 읽는다
+- [x] 스펙에서 `runtime_profile` 한 줄과 `distributed` 블록만 바꿔 확인했다. **그래프는 그대로다**
+
+**남은 것**: 실제 다중 GPU 실행(이 PC에 장치가 하나다), fsdp/deepspeed의 예산 모델, 원격 실행
 
 ---
 

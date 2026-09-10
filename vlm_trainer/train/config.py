@@ -36,13 +36,18 @@ OPTIMIZER_BYTES = {
 # 기본 실행 프로파일(단일 GPU / Windows)에서 돌지 않는 선택지.
 # 여기 걸리면 학습을 시작하지 않는다 — 큐에 넣고 퇴근한 밤이 통째로 날아가는 것을 막는다.
 PROFILE_UNSUPPORTED: Dict[str, Dict[str, str]] = {
+    # 기본 프로파일. 이 표가 비지 않는 한 다중 GPU는 기본값이 되지 않는다.
     "windows_single_gpu": {
         "attn_impl:flash_attn2": "sdpa로 바꿔라. flash-attn은 Windows 휠이 없다",
         "optimizer:deepspeed_adam": "adamw_torch 또는 adamw_bnb_8bit를 써라. DeepSpeed는 Windows를 지원하지 않는다",
         "optimizer:adamw_apex_fused": "adamw_torch를 써라. apex는 Windows 빌드가 없다",
         "offload:disk": "offload를 none 또는 cpu로 두어라",
         "distributed:true": "기본 프로파일은 단일 GPU다. 다중 GPU는 확장 지점이지 기본값이 아니다",
-    }
+    },
+    # 확장 프로파일. 프로파일을 바꾸는 것은 스펙의 한 줄이고, 그래프는 그대로다.
+    # 이 표는 "그 프로파일에서 **돌지 않는** 것"만 담는다. 느린 것은 여기 들어오지 않는다 —
+    # 게이트가 취향을 말하기 시작하면 게이트를 믿지 않게 된다.
+    "linux_multi_gpu": {},
 }
 
 
@@ -117,8 +122,59 @@ class BudgetPolicy:
 
 @dataclass
 class Distributed:
+    """다중 GPU는 **확장 지점이지 기본값이 아니다.**
+
+    지금 예산이 답할 수 있는 것은 DDP뿐이다. DDP는 장치마다 모델을 통째로 들고 있어
+    장치당 VRAM이 단일 GPU와 같고, 늘어나는 것은 유효 배치다. FSDP나 DeepSpeed는
+    가중치와 옵티마이저를 쪼개 장치당 VRAM 자체가 달라지는데, 그 계산은 아직 없다.
+    모르는 것을 아는 척 답하면 G4가 존재할 이유가 사라지므로 거부한다.
+    """
+
     enabled: bool = False
-    strategy: str = "none"
+    strategy: str = "none"  # none | ddp  (fsdp/deepspeed는 아직 예산을 모른다)
+    world_size: int = 1
+
+    KNOWN = ("none", "ddp")
+    UNMODELED = ("fsdp", "deepspeed")
+
+    def errors(self) -> List[str]:
+        out: List[str] = []
+        if not self.enabled:
+            if self.world_size != 1:
+                out.append(
+                    f"distributed.enabled가 false인데 world_size가 {self.world_size}다.\n"
+                    "  둘 중 하나가 오타다. 켜지 않은 다중 GPU는 없다.\n"
+                    "  이 검사가 없었다면: 한 장으로 돌면서 유효 배치를 네 배로 적어 둔 로그가 남는다."
+                )
+            if self.strategy not in ("none", ""):
+                out.append(
+                    f"distributed.enabled가 false인데 strategy가 {self.strategy!r}다.\n"
+                    "  enabled를 켜거나 strategy를 none으로 두어라."
+                )
+            return out
+
+        if self.strategy in self.UNMODELED:
+            out.append(
+                f"distributed.strategy = {self.strategy}는 아직 예산을 계산하지 못한다.\n"
+                "  이 전략은 가중치와 옵티마이저를 장치에 쪼개므로 장치당 VRAM이 달라지는데,\n"
+                "  그 모델이 없다. ddp를 쓰거나, 이 전략의 예산 계산을 먼저 구현하라.\n"
+                "  이 검사가 없었다면: 단일 GPU 기준 숫자로 통과시킨 뒤 실제로는 다른 곳에서 터진다."
+            )
+        elif self.strategy not in self.KNOWN:
+            out.append(
+                f"알 수 없는 distributed.strategy {self.strategy!r} "
+                f"(아는 것: {sorted(self.KNOWN + self.UNMODELED)})"
+            )
+        if self.world_size < 2:
+            out.append(
+                f"distributed.enabled가 true인데 world_size가 {self.world_size}다.\n"
+                "  다중 GPU를 켰으면 장치가 둘 이상이어야 한다."
+            )
+        return out
+
+    def effective_multiplier(self) -> int:
+        """유효 배치가 몇 배가 되는가. DDP는 장치 수만큼 곱해진다."""
+        return self.world_size if self.enabled else 1
 
 
 @dataclass
@@ -138,12 +194,13 @@ class TrainerConfig:
     source_path: str = ""
 
     def profile_errors(self, profile: str) -> List[str]:
-        """실행 프로파일이 지원하지 않는 선택지를 골라낸다."""
+        """실행 프로파일이 지원하지 않는 선택지와, 그 자체로 모순인 설정을 골라낸다."""
+        out_self = self.distributed.errors()
         table = PROFILE_UNSUPPORTED.get(profile) or {}
         picked = [f"attn_impl:{self.attn_impl}", f"offload:{self.offload}",
                   f"distributed:{str(self.distributed.enabled).lower()}"]
         picked += [f"optimizer:{s.optimizer}" for s in self.stages]
-        out: List[str] = []
+        out: List[str] = list(out_self)
         for key in picked:
             if key in table:
                 field_name, value = key.split(":", 1)
@@ -166,7 +223,11 @@ class TrainerConfig:
             sequence=Sequence(**(d.get("sequence") or {})),
             loss=Loss(**(d.get("loss") or {})),
             budget=BudgetPolicy(**(d.get("budget") or {})),
-            distributed=Distributed(**(d.get("distributed") or {})),
+            distributed=Distributed(
+                enabled=bool((d.get("distributed") or {}).get("enabled", False)),
+                strategy=str((d.get("distributed") or {}).get("strategy", "none")),
+                world_size=int((d.get("distributed") or {}).get("world_size", 1)),
+            ),
             attn_impl=str(d.get("attn_impl", "sdpa")),
             offload=str(d.get("offload", "none")),
             source_path=source_path,
@@ -196,6 +257,13 @@ class TrainerConfig:
         return {
             "backbone": self.backbone,
             "dtype": self.dtype,
+            # world_size는 유효 배치를 바꾼다 — 결과가 달라지는 값은 정규 표현에 들어가야 한다.
+            # 빠져 있으면 장치 수만 바꾼 다른 학습이 같은 해시를 쓴다.
+            "distributed": {
+                "enabled": self.distributed.enabled,
+                "strategy": self.distributed.strategy,
+                "world_size": self.distributed.world_size,
+            },
             "quantization": self.quantization.__dict__,
             "vision": self.vision.__dict__,
             "sequence": self.sequence.__dict__,
