@@ -85,23 +85,21 @@ def test_connect_replaces_the_existing_wire(ed):
     assert [e.src for e in ed.graph.edges if e.dst == "n_ev:regions"] == ["p_crop/n_exp:regions"]
 
 
-def test_disconnect_that_empties_a_required_input_is_refused(ed):
-    """필수 입력을 비우는 것은 거부된다. 그래프는 언제나 컴파일되는 상태로 남는다."""
+def test_disconnect_that_empties_a_required_input_marks_it_incomplete(ed):
+    """배선을 끊는 것은 허용하되 저장은 막는다 — 다시 이을 수 있어야 편집이다."""
     res = ed.disconnect("n_ev:stats")
-    assert not res["ok"] and "필수 입력" in res["detail"]
-    assert any(e.dst == "n_ev:stats" for e in ed.graph.edges)
+    assert res["ok"] and not ed.valid
+    assert "필수 입력" in ed.error
+    assert not ed.save()["ok"]
+
+    assert ed.connect("n_stats:stats", "n_ev:stats")["ok"]
+    assert ed.valid and ed.save()["ok"]
 
 
 def test_optional_input_can_be_disconnected(ed):
     res = ed.disconnect("n_ev:regions")  # regions는 optional
     assert res["ok"], res.get("detail")
     assert all(e.dst != "n_ev:regions" for e in ed.graph.edges)
-
-
-def test_removing_a_node_that_others_need_is_refused(ed):
-    res = ed.remove_node("n_stats")
-    assert not res["ok"], "상류가 사라지면 하류의 필수 입력이 비므로 거부되어야 한다"
-    assert any(n.id == "n_stats" for n in ed.graph.nodes)
 
 
 def test_param_change_recompiles_and_changes_the_hash(ed):
@@ -118,12 +116,6 @@ def test_bad_param_value_is_refused_not_crashed(ed):
     assert not res["ok"] and res["reason"]
     assert ed.compiled.spec_hash == before
     assert ed.compiled.nodes["n_plot"].params["size"] != "이건 크기가 아니다"
-
-
-def test_adding_a_node_gives_a_free_id(ed):
-    res = ed.add_node("ts.stats@1.0.0")
-    # 새 노드는 아직 아무것도 먹이지 않으므로 필수 입력이 비어 거부된다
-    assert not res["ok"] and "필수 입력" in res["detail"]
 
 
 # ── 저장 ────────────────────────────────────────────────────────────────
@@ -332,3 +324,98 @@ def test_history_panel_renders_points_and_diffs(ed):
     assert page.count('class="hrow') == 2
     assert "vlmtRewind(" in page and "vlmtUndo()" in page
     assert "z_thresh: 4.5" in page
+
+
+# ── 노드 추가·삭제와 미완성 상태 ────────────────────────────────────────
+
+
+def test_adding_a_node_is_allowed_but_marks_the_graph_incomplete(ed):
+    """노드를 놓고 배선을 잇는 사이의 상태를 허용해야 편집기로 그래프를 만들 수 있다."""
+    assert ed.valid
+
+    res = ed.add_node("ts.stats@1.0.0")
+    assert res["ok"] and res["id"] == "n_stats_2"
+    assert not ed.valid, "미완성인데 valid로 남았다"
+    assert "필수 입력" in ed.error
+    assert "n_stats_2" in ed.compiled.nodes  # 그려는 볼 수 있어야 한다
+
+
+def test_incomplete_graph_is_not_saved(ed):
+    ed.add_node("ts.stats@1.0.0")
+    res = ed.save()
+    assert not res["ok"] and "필수 입력" in res["detail"]
+
+    original = open(ed.path, encoding="utf-8").read()
+    assert "n_stats_2" not in original
+
+
+def test_wiring_the_new_node_makes_it_valid_again(ed):
+    ed.add_node("ts.stats@1.0.0")
+    assert ed.connect("n_ts:series", "n_stats_2:series")["ok"]
+    assert not ed.valid  # 아직 아무 Output에도 기여하지 않는다
+
+    assert ed.remove_node("n_stats_2")["ok"]
+    assert ed.valid and ed.save()["ok"]
+
+
+def test_type_errors_are_still_refused_while_incomplete(ed):
+    """구조는 미뤄도 타입은 미루지 않는다."""
+    ed.add_node("ts.stats@1.0.0")
+    res = ed.connect("n_img:image", "n_stats_2:series")  # 이미지를 시계열 입력에
+    assert not res["ok"]
+    assert "TypeError" in res["detail"] or "base" in res["detail"]
+
+
+def test_removing_a_node_leaves_the_rest_wired(ed):
+    res = ed.remove_node("n_stats")
+    assert res["ok"], "삭제는 되어야 한다 — 다시 이을 수 있게"
+    assert not ed.valid
+    assert all(e.src_node != "n_stats" and e.dst_node != "n_stats" for e in ed.graph.edges)
+
+    assert ed.undo()["ok"]
+    assert ed.valid and "n_stats" in ed.compiled.nodes
+
+
+def test_library_panel_offers_click_and_drag(ed):
+    from vlm_trainer.ui import render as render_mod
+
+    page = render_mod.render_editor(ed)
+    assert page.count('class="libnode"') >= 25
+    assert "vlmtAdd(" in page and "vlmtRemove(" in page
+    # 끌어다 놓기는 배선 드래그와 같은 마우스 이벤트를 쓴다
+    assert "libdrag" in page and "candrop" in page
+    assert "dataTransfer" not in page, "손잡이는 한 벌만 둔다"
+
+    viewer = render_mod.render(ed.compiled)
+    assert "vlmtAdd(" not in viewer, "뷰어에는 편집 손잡이가 없어야 한다"
+
+
+def test_router_add_and_remove(ed):
+    code, payload = server_mod.handle(ed, "/api/add", {"type": "ts.stats@1.0.0"})
+    assert code == 200 and payload["id"] == "n_stats_2"
+    assert payload["state"]["valid"] is False
+
+    code, payload = server_mod.handle(ed, "/api/remove", {"node": "n_stats_2"})
+    assert code == 200 and payload["state"]["valid"] is True
+
+
+def test_unwired_external_call_node_waits_for_wiring(ed):
+    """배선 전에는 물질화 경계의 앞뒤가 정해지지 않는다 — 미루되 저장은 막는다."""
+    res = ed.add_node("expert.propose@1.0.0")
+    assert res["ok"], res.get("reason")
+    assert not ed.valid and not ed.save()["ok"]
+
+
+def test_every_handler_the_page_calls_is_defined(ed):
+    """인라인 onclick이 부르는 함수가 실제로 선언되어 있어야 한다."""
+    import re
+
+    from vlm_trainer.ui import render as render_mod
+
+    page = render_mod.render_editor(ed)
+    assert "async async" not in page, "패치가 키워드를 겹쳐 스크립트 전체가 죽는다"
+
+    called = set(re.findall(r'onclick="(vlmt\w+)\(', page))
+    declared = set(re.findall(r"(?:async )?function (vlmt\w+)\(", page))
+    assert called, "편집기인데 손잡이가 하나도 없다"
+    assert called <= declared, f"선언되지 않은 핸들러: {sorted(called - declared)}"

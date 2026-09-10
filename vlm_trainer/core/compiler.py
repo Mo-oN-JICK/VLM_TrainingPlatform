@@ -208,8 +208,17 @@ def _lanes(order: List[str], edges: List[Edge], kinds: Dict[str, NodeKind]) -> D
 
 
 def compile_graph(
-    g: GraphModel, *, recipe_overrides: Optional[Dict[str, Any]] = None
+    g: GraphModel,
+    *,
+    recipe_overrides: Optional[Dict[str, Any]] = None,
+    draft: bool = False,
 ) -> CompiledGraph:
+    """draft=True는 **편집 중의 미완성 그래프**만을 위한 것이다.
+
+    타입 검사(G1)와 정책 검사는 그대로 돈다. 완결성 검사(미연결 필수 포트, 도달 불가 노드,
+    Output 없음, 미해결 제네릭)만 미룬다 — 노드를 놓고 배선을 잇는 사이의 상태를 허용하기 위해서다.
+    저장과 실행은 언제나 strict 경로를 지난다. 게이트 우회로가 아니다.
+    """
     errors: List[GateError] = []
 
     # 2) resolve + 4) inline
@@ -309,7 +318,7 @@ def compile_graph(
             taint |= set(up.taint)
 
         # 6) 미연결 필수 입력
-        for port, spec_port in d.inputs.items():
+        for port, spec_port in ({} if draft else d.inputs).items():
             if port not in cn.inputs and not spec_port.optional:
                 errors.append(
                     StructureError(
@@ -324,10 +333,17 @@ def compile_graph(
         impl = d.impl() if d.impl else None
         declared_raw = {p: port.type for p, port in d.outputs.items()}
         if impl is not None:
-            outs = impl.infer_types(
-                {p: apply_subst(t, subst) for p, t in cn.input_types.items()},
-                d.build_params(cn.params),
-            )
+            try:
+                outs = impl.infer_types(
+                    {p: apply_subst(t, subst) for p, t in cn.input_types.items()},
+                    d.build_params(cn.params),
+                )
+            except Exception:
+                # 아직 아무것도 물리지 않은 노드만 선언 타입으로 둔다.
+                # 입력이 이미 이어져 있다면 그것은 미완성이 아니라 진짜 오류다.
+                if not draft or cn.inputs:
+                    raise
+                outs = dict(declared_raw)
         else:
             outs = dict(declared_raw)
 
@@ -360,7 +376,7 @@ def compile_graph(
             )
 
         # 미해결 타입 변수
-        for p, t in resolved_out.items():
+        for p, t in ({} if draft else resolved_out).items():
             if not t.is_ground():
                 errors.append(
                     UnresolvedTypeError(
@@ -376,7 +392,9 @@ def compile_graph(
 
     # 6) Output 존재 / 도달 불가 노드
     outputs = [i for i in order if defs[i].kind is NodeKind.OUTPUT]
-    if not outputs:
+    if draft:
+        pass  # 완결성은 저장·실행 직전에 strict로 본다
+    elif not outputs:
         errors.append(
             StructureError(
                 "그래프에 Output 노드가 없다. 최소 하나의 Output으로 끝나야 한다.\n"
@@ -412,7 +430,12 @@ def compile_graph(
                 continue
             pre.add(cur)
             stack.extend(e.src_node for e in incoming[cur])
+        # 아직 아무 데도 물리지 않은 노드는 경계 앞뒤가 정해지지 않았다.
+        # 편집 중에만 판단을 미루고, 배선되는 순간 다시 본다.
+        wired = {e.src_node for e in g.edges} | {e.dst_node for e in g.edges}
         for nid in order:
+            if draft and nid not in wired:
+                continue
             if defs[nid].external_call and nid not in pre:
                 errors.append(
                     PolicyError(

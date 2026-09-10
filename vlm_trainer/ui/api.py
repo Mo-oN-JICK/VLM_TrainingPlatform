@@ -28,9 +28,10 @@ from ..spec.loader import build_project, load_project
 
 
 def _short(errors: Any) -> str:
-    text = str(errors)
-    lines = [ln for ln in text.splitlines() if ln.strip()]
-    return lines[0] if lines else text
+    lines = [ln.strip() for ln in str(errors).splitlines() if ln.strip()]
+    if lines and lines[0].endswith("게이트 위반:"):
+        lines = lines[1:]  # 개수 머리말이 아니라 첫 번째 이유를 보여준다
+    return lines[0] if lines else str(errors)
 
 
 def compat_matrix(cg: CompiledGraph) -> Dict[str, Dict[str, str]]:
@@ -118,6 +119,7 @@ class Editor:
     compiled: Optional[CompiledGraph] = None
     error: str = ""
     dirty: bool = False
+    valid: bool = True
     history: List[HistoryEntry] = field(default_factory=list)
     cursor: int = -1
 
@@ -209,21 +211,34 @@ class Editor:
 
     # ── 내부 ────────────────────────────────────────────────────────────
     def _recompile(self) -> bool:
+        """strict로 먼저 컴파일하고, 실패하면 draft로 물러선다.
+
+        타입 오류는 draft에서도 잡히므로 편집 자체가 거부된다.
+        구조가 덜 된 상태(배선을 잇는 중)만 통과하고, 그때 valid=False가 된다 —
+        저장과 실행은 valid=True를 요구한다.
+        """
         try:
             self.compiled = compile_graph(self.graph)
-            self.error = ""
+            self.error, self.valid = "", True
             return True
         except Exception as exc:
-            # 노드가 계약을 어기고 일반 예외를 던져도 편집기는 살아 있어야 한다.
-            # 컴파일되지 않는 변경은 예외 종류와 무관하게 거부한다.
+            strict_error = str(exc) if isinstance(exc, VlmtError) else f"{type(exc).__name__}: {exc}"
+
+        try:
+            self.compiled = compile_graph(self.graph, draft=True)
+        except Exception as exc:
             self.error = str(exc) if isinstance(exc, VlmtError) else f"{type(exc).__name__}: {exc}"
+            self.valid = False
             return False
+
+        self.error, self.valid = strict_error, False
+        return True
 
     def _try(self, mutate, label: str = "편집") -> Dict[str, Any]:
         """변경을 적용해 보고, 게이트를 통과하지 못하면 되돌린다."""
         before_nodes = [NodeInstance(n.id, n.type, dict(n.params)) for n in self.graph.nodes]
         before_edges = list(self.graph.edges)
-        before_compiled, before_error = self.compiled, self.error
+        before_compiled, before_error, before_valid = self.compiled, self.error, self.valid
         try:
             mutate()
         except Exception as exc:
@@ -234,7 +249,7 @@ class Editor:
             return {"ok": True}
         reason, detail = _short(self.error), self.error
         self.graph.nodes, self.graph.edges = before_nodes, before_edges
-        self.compiled, self.error = before_compiled, before_error
+        self.compiled, self.error, self.valid = before_compiled, before_error, before_valid
         return {"ok": False, "reason": reason, "detail": detail}
 
     # ── 변경 ────────────────────────────────────────────────────────────
@@ -295,6 +310,9 @@ class Editor:
     def save(self) -> Dict[str, Any]:
         if self.compiled is None:
             return {"ok": False, "reason": "컴파일되지 않은 그래프는 저장하지 않는다"}
+        if not self.valid:
+            # 편집 중인 미완성 상태는 저장하지 않는다. 스펙 파일은 언제나 돌아가는 그래프여야 한다.
+            return {"ok": False, "reason": _short(self.error), "detail": self.error}
         spec = decompile(self.compiled, keep_procedures=True)
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -327,6 +345,7 @@ class Editor:
             "name": cg.name,
             "spec_hash": cg.spec_hash,
             "dirty": self.dirty,
+            "valid": self.valid,
             "error": self.error,
             "nodes": [
                 {

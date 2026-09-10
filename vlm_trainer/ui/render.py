@@ -183,7 +183,9 @@ def render(
             f'<div class="card" style="border-top:3px solid {T.category_color(n.category)};'
             f'border-left:4px solid {T.STATE.get(state, "#4A4A4A")}">'
             f'<div class="hd"><span class="nm">{html.escape(nid)}</span>'
-            f'<span class="badge b{tag}">{tag}</span></div>'
+            f'<span class="badge b{tag}">{tag}</span>'
+            + (f"<span class=\"del\" onclick=\"vlmtRemove('{nid}')\">&times;</span>" if editable else "")
+            + "</div>"
             f'<div class="ref">{html.escape(n.ref)}</div>'
             f'<div class="sum">{html.escape(_summary(cg, nid))}</div>'
             f'<div class="st"><span class="sdot" style="background:{T.STATE.get(state, "#4A4A4A")}">'
@@ -197,11 +199,7 @@ def render(
     cats: Dict[str, int] = {}
     for nid in cg.order:
         cats[cg.nodes[nid].category] = cats.get(cg.nodes[nid].category, 0) + 1
-    lib = "".join(
-        f'<div class="lib"><span class="dot" style="background:{T.category_color(c)}"></span>'
-        f"{html.escape(c)}<span class=\"n\">{k}</span></div>"
-        for c, k in sorted(cats.items())
-    )
+    lib = _library_panel(editable)
 
     # ── 우측 패널: 노드 상세(Node Quick Info) ───────────────────────
     details = []
@@ -380,6 +378,19 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .prow input:focus{{outline:1px solid {T.NODE['border']}}}
 .mk{{font-size:9px;border:1px solid;border-radius:2px;padding:0 3px}}
 .mk.r{{color:{T.PORT['Image']}}} .mk.t{{color:{T.STATE['partial']}}}
+.libghost{{position:fixed;z-index:50;pointer-events:none;padding:3px 8px;font-size:11px;
+        background:{T.NODE['bg']};border:1px solid {T.NODE['border']};color:#D8DCDF;border-radius:3px}}
+.canvas.candrop{{outline:1px dashed {T.NODE['border']};outline-offset:-3px}}
+.libnode{{padding:3px 12px 3px 22px;font-size:11.5px;color:#A8B0B6;cursor:pointer;
+        display:flex;gap:6px;align-items:center}}
+.libnode:hover{{background:{T.NODE['bg']};color:#D8DCDF}}
+.rail details summary{{list-style:none;cursor:pointer;padding:4px 12px;font-size:12px;
+        display:flex;gap:8px;align-items:center;color:#C6CCD1}}
+.rail details summary::-webkit-details-marker{{display:none}}
+.rail .dot{{width:10px;height:10px;border-radius:2px}}
+.rail .n{{margin-left:auto;color:#6F7478;font-size:10.5px}}
+.del{{color:#8A9196;cursor:pointer;font-size:14px;line-height:1;padding:0 2px}}
+.del:hover{{color:{T.STATE['failed']}}}
 .hrow{{border-left:2px solid transparent;padding:4px 8px;margin-bottom:2px;cursor:pointer;
       font-size:11.5px;color:#A8B0B6;display:grid;grid-template-columns:58px 1fr 64px;gap:6px}}
 .hrow:hover{{background:{T.NODE['bg']}}}
@@ -534,6 +545,64 @@ document.addEventListener('mouseup', async (ev) => {
 });
 
 
+async function vlmtAdd(type) {
+  const {code, data} = await post('/api/add', {type: type});
+  if (code === 200) { sessionStorage.setItem('sel', data.id); location.reload(); }
+  else toast('추가 거부: ' + (data.reason || ''), true);
+}
+
+async function vlmtRemove(nid) {
+  const {code, data} = await post('/api/remove', {node: nid});
+  if (code === 200) { sessionStorage.removeItem('sel'); location.reload(); }
+  else toast('삭제 거부: ' + (data.reason || ''), true);
+}
+
+// 라이브러리에서 캔버스로 끌어다 놓아도 추가된다. 클릭 추가와 결과는 같다.
+// 놓은 위치는 자리를 정하지 않는다 — 캔버스는 위상 순서로 스스로 정렬한다.
+// 배선 드래그와 같은 마우스 이벤트를 쓴다. HTML5 drag-and-drop을 섞으면
+// 손잡이가 두 벌이 되고 한쪽만 조용히 썩는다.
+let libdrag = null, libghost = null;
+
+document.addEventListener('mousedown', (ev) => {
+  const item = ev.target.closest('.libnode');
+  if (!item) return;
+  ev.preventDefault();                      // 텍스트 선택 드래그를 막는다
+  libdrag = {type: item.dataset.type, moved: false, x: ev.clientX, y: ev.clientY};
+});
+
+document.addEventListener('mousemove', (ev) => {
+  if (!libdrag) return;
+  if (!libdrag.moved && Math.abs(ev.clientX - libdrag.x) + Math.abs(ev.clientY - libdrag.y) < 4) return;
+  libdrag.moved = true;
+  if (!libghost) {
+    libghost = document.createElement('div');
+    libghost.className = 'libghost';
+    libghost.textContent = libdrag.type.split('@')[0];
+    document.body.appendChild(libghost);
+  }
+  libghost.style.left = (ev.clientX + 12) + 'px';
+  libghost.style.top = (ev.clientY + 12) + 'px';
+  const canvas = document.querySelector('.canvas');
+  if (canvas) canvas.classList.toggle('candrop', !!ev.target.closest('.canvas'));
+});
+
+document.addEventListener('mouseup', (ev) => {
+  if (!libdrag) return;
+  const d = libdrag;
+  libdrag = null;
+  if (libghost) { libghost.remove(); libghost = null; }
+  const canvas = document.querySelector('.canvas');
+  if (canvas) canvas.classList.remove('candrop');
+  // 끌지 않았으면 클릭이다 — onclick 이 그대로 처리한다
+  if (d.moved && ev.target.closest('.canvas')) vlmtAdd(d.type);
+});
+
+document.addEventListener('keydown', (ev) => {
+  if (!window.EDITABLE || ev.key !== 'Delete') return;
+  const sel = document.querySelector('.node.sel');
+  if (sel) vlmtRemove(sel.dataset.node);
+});
+
 async function vlmtUndo() {
   const {code, data} = await post('/api/undo', {});
   if (code === 200) location.reload(); else toast(data.reason || '', true);
@@ -610,6 +679,33 @@ def render_editor(editor: Any) -> str:
         banner=editor.error,
         editor=editor,
     )
+
+
+def _library_panel(editable: bool) -> str:
+    """Node Library — 카테고리별 노드 목록. 편집 모드에서는 클릭하거나 캔버스로 끌어 추가한다."""
+    from ..core.registry import categories
+
+    out = []
+    for cat, defs in categories().items():
+        rows = []
+        for d in defs:
+            tag = {NodeKind.INPUT: "I", NodeKind.PROCESSING: "P", NodeKind.OUTPUT: "O"}[d.kind]
+            attrs = (
+                f' data-type="{html.escape(d.ref)}"'
+                f' onclick="vlmtAdd(\'{html.escape(d.ref)}\')"'
+                if editable
+                else ""
+            )
+            rows.append(
+                f'<div class="libnode"{attrs} title="{html.escape(d.doc.summary)}">'
+                f'<span class="badge b{tag}">{tag}</span>{html.escape(d.type)}</div>'
+            )
+        out.append(
+            f"<details><summary><span class='dot' style='background:"
+            f"{T.category_color(cat)}'></span>{html.escape(cat)}"
+            f"<span class='n'>{len(defs)}</span></summary>{''.join(rows)}</details>"
+        )
+    return "".join(out)
 
 
 def _history_panel(editor: Any) -> str:

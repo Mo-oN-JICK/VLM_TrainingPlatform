@@ -3,9 +3,9 @@
 이 파일은 **세션이 중단되어도 다음 세션이 그대로 이어받을 수 있게** 유지한다.
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
-- 최종 갱신: 2026-09-09
-- 마지막 커밋: Phase 7 편집기 3차 — History 되감기
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **159 passed**
+- 최종 갱신: 2026-09-10
+- 마지막 커밋: Phase 7 편집기 4차 — 노드 추가·삭제
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **166 passed**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -234,7 +234,7 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
       이유와 필요한 어댑터를 말한다
 - [x] **연결은 교체다** — 이미 배선이 있는 입력에 놓으면 원자적으로 갈아끼운다.
       실패하면 원래 배선이 남는다. 팬인 금지는 그대로
-- [x] 필수 입력을 비우는 disconnect는 거부(그래프는 언제나 컴파일되는 상태). optional은 허용
+- [x] 필수 입력을 비우는 disconnect는 허용하되 **저장이 막힌다**(아래 draft 참고). 팬인 금지는 그대로
 - [x] 노드가 일반 예외를 던져도 편집기는 살아 있고 변경만 거부된다
 - [x] `ui/server.py` — 표준 라이브러리 `http.server`. 127.0.0.1 전용. 라우팅은 순수 함수라 소켓 없이 테스트된다
 - [x] 저장은 명시적 — 편집 중에는 디스크가 바뀌지 않고, Save가 decompile해 원자 교체한다
@@ -257,7 +257,24 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
       스펙이 텍스트라 편집 하나가 두 줄로 남는다
 - [x] `edit_history.jsonl`을 스펙 옆에 append-only로 남긴다 — 사람이 읽는 기록
 
-**아직 없는 것**: 노드 추가/삭제 UI(API는 있다), 라이브 실행 갱신, Parameter Recipe 편집기,
+### Phase 7 (4차) — 노드 추가·삭제와 draft 컴파일 ✅
+
+- [x] **Node Library가 진짜 목록이 됐다** — 카테고리별 `<details>`에 등록된 노드 27개가 들어간다.
+      항목을 **누르면** 추가되고, **캔버스로 끌어다 놓아도** 추가된다. 결과는 같다
+- [x] 끌기는 배선 드래그와 **같은 마우스 이벤트**를 쓴다. HTML5 drag-and-drop을 섞지 않는다 —
+      손잡이가 두 벌이면 한쪽만 조용히 썩는다
+- [x] 놓은 위치는 자리를 정하지 않는다. 캔버스는 위상 순서로 스스로 정렬한다(Mech-Vision과 다른 점)
+- [x] 삭제는 카드의 `×` 또는 선택 후 Delete. 상류를 지워도 거부하지 않고 `valid=False`로 남긴다
+- [x] **draft 컴파일** (`compile_graph(..., draft=True)`) — 편집 중의 미완성 그래프만을 위한 것이다.
+      타입 검사(G1)와 정책 검사는 **그대로 돈다**. 미루는 것은 완결성뿐이다:
+      미연결 필수 포트 / 도달 불가 노드 / Output 없음 / 미해결 제네릭.
+      아직 아무 데도 물리지 않은 노드는 물질화 경계의 앞뒤가 정해지지 않아 배치 판단도 미룬다
+- [x] **저장과 실행은 언제나 strict 경로를 지난다.** `valid=False`면 Save가 거부하고 그 이유를 말한다.
+      게이트 우회로가 아니다 — 미완성 상태를 디스크에 남기지 않는 장치다
+- [x] 검증 36개(`tests/test_editor.py`). 인라인 `onclick`이 부르는 함수가 실제로 선언돼 있는지도 본다
+      (`async` 중복 하나로 스크립트 전체가 죽은 적이 있다)
+
+**아직 없는 것**: 라이브 실행 갱신, Parameter Recipe 편집기,
 세션을 넘는 History 복원(저널은 남지만 되감기는 세션 안에서만).
 
 ### 설계 문서
@@ -278,7 +295,7 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 - 완료 조건: 같은 그래프·같은 스펙에서 `backbone:` 한 줄만 바꿔 학습이 완주한다
 
 ### 3b. Phase 7 마무리 — 편집기의 남은 절반
-- [ ] 노드 추가/삭제 UI (Node Library에서 캔버스로 드래그). API는 이미 있다
+- [x] ~~노드 추가/삭제 UI~~ — 클릭 추가와 드래그 추가 둘 다 된다 (4차)
 - [ ] Parameter Recipe 편집기 (Project Assistant 안)
 - [ ] 실행을 편집기에서 띄우고 상태를 라이브로 반영(SSE 또는 폴링)
 - 완료 조건: UI만으로 그래프 하나를 처음부터 만들어 CLI로 실행한다
@@ -297,6 +314,7 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 | GPU | RTX 3060 **12GB** (4090 아님) | Phase 3에서 프로파일 분리. stage1 projector 정렬은 `grad_checkpointing: true` + `per_device: 1`이어야 들어간다 |
 | torch | **`.venv`에 설치됨** (2.14.0+cu130, CUDA True) | 3.14 host에는 없다. 항상 `.venv\Scripts\python.exe`를 쓴다 |
 | `uv venv`는 pip를 넣지 않는다 | 활성화해도 `pip`가 venv 밖으로 샌다 | venv 안에서는 **항상 `python -m pip`**. 이 venv에는 pip를 넣어 두었다 |
+| 브라우저 자동화 | 스크린샷(1568px)과 뷰포트(1920px) 좌표계가 다르고, 툴바 높이(y≈40)에는 이벤트가 도달하지 않으며 키 입력은 페이지에 전달되지 않는다 | 좌표는 `1568/innerWidth`로 환산한다. 키 경로는 페이지 안에서 이벤트를 던져 확인한다 |
 | 예산 프로파일 | 기본 `rtx3060_12gb`(이 PC). 4090은 `--device rtx4090_24gb` 또는 trainer.yaml의 `budget.device` | 그래프는 그대로다. 바뀌는 것은 Trainer 설정 한 줄 |
 | Python | 3.14.4 (`C:\Users\wnsgu\AppData\Local\Python\pythoncore-3.14-64`) | torch 휠이 3.14를 지원하는지 미확인. 안 되면 3.12 venv를 따로 만든다 |
 | 설치된 패키지 | `yaml` `pytest` `numpy` `pydantic` `PIL` 있음 | 코어는 표준 라이브러리 + yaml만 쓴다. 새 의존성은 정말 필요할 때만 |
