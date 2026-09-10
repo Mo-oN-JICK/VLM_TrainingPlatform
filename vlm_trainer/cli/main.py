@@ -846,6 +846,24 @@ def main(argv: Optional[List[str]] = None) -> int:
     except VlmtError as e:
         print(f"{type(e).__name__}: {e}", file=sys.stderr)
         return 2
+    except Exception as e:
+        # 노드가 계약을 어기고 일반 예외를 던져도(주로 --set 으로 들어온 엉뚱한 값)
+        # 사람에게는 트레이스백이 아니라 무엇이 잘못됐는지가 보여야 한다.
+        # 편집기는 이미 이 경우를 잡는데 CLI만 날것으로 터지고 있었다.
+        print(f"{type(e).__name__}: {e}", file=sys.stderr)
+        print("", file=sys.stderr)
+        print(
+            "  노드가 받아들일 수 없는 값이다. --set 으로 준 값의 형태를 확인하라 "
+            "(예: 리스트는 --set n_plot.size=[640,320]).",
+            file=sys.stderr,
+        )
+        print(
+            "  전체 추적을 보려면 VLMT_TRACE=1 을 설정하고 다시 실행하라.",
+            file=sys.stderr,
+        )
+        if os.environ.get("VLMT_TRACE"):
+            raise
+        return 2
 
 
 if __name__ == "__main__":
