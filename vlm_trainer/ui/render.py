@@ -270,12 +270,21 @@ def render(
         )
     tools = _EDITOR_TOOLS if editable else _VIEWER_TOOLS
     history = _history_panel(editor) if (editable and editor is not None) else ''
+    recipe = _recipe_panel(editor) if (editable and editor is not None) else ''
+    # 오버레이가 걸려 있으면 화면의 해시와 저장될 해시가 다르다. 감추지 않는다.
+    spec_hash = cg.spec_hash
+    base = getattr(editor, 'base', None) if editable else None
+    if base is not None and base.spec_hash != cg.spec_hash:
+        spec_hash = f"{cg.spec_hash} (레시피 적용) · 스펙 {base.spec_hash}"
+    overlaid = set(getattr(editor, 'overlay', None) and
+                   [f'{n}:{p}' for (n, p) in editor._overlay_paths()] or [])
     banner_html = f'<div class="banner">{html.escape(banner)}</div>' if banner else ""
 
     return _TEMPLATE.format(
         title=html.escape(head),
-        params=_params_panel(cg) if editable else '',
+        params=_params_panel(cg, overlaid) if editable else '',
         history=history,
+        recipe=recipe,
         scripts=scripts,
         tools=tools,
         banner=banner_html,
@@ -288,7 +297,7 @@ def render(
         details="".join(details),
         debug=debug_block,
         quarantine=quarantine,
-        spec_hash=cg.spec_hash,
+        spec_hash=spec_hash,
         nodes=len(cg.nodes),
         edges=len(cg.edges),
         lanes=max_lane + 1,
@@ -391,6 +400,42 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .rail .n{{margin-left:auto;color:#6F7478;font-size:10.5px}}
 .del{{color:#8A9196;cursor:pointer;font-size:14px;line-height:1;padding:0 2px}}
 .del:hover{{color:{T.STATE['failed']}}}
+.recipe{{margin-bottom:14px}}
+.recipe h4{{margin-bottom:4px}}
+.rdirty{{margin-left:8px;font-size:10px;color:{T.STATE['running']};font-weight:400}}
+.rstat{{font-size:11.5px;color:#A8B0B6;margin-bottom:6px}}
+.rstat b{{color:#D8DCDF}}
+.rwhy{{margin-left:8px;color:#C9A87A;font-size:10.5px}}
+.obar{{background:{T.NODE['bg']};border-left:2px solid {T.NODE['border_selected']};
+      padding:6px 8px;font-size:11.5px;color:#C6CCD1;margin-bottom:4px}}
+.obar b{{color:#D8DCDF}}
+.orow{{display:grid;grid-template-columns:1fr auto auto 22px;gap:6px;align-items:center;
+      font-size:11.5px;color:#A8B0B6;padding:3px 8px}}
+.orow.store{{display:flex;flex-wrap:wrap;gap:4px 0;padding-top:8px}}
+.orow.store input{{flex:1 1 100%;margin-bottom:4px}}
+.orow input{{background:{T.SURFACE['canvas']};border:1px solid {T.NODE['border']};
+      color:#D8DCDF;font-size:11px;padding:2px 6px}}
+.oval{{font-family:ui-monospace,Consolas,monospace;color:#57F7E6;font-size:11px}}
+.rbase{{font-family:ui-monospace,Consolas,monospace;color:#6F7478;font-size:10px}}
+.odrop{{cursor:pointer;color:#8A9196;text-align:center;line-height:20px;border-radius:2px;
+      min-width:20px;justify-self:end}}
+.odrop:hover{{color:{T.STATE['failed']};background:{T.NODE['bg']}}}
+.rrow{{display:grid;grid-template-columns:1fr auto 22px;gap:6px;align-items:center;
+      padding:4px 8px;font-size:11.5px;color:#A8B0B6;border-left:2px solid transparent}}
+.rrow.on{{border-left-color:{T.NODE['border_selected']};background:{T.NODE['bg']};color:#D8DCDF}}
+.rrow .rname{{cursor:pointer}}
+.rrow .rname:hover{{color:#D8DCDF;text-decoration:underline}}
+.rrow .rn{{color:#6F7478;font-size:10.5px}}
+.rrow .ract{{color:{T.STATE['success']};margin-right:3px}}
+.rrow .rdel{{cursor:pointer;color:#6F7478;text-align:center;line-height:20px;border-radius:2px;
+      min-width:20px;justify-self:end}}
+.rrow .rdel:hover{{color:{T.STATE['failed']};background:{T.NODE['bg']}}}
+.rnote{{grid-column:1/4;color:#6F7478;font-size:10.5px}}
+.btn.sm{{padding:1px 8px;font-size:10.5px;margin-left:6px}}
+.mk.o{{background:#2B4A57;color:#8FE3F5}}
+.padd{{cursor:pointer;color:#6F7478;margin-left:4px;font-size:12px;
+      min-width:16px;line-height:16px;text-align:center;border-radius:2px}}
+.padd:hover{{color:#57F7E6;background:{T.NODE['bg']}}}
 .hrow{{border-left:2px solid transparent;padding:4px 8px;margin-bottom:2px;cursor:pointer;
       font-size:11.5px;color:#A8B0B6;display:grid;grid-template-columns:58px 1fr 64px;gap:6px}}
 .hrow:hover{{background:{T.NODE['bg']}}}
@@ -440,6 +485,7 @@ _TEMPLATE = """<!doctype html>
     {cards}
   </div></div>
   <div class="side">
+    {recipe}
     {history}
     {params}
     {debug}
@@ -603,6 +649,36 @@ document.addEventListener('keydown', (ev) => {
   if (sel) vlmtRemove(sel.dataset.node);
 });
 
+async function vlmtRecipe(id) {
+  const {code, data} = await post('/api/recipe/select', {id: id});
+  if (code === 200) location.reload(); else toast('레시피 적용 거부: ' + (data.reason || ''), true);
+}
+async function vlmtRecipeClear() {
+  const {code, data} = await post('/api/recipe/select', {id: null});
+  if (code === 200) location.reload(); else toast(data.reason || '', true);
+}
+async function vlmtRecipeAdd(path) {
+  const {code, data} = await post('/api/recipe/add-path', {path: path});
+  if (code === 200) location.reload(); else toast('축 추가 거부: ' + (data.reason || ''), true);
+}
+async function vlmtRecipeDrop(path) {
+  const {code, data} = await post('/api/recipe/drop-path', {path: path});
+  if (code === 200) location.reload(); else toast(data.reason || '', true);
+}
+async function vlmtRecipeStore(id) {
+  const el = document.getElementById('rname');
+  const {code, data} = await post('/api/recipe/store', {id: id, name: el ? el.value : ''});
+  if (code === 200) location.reload(); else toast('담기 거부: ' + (data.reason || ''), true);
+}
+async function vlmtRecipeDelete(id) {
+  const {code, data} = await post('/api/recipe/delete', {id: id});
+  if (code === 200) location.reload(); else toast(data.reason || '', true);
+}
+async function vlmtRecipeActive(id) {
+  const {code, data} = await post('/api/recipe/active', {id: id});
+  if (code === 200) location.reload(); else toast(data.reason || '', true);
+}
+
 async function vlmtUndo() {
   const {code, data} = await post('/api/undo', {});
   if (code === 200) location.reload(); else toast(data.reason || '', true);
@@ -708,6 +784,81 @@ def _library_panel(editable: bool) -> str:
     return "".join(out)
 
 
+def _recipe_panel(editor: Any) -> str:
+    '''Parameter Recipe 패널.
+
+    레시피는 값만 덮는 오버레이라 프로젝트 스펙을 건드리지 않는다. 그래서 적용 중이라는
+    사실 자체를 눈에 띄게 말해 준다 — 화면의 값과 저장될 값이 다르기 때문이다.
+    '''
+    v = editor.recipe_view()
+    if not v.get("path"):
+        return ""
+
+    st = v["status"]
+    label = {"": "없음"}.get(st, st)
+    head = (
+        '<h4>Parameter Recipe'
+        + ('<span class="rdirty">저장 안 됨</span>' if v["dirty"] else '')
+        + '</h4>'
+        + f'<div class="rstat">프로젝트 상태 <b>{html.escape(label)}</b>'
+        + ('<span class="rwhy">직접 고쳐서 레시피와 어긋난다</span>'
+           if st == "Customized" else '')
+        + '</div>'
+    )
+
+    rows = []
+    for r in v["recipes"]:
+        cls = "rrow" + (" on" if r["applied"] else "")
+        star = '<span class="ract" title="active — 프로젝트가 이 레시피대로다">*</span>' if r["active"] else ''
+        diff = sum(1 for o in r["overrides"] if o["differs"])
+        note = f'<div class="rnote">{html.escape(r["note"])}</div>' if r["note"] else ''
+        rows.append(
+            f'<div class="{cls}">'
+            f'<span class="rname" onclick="vlmtRecipe({r["id"]})">{star}{html.escape(r["label"])}</span>'
+            f'<span class="rn">{len(r["overrides"])}개'
+            + (f' · 현재와 {diff}개 다름' if diff else ' · 현재와 같다') + '</span>'
+            f'<span class="rdel" title="레시피 삭제" onclick="vlmtRecipeDelete({r["id"]})">&times;</span>'
+            f'{note}</div>'
+        )
+
+    applied = v["applied"]
+    if v["overlay"]:
+        orows = []
+        for o in v["overlay"]:
+            base = (f'<span class="rbase" title="프로젝트 스펙의 값">스펙 {html.escape(json.dumps(o["base"], ensure_ascii=False))}</span>'
+                    if o["differs"] else '')
+            orows.append(
+                f'<div class="orow"><span class="opath" title="{html.escape(o["path"])}">'
+                f'{html.escape(o["display"])}</span>'
+                f'<span class="oval">{html.escape(json.dumps(o["value"], ensure_ascii=False))}</span>'
+                f'{base}'
+                f'<span class="odrop" title="이 축을 레시피에서 뺀다" '
+                f'onclick="vlmtRecipeDrop(\'{html.escape(o["path"])}\')">&minus;</span></div>'
+            )
+        applied_label = f'{applied:02d}번' if applied is not None else '이름 없는 조합'
+        overlay = (
+            '<div class="obar">'
+            f'<b>{html.escape(applied_label)} 적용 중</b> — 화면의 값이다. '
+            '<b>프로젝트에는 저장되지 않는다.</b>'
+            '<button class="btn sm" onclick="vlmtRecipeClear()">벗기기</button>'
+            '</div>'
+            + ''.join(orows)
+            + '<div class="orow store">'
+            '<input type="text" id="rname" placeholder="이름(새 레시피)">'
+            + (f'<button class="btn sm" onclick="vlmtRecipeStore({applied})">{applied:02d}번에 담기</button>'
+               if applied is not None else '')
+            + '<button class="btn sm" onclick="vlmtRecipeStore(null)">새 레시피로</button>'
+            + (f'<button class="btn sm" onclick="vlmtRecipeActive({applied})">active로</button>'
+               if applied is not None else '')
+            + '</div>'
+        )
+    else:
+        overlay = ('<div class="doc">파라미터 옆의 <b>+</b>를 누르면 그 값이 레시피의 축이 된다. '
+                   '레시피를 누르면 그 값으로 화면이 바뀐다.</div>')
+
+    return f'<div class="recipe">{head}{overlay}{"".join(rows)}</div>'
+
+
 def _history_panel(editor: Any) -> str:
     """History 탭. 항목을 클릭하면 그 시점으로 되감는다."""
     rows = []
@@ -727,8 +878,11 @@ def _history_panel(editor: Any) -> str:
     return '<h4>History</h4>' + ("".join(reversed(rows)) or '<div class="doc">기록이 없다.</div>')
 
 
-def _params_panel(cg: CompiledGraph) -> str:
-    """노드마다 Node Parameters 블록. 카드를 고르면 그 블록만 보인다."""
+def _params_panel(cg: CompiledGraph, overlaid: Any = ()) -> str:
+    """노드마다 Node Parameters 블록. 카드를 고르면 그 블록만 보인다.
+
+    레시피가 덮고 있는 파라미터는 표식을 단다 — 그 값을 고치면 스펙이 아니라
+    오버레이가 바뀌기 때문이다."""
     from .api import param_meta
 
     blocks = []
@@ -738,8 +892,12 @@ def _params_panel(cg: CompiledGraph) -> str:
         for m in param_meta(n.ref, n.params):
             name, kind, value = m["name"], m["kind"], m["value"]
             marks = ""
-            if m["overridable"]:
+            if f"{nid}:{name}" in overlaid:
+                marks += ('<span class="mk o" title="레시피가 덮고 있다 — 고치면 오버레이가 바뀌고 프로젝트 스펙은 그대로다">레시피</span>')
+            elif m["overridable"]:
                 marks += '<span class="mk r" title="Parameter Recipe가 덮을 수 있다">recipe</span>'
+                marks += (f'<span class="padd" title="이 값을 레시피의 축으로 만든다" '
+                          f"onclick=\"vlmtRecipeAdd('{html.escape(nid)}.{html.escape(name)}')\">+</span>")
             if m["type_affecting"]:
                 marks += '<span class="mk t" title="바꾸면 배선 타입이 다시 검사된다">type</span>'
 

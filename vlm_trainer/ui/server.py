@@ -16,7 +16,9 @@ from .api import Editor
 
 ROUTES = ("/api/state", "/api/library", "/api/connect", "/api/disconnect",
           "/api/param", "/api/add", "/api/remove", "/api/save",
-          "/api/undo", "/api/redo", "/api/rewind")
+          "/api/undo", "/api/redo", "/api/rewind",
+          "/api/recipe/select", "/api/recipe/add-path", "/api/recipe/drop-path",
+          "/api/recipe/store", "/api/recipe/delete", "/api/recipe/active")
 
 
 def handle(editor: Editor, path: str, body: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
@@ -43,6 +45,18 @@ def handle(editor: Editor, path: str, body: Dict[str, Any]) -> Tuple[int, Dict[s
         res = editor.redo()
     elif path == "/api/rewind":
         res = editor.rewind(body["index"])
+    elif path == "/api/recipe/select":
+        res = editor.recipe_select(body.get("id"))
+    elif path == "/api/recipe/add-path":
+        res = editor.recipe_add_path(body["path"])
+    elif path == "/api/recipe/drop-path":
+        res = editor.recipe_drop_path(body["path"])
+    elif path == "/api/recipe/store":
+        res = editor.recipe_store(body.get("id"), body.get("name", ""), body.get("note", ""))
+    elif path == "/api/recipe/delete":
+        res = editor.recipe_delete(body["id"])
+    elif path == "/api/recipe/active":
+        res = editor.recipe_set_active(body.get("id"))
     else:
         return 404, {"ok": False, "reason": f"알 수 없는 경로 {path}"}
 

@@ -146,6 +146,52 @@ def load(project_path: str) -> RecipeBook:
     return book
 
 
+def save_book(book: RecipeBook) -> str:
+    """책을 파일로 되쓴다. 원자 교체.
+
+    파일에 있던 다른 키(`sweeps`, 주석 아닌 확장 키)는 그대로 둔다. **주석은 사라진다** —
+    `yaml.safe_dump`가 주석을 모른다. CLI의 `recipe set-active`도 같은 성질이다.
+    """
+    data: Dict[str, Any] = {}
+    if os.path.exists(book.path):
+        with open(book.path, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+
+    data["kind"] = "ParameterRecipes"
+    if book.project:
+        data["project"] = book.project
+    if book.active is None:
+        data.pop("active", None)
+    else:
+        data["active"] = int(book.active)
+    if book.display:
+        data["display"] = dict(book.display)
+
+    rows: List[Dict[str, Any]] = []
+    for rid in sorted(book.recipes):
+        r = book.recipes[rid]
+        row: Dict[str, Any] = {"id": r.id}
+        if r.name:
+            row["name"] = r.name
+        if r.note:
+            row["note"] = r.note
+        row["overrides"] = dict(r.overrides)
+        rows.append(row)
+    data["recipes"] = rows
+
+    os.makedirs(os.path.dirname(book.path) or ".", exist_ok=True)
+    tmp = book.path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        yaml.safe_dump(data, fh, allow_unicode=True, sort_keys=False, width=100)
+    os.replace(tmp, book.path)
+    return book.path
+
+
+def check_override_path(path: str) -> None:
+    """레시피가 덮을 수 있는 형태인지. 화이트리스트 검사는 컴파일러가 한다."""
+    _check_override_path(path)
+
+
 # ── 상태: 활성인가 Customized인가 ────────────────────────────────────────
 
 

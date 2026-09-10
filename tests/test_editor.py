@@ -8,6 +8,7 @@ import shutil
 import pytest
 
 from vlm_trainer.core.compiler import compile_project
+from vlm_trainer.spec import recipe as recipe_mod
 from vlm_trainer.ui import server as server_mod
 from vlm_trainer.ui import tokens as T
 from vlm_trainer.ui.api import Editor, compat_matrix
@@ -419,3 +420,114 @@ def test_every_handler_the_page_calls_is_defined(ed):
     declared = set(re.findall(r"(?:async )?function (vlmt\w+)\(", page))
     assert called, "편집기인데 손잡이가 하나도 없다"
     assert called <= declared, f"선언되지 않은 핸들러: {sorted(called - declared)}"
+
+
+# ── Parameter Recipe ────────────────────────────────────────────────────
+
+
+def test_recipe_overlays_values_without_touching_the_spec(ed):
+    """레시피는 값만 덮는다. 화면의 값과 저장될 값이 다르다는 것이 요점이다."""
+    assert ed.recipe_select(2)["ok"]
+
+    assert ed.compiled.nodes["n_stats"].params["z_thresh"] == 4.5   # 화면
+    assert ed.base.nodes["n_stats"].params["z_thresh"] == 3.0       # 스펙
+    assert "n_stats:z_thresh" in ed.state()["overlaid"]
+
+    assert ed.save()["ok"]
+    assert "4.5" not in open(ed.path, encoding="utf-8").read(), "레시피 값이 스펙에 스몄다"
+
+
+def test_procedure_exposed_override_reaches_the_inner_node(ed):
+    """`p_crop.max_n`은 Procedure 파일 안의 노드를 가리킨다 — 스펙에는 쓸 수 없는 경로다."""
+    assert ed.recipe_select(3)["ok"]
+    assert ed.compiled.nodes["p_crop/n_crop"].params["max_n"] == 1
+    assert "p_crop/n_crop:max_n" in ed.state()["overlaid"]
+
+
+def test_editing_an_overlaid_param_changes_the_overlay(ed):
+    ed.recipe_select(2)
+    assert ed.set_param("n_stats", "z_thresh", 5.5)["ok"]
+
+    assert ed.overlay["n_stats.z_thresh"] == 5.5
+    assert ed.base.nodes["n_stats"].params["z_thresh"] == 3.0
+    assert not ed.dirty, "오버레이 편집은 프로젝트를 더럽히지 않는다"
+
+
+def test_editing_a_param_the_recipe_does_not_cover_changes_the_spec(ed):
+    ed.recipe_select(2)
+    assert ed.set_param("n_plot", "line_width", 2)["ok"]
+    assert ed.base.nodes["n_plot"].params["line_width"] == 2
+    assert ed.dirty
+
+
+def test_a_path_outside_the_whitelist_is_refused(ed):
+    res = ed.recipe_add_path("n_img.color_space")
+    assert not res["ok"]
+    assert "덮어쓸 수 없다" in res["detail"]
+    assert not ed.overlay, "거부된 축이 남으면 안 된다"
+
+
+def test_a_captured_recipe_is_written_only_on_save(ed):
+    ed.recipe_select(2)
+    ed.set_param("n_stats", "z_thresh", 5.5)
+
+    res = ed.recipe_store(None, "captured")
+    assert res["ok"] and res["id"] == 5
+    before = open(ed.book.path, encoding="utf-8").read()
+    assert "captured" not in before, "편집기에서 디스크가 바뀌는 순간은 Save 하나뿐이다"
+
+    written = ed.save()["written"]
+    assert any(p.endswith("recipes.yaml") for p in written)
+    after = open(ed.book.path, encoding="utf-8").read()
+    assert "captured" in after and "5.5" in after
+
+
+def test_status_is_customized_when_the_project_drifts(ed):
+    """활성 레시피가 프로젝트를 더 이상 설명하지 못하면 Customized다 (Mech-Vision 규약)."""
+    assert ed.recipe_view()["status"] == "1"
+
+    assert ed.set_param("n_stats", "z_thresh", 9.0)["ok"]
+    assert ed.recipe_view()["status"] == recipe_mod.CUSTOMIZED
+
+
+def test_deleting_the_applied_recipe_takes_the_overlay_off(ed):
+    ed.recipe_select(2)
+    assert ed.recipe_delete(2)["ok"]
+    assert ed.recipe_id is None and not ed.overlay
+    assert ed.compiled.nodes["n_stats"].params["z_thresh"] == 3.0
+
+
+def test_recipe_panel_says_the_values_are_not_saved(ed):
+    from vlm_trainer.ui import render as render_mod
+
+    ed.recipe_select(2)
+    page = render_mod.render_editor(ed)
+    assert "적용 중" in page and "프로젝트에는 저장되지 않는다" in page
+    assert page.count('class="rrow') >= 4
+    assert "레시피</span>" in page, "덮인 파라미터에 표식이 없다"
+
+
+def test_router_recipe_roundtrip(ed):
+    code, payload = server_mod.handle(ed, "/api/recipe/select", {"id": 3})
+    assert code == 200 and payload["state"]["recipe"]["applied"] == 3
+
+    code, payload = server_mod.handle(ed, "/api/recipe/drop-path", {"path": "p_crop.max_n"})
+    assert code == 200
+
+    code, payload = server_mod.handle(ed, "/api/recipe/add-path", {"path": "n_img.color_space"})
+    assert code == 409 and not payload["ok"]
+
+    code, payload = server_mod.handle(ed, "/api/recipe/select", {"id": None})
+    assert code == 200 and payload["state"]["recipe"]["applied"] is None
+
+
+def test_click_targets_are_big_enough_to_hit(ed):
+    """8px짜리 손잡이는 사람도 못 누른다. 그리드 칸과 줄 높이로 영역을 확보한다."""
+    from vlm_trainer.ui import render as render_mod
+
+    ed.recipe_select(2)
+    css = render_mod.render_editor(ed)
+    for handle in (".odrop{", ".rrow .rdel{", ".padd{"):
+        block = css.split(handle, 1)[1].split("}", 1)[0]
+        assert "line-height:20px" in block or "line-height:16px" in block, handle
+        assert "min-width:20px" in block or "min-width:16px" in block, handle

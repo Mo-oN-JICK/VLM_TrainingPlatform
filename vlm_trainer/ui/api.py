@@ -15,12 +15,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..core.compiler import CompiledGraph, compile_graph
+from ..core.compiler import CompiledGraph, compile_graph, current_value, override_target
 from ..core.errors import VlmtError
 from ..core.graph import Edge, GraphModel, NodeInstance
 from ..core.node import NodeKind
 from ..core.registry import all_defs, resolve as resolve_node
 from ..core.unify import unify_ports
+from ..spec import recipe as recipe_mod
 from ..spec.decompile import decompile, dump_yaml
 import yaml
 
@@ -32,6 +33,10 @@ def _short(errors: Any) -> str:
     if lines and lines[0].endswith("게이트 위반:"):
         lines = lines[1:]  # 개수 머리말이 아니라 첫 번째 이유를 보여준다
     return lines[0] if lines else str(errors)
+
+
+def _msg(exc: Exception) -> str:
+    return str(exc) if isinstance(exc, VlmtError) else f"{type(exc).__name__}: {exc}"
 
 
 def compat_matrix(cg: CompiledGraph) -> Dict[str, Dict[str, str]]:
@@ -120,6 +125,13 @@ class Editor:
     error: str = ""
     dirty: bool = False
     valid: bool = True
+    # 오버레이가 걸려 있어도 **스펙은 오버레이 전의 것**이다. base가 저장과 History의 대상이고,
+    # compiled는 화면에 보이는 것이다. 이 둘을 섞으면 레시피 값이 프로젝트에 스며든다.
+    base: Optional[CompiledGraph] = None
+    book: Optional[Any] = None
+    book_dirty: bool = False
+    recipe_id: Optional[int] = None
+    overlay: Dict[str, Any] = field(default_factory=dict)
     history: List[HistoryEntry] = field(default_factory=list)
     cursor: int = -1
 
@@ -127,6 +139,7 @@ class Editor:
     def open(path: str) -> "Editor":
         e = Editor(path=os.path.abspath(path))
         e.graph = load_project(e.path)
+        e.book = recipe_mod.load(e.path)
         e._recompile()
         e._record("열기")
         return e
@@ -137,7 +150,7 @@ class Editor:
         return os.path.join(os.path.dirname(self.path), HISTORY_FILE)
 
     def _spec_text(self) -> str:
-        return dump_yaml(decompile(self.compiled, keep_procedures=True)) if self.compiled else ""
+        return dump_yaml(decompile(self.base, keep_procedures=True)) if self.base else ""
 
     def _record(self, label: str) -> None:
         """편집 한 번을 시점으로 남긴다. redo 가지가 있으면 잘라낸다."""
@@ -210,28 +223,40 @@ class Editor:
         ]
 
     # ── 내부 ────────────────────────────────────────────────────────────
-    def _recompile(self) -> bool:
-        """strict로 먼저 컴파일하고, 실패하면 draft로 물러선다.
+    def _compile(self, overlay: Optional[Dict[str, Any]]):
+        """strict로 먼저, 실패하면 draft로. (그래프, strict 오류, valid) 또는 (None, 오류, False).
 
         타입 오류는 draft에서도 잡히므로 편집 자체가 거부된다.
         구조가 덜 된 상태(배선을 잇는 중)만 통과하고, 그때 valid=False가 된다 —
         저장과 실행은 valid=True를 요구한다.
         """
         try:
-            self.compiled = compile_graph(self.graph)
-            self.error, self.valid = "", True
-            return True
+            return compile_graph(self.graph, recipe_overrides=overlay or None), "", True
         except Exception as exc:
-            strict_error = str(exc) if isinstance(exc, VlmtError) else f"{type(exc).__name__}: {exc}"
+            strict_error = _msg(exc)
 
         try:
-            self.compiled = compile_graph(self.graph, draft=True)
+            return compile_graph(self.graph, recipe_overrides=overlay or None, draft=True), strict_error, False
         except Exception as exc:
-            self.error = str(exc) if isinstance(exc, VlmtError) else f"{type(exc).__name__}: {exc}"
-            self.valid = False
-            return False
+            return None, _msg(exc), False
 
-        self.error, self.valid = strict_error, False
+    def _recompile(self) -> bool:
+        base, base_error, base_valid = self._compile(None)
+        if base is None:
+            self.error, self.valid = base_error, False
+            return False
+        self.base = base
+
+        if not self.overlay:
+            self.compiled, self.error, self.valid = base, base_error, base_valid
+            return True
+
+        cg, over_error, over_valid = self._compile(self.overlay)
+        if cg is None:
+            # 레시피가 없는 노드나 화이트리스트 밖 파라미터를 가리킨다 — 편집을 거부한다
+            self.error, self.valid = over_error, False
+            return False
+        self.compiled, self.error, self.valid = cg, over_error, over_valid and base_valid
         return True
 
     def _try(self, mutate, label: str = "편집") -> Dict[str, Any]:
@@ -276,6 +301,15 @@ class Editor:
         return self._try(go, f"배선 제거 {dst}")
 
     def set_param(self, node_id: str, param: str, value: Any) -> Dict[str, Any]:
+        '''레시피가 덮고 있는 파라미터면 오버레이를 고치고, 아니면 스펙을 고친다.
+
+        어느 쪽인지는 패널이 표식으로 보여준다. 덮인 값을 스펙에 써 봐야 화면에서는
+        오버레이에 가려 보이지 않는다 — 그래서 조용히 스펙을 고치지 않는다.
+        '''
+        path = self._overlay_paths().get((node_id, param))
+        if path is not None:
+            return self.recipe_set(path, value)
+
         def go() -> None:
             n = self.graph.node(node_id)
             n.params[param] = value
@@ -307,19 +341,187 @@ class Editor:
 
         return self._try(go, f"노드 삭제 {node_id}")
 
+    # ── Parameter Recipe ────────────────────────────────────────────────
+    #
+    # 레시피는 **값만 덮는 오버레이**다. CLI의 `--recipe N`과 같은 통로를 쓴다.
+    # 그래프에 값을 써 넣지 않는 이유가 있다: Procedure가 노출한 파라미터(`p_crop.max_n`)는
+    # 프로젝트 스펙이 아니라 다른 파일 안의 노드를 가리킨다. 그것을 스펙에 써 넣으려면
+    # Procedure 파일을 고쳐야 하고, 그러면 그 Procedure를 쓰는 다른 프로젝트가 함께 바뀐다.
+
+    def _overlay_paths(self) -> Dict[Tuple[str, str], str]:
+        """(노드id, 파라미터) -> 오버레이 경로. 파라미터 편집이 어디로 갈지 정한다."""
+        out: Dict[Tuple[str, str], str] = {}
+        if self.compiled is None:
+            return out
+        for path in self.overlay:
+            try:
+                out[override_target(self.compiled, path)] = path
+            except ValueError:
+                pass
+        return out
+
+    def _try_overlay(self, overlay: Dict[str, Any]) -> Dict[str, Any]:
+        """오버레이를 갈아 끼워 보고, 컴파일되지 않으면 되돌린다."""
+        before = dict(self.overlay)
+        self.overlay = dict(overlay)
+        if self._recompile():
+            return {"ok": True}
+        reason, detail = _short(self.error), self.error
+        self.overlay = before
+        self._recompile()
+        return {"ok": False, "reason": reason, "detail": detail}
+
+    def recipe_select(self, rid: Optional[int]) -> Dict[str, Any]:
+        """레시피를 적용하거나(번호) 벗긴다(None). 프로젝트 스펙은 바뀌지 않는다."""
+        if rid is None:
+            self.recipe_id = None
+            return self._try_overlay({})
+        if self.book is None:
+            return {"ok": False, "reason": "레시피 파일이 없다"}
+        try:
+            overrides = self.book.overrides_for(int(rid))
+        except Exception as exc:
+            return {"ok": False, "reason": _short(exc), "detail": _msg(exc)}
+        res = self._try_overlay(overrides)
+        if res["ok"]:
+            self.recipe_id = int(rid)
+        return res
+
+    def recipe_set(self, path: str, value: Any) -> Dict[str, Any]:
+        """오버레이의 값 하나를 고친다. 레시피 파일은 '레시피에 담기' 전까지 그대로다."""
+        if not self.overlay:
+            return {"ok": False, "reason": "레시피가 덮고 있는 값이 없다"}
+        return self._try_overlay({**self.overlay, path: value})
+
+    def recipe_add_path(self, path: str) -> Dict[str, Any]:
+        """파라미터 하나를 레시피가 다루는 축으로 만든다. 현재 값을 그대로 담는다."""
+        try:
+            recipe_mod.check_override_path(path)
+        except Exception as exc:
+            return {"ok": False, "reason": _short(exc), "detail": _msg(exc)}
+        if path in self.overlay:
+            return {"ok": False, "reason": f"{path}는 이미 레시피가 덮고 있다"}
+        value = current_value(self.base, path) if self.base else None
+        return self._try_overlay({**self.overlay, path: value})
+
+    def recipe_drop_path(self, path: str) -> Dict[str, Any]:
+        if path not in self.overlay:
+            return {"ok": False, "reason": f"{path}는 레시피가 덮고 있지 않다"}
+        rest = {k: v for k, v in self.overlay.items() if k != path}
+        return self._try_overlay(rest)
+
+    def recipe_store(self, rid: Optional[int] = None, name: str = "", note: str = "") -> Dict[str, Any]:
+        """지금 오버레이를 레시피로 굳힌다. rid가 없으면 빈 번호를 하나 쓴다.
+
+        파일은 Save 때 함께 쓰인다 — 편집기에서 디스크가 바뀌는 순간은 Save 하나뿐이다.
+        """
+        if self.book is None:
+            return {"ok": False, "reason": "레시피 파일이 없다"}
+        if not self.overlay:
+            return {"ok": False, "reason": "담을 값이 없다 — 먼저 파라미터를 레시피 축으로 만든다"}
+        if rid is None:
+            try:
+                rid = self.book.next_ids(1, (recipe_mod.MIN_ID, recipe_mod.MAX_ID))[0]
+            except Exception as exc:
+                return {"ok": False, "reason": _short(exc), "detail": _msg(exc)}
+        rid = int(rid)
+        old = self.book.recipes.get(rid)
+        self.book.recipes[rid] = recipe_mod.Recipe(
+            id=rid,
+            name=name or (old.name if old else ""),
+            note=note or (old.note if old else ""),
+            overrides=dict(self.overlay),
+        )
+        self.book_dirty = True
+        self.recipe_id = rid
+        return {"ok": True, "id": rid, "label": self.book.recipes[rid].label}
+
+    def recipe_delete(self, rid: int) -> Dict[str, Any]:
+        if self.book is None or int(rid) not in self.book.recipes:
+            return {"ok": False, "reason": f"레시피 {rid}번이 없다"}
+        del self.book.recipes[int(rid)]
+        if self.book.active == int(rid):
+            self.book.active = None
+        self.book_dirty = True
+        if self.recipe_id == int(rid):
+            self.recipe_select(None)
+        return {"ok": True}
+
+    def recipe_set_active(self, rid: Optional[int]) -> Dict[str, Any]:
+        """`active:`는 '프로젝트가 지금 이 레시피대로다'라는 표시다(Mech-Vision 규약)."""
+        if self.book is None:
+            return {"ok": False, "reason": "레시피 파일이 없다"}
+        if rid is not None and int(rid) not in self.book.recipes:
+            return {"ok": False, "reason": f"레시피 {rid}번이 없다"}
+        self.book.active = None if rid is None else int(rid)
+        self.book_dirty = True
+        return {"ok": True}
+
+    def recipe_view(self) -> Dict[str, Any]:
+        """패널이 그릴 것 전부. 상태 판정은 **오버레이 이전의 값**으로 한다."""
+        if self.book is None or self.base is None:
+            return {"path": "", "status": "", "applied": None, "recipes": [], "overlay": [], "dirty": False}
+
+        paths = {p for r in self.book.recipes.values() for p in r.overrides} | set(self.overlay)
+        current: Dict[str, Any] = {}
+        for p in sorted(paths):
+            try:
+                current[p] = current_value(self.base, p)
+            except Exception:
+                current[p] = None
+
+        def row(p, v):
+            return {
+                "path": p,
+                "display": self.book.display_name(p),
+                "value": v,
+                "base": current.get(p),
+                "differs": current.get(p) != v,
+            }
+
+        rows = []
+        for rid in sorted(self.book.recipes):
+            r = self.book.recipes[rid]
+            rows.append(
+                {
+                    "id": rid,
+                    "label": r.label,
+                    "name": r.name,
+                    "note": r.note,
+                    "applied": rid == self.recipe_id,
+                    "active": rid == self.book.active,
+                    "overrides": [row(p, v) for p, v in sorted(r.overrides.items())],
+                }
+            )
+
+        return {
+            "path": self.book.path,
+            "status": recipe_mod.status(self.book, current),
+            "applied": self.recipe_id,
+            "dirty": self.book_dirty,
+            "recipes": rows,
+            "overlay": [row(p, v) for p, v in sorted(self.overlay.items())],
+        }
+
     def save(self) -> Dict[str, Any]:
         if self.compiled is None:
             return {"ok": False, "reason": "컴파일되지 않은 그래프는 저장하지 않는다"}
         if not self.valid:
             # 편집 중인 미완성 상태는 저장하지 않는다. 스펙 파일은 언제나 돌아가는 그래프여야 한다.
             return {"ok": False, "reason": _short(self.error), "detail": self.error}
-        spec = decompile(self.compiled, keep_procedures=True)
+        # **오버레이 이전의 그래프**를 쓴다. 레시피 값이 프로젝트 스펙에 스며들면
+        # 레시피가 존재할 이유가 사라진다.
+        spec = decompile(self.base, keep_procedures=True)
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             fh.write(dump_yaml(spec))
         os.replace(tmp, self.path)
         self.dirty = False
-        return {"ok": True, "path": self.path}
+        written = [self.path]
+        if self.book_dirty and self.book is not None:
+            written.append(recipe_mod.save_book(self.book))
+            self.book_dirty = False
+        return {"ok": True, "path": self.path, "written": written}
 
     # ── 조회 ────────────────────────────────────────────────────────────
     def library(self) -> List[Dict[str, Any]]:
@@ -365,6 +567,8 @@ class Editor:
             "edges": [{"from": e.src, "to": e.dst} for e in cg.edges],
             "compat": compat_matrix(cg),
             "occupied": occupied_inputs(cg),
+            "recipe": self.recipe_view(),
+            "overlaid": [f"{n}:{p}" for (n, p) in self._overlay_paths()],
             "history": self.history_view(),
             "cursor": self.cursor,
         }
