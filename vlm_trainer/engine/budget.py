@@ -67,6 +67,7 @@ class BudgetResult:
     s_vision: int = 0
     s_text: int = 0
     text_estimated: bool = True
+    text_source: str = "가정"  # 가정 | 선언 | 문자 환산 | 토크나이저
     max_len: int = 0
     max_context: int = 0
     stages: List[StageEstimate] = field(default_factory=list)
@@ -144,6 +145,7 @@ def estimate(
     images: int = 0,
     image_hw: Optional[Tuple[int, int]] = None,
     measured_text_tokens: int = 0,
+    measured_how: str = "",
     with_sensitivity: bool = True,
 ) -> BudgetResult:
     spec = resolve_backbone(cfg.backbone).spec()
@@ -176,9 +178,17 @@ def estimate(
 
     if cfg.sequence.text_tokens:
         res.s_text, res.text_estimated = int(cfg.sequence.text_tokens), False
+        res.text_source = "선언"
     elif measured_text_tokens:
         res.s_text, res.text_estimated = int(measured_text_tokens), False
-        res.notes.append(f"텍스트 토큰 {res.s_text}는 dry-run 실측 문자 수에서 환산한 값이다")
+        res.text_source = "토크나이저" if measured_how == "tokenizer" else "문자 환산"
+        # 센 것과 환산한 것을 같은 말로 적으면 읽는 사람이 그 차이를 알 수 없다
+        res.notes.append(
+            f"텍스트 토큰 {res.s_text}는 토크나이저로 센 값이다"
+            if measured_how == "tokenizer"
+            else f"텍스트 토큰 {res.s_text}는 dry-run 실측 문자 수에서 환산한 값이다"
+            + (" (토크나이저가 없다 — 안전 여유를 얹었다)" if measured_how else "")
+        )
     else:
         res.s_text = DEFAULT_TEXT_TOKENS
         res.notes.append(
@@ -367,7 +377,7 @@ def render(res: BudgetResult) -> str:
         f"자원 예산 [{res.device}] VRAM {res.vram_gb:.0f} GB - reserve {res.reserve_gb:.1f} "
         f"= 예산 {res.limit:.1f} GB (여유 {int(res.headroom_ratio * 100)}% 요구)",
         f"  시퀀스: 비전 {res.s_vision} (= 이미지 {res.images} x 타일 {res.tiles} x {res.tokens_per_tile}) "
-        f"+ 텍스트 {res.s_text}{' (가정)' if res.text_estimated else ' (실측)'} "
+        f"+ 텍스트 {res.s_text} ({res.text_source}) "
         f"= {res.s_total} / max_len {res.max_len} / 백본 컨텍스트 {res.max_context}",
         "",
         f"  {'단계':<20}{'가중치':>9}{'그래디언트':>11}{'옵티마이저':>11}{'활성화':>9}{'로짓':>8}{'합계':>9}  판정",
@@ -403,9 +413,19 @@ def train_nodes(cg: CompiledGraph) -> List[str]:
 
 
 def for_graph(
-    cg: CompiledGraph, cfg: TrainerConfig, train_node: str, measured_text_tokens: int = 0
+    cg: CompiledGraph,
+    cfg: TrainerConfig,
+    train_node: str,
+    measured_text_tokens: int = 0,
+    measured_how: str = "",
 ) -> BudgetResult:
     images, hw = vision_from_graph(cg, train_node)
-    res = estimate(cfg, images=images, image_hw=hw, measured_text_tokens=measured_text_tokens)
+    res = estimate(
+        cfg,
+        images=images,
+        image_hw=hw,
+        measured_text_tokens=measured_text_tokens,
+        measured_how=measured_how,
+    )
     res.errors.extend(cfg.profile_errors(cg.runtime_profile))
     return res

@@ -12,7 +12,7 @@ import importlib
 import json
 import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..core import registry
 from ..core.compiler import CompileFailed, canonical_view, compile_project, current_value
@@ -26,6 +26,7 @@ from ..engine import preview as preview_mod
 from ..engine import samples as samples_mod
 from ..engine.runner import RunOptions, ancestors, execute
 from ..spec import recipe as recipe_mod
+from ..train import tokens as tokens_mod
 from ..spec.decompile import decompile, dump_yaml
 from ..train.config import TrainerConfig
 from ..train import shards as shards_mod
@@ -217,8 +218,22 @@ def _trainer_cfg(a: argparse.Namespace, cg) -> Optional[tuple]:
     return cfg, tn
 
 
-def _measure_tokens(a: argparse.Namespace, cg, cfg) -> int:
-    """dry-run 실측 문자 수를 토큰 수로 환산한다. 정적 추정이 실측보다 낙관적이면 G4가 잡는다."""
+def _tokenizer_id(cfg) -> str:
+    """백본이 보고한 토크나이저. 없으면 백본 id 자체를 쓴다(hf:<id>가 곧 토크나이저다)."""
+    from ..plugins.base import resolve_backbone
+
+    try:
+        spec = resolve_backbone(cfg.backbone).spec()
+    except Exception:
+        return ""
+    return spec.tokenizer_id or (cfg.backbone[3:] if cfg.backbone.startswith("hf:") else "")
+
+
+def _measure_tokens(a: argparse.Namespace, cg, cfg) -> Tuple[int, str]:
+    """dry-run이 실제로 만든 텍스트를 센다. 토크나이저가 없으면 비율로 추정한다.
+
+    정적 추정이 실측보다 낙관적이면 G4가 잡는다.
+    """
     space = _space(a, cg)
     opts = RunOptions(
         run_id=_run_id(a),
@@ -228,8 +243,8 @@ def _measure_tokens(a: argparse.Namespace, cg, cfg) -> int:
     )
     res = dryrun_mod.dryrun(cg, space, n=1, opts=opts)
     if not res.measured_chars:
-        return 0
-    return int(res.measured_chars / max(0.5, cfg.sequence.chars_per_token))
+        return 0, ""
+    return tokens_mod.measure(res.measured_text, res.measured_chars, cfg.sequence, _tokenizer_id(cfg))
 
 
 def cmd_budget(a: argparse.Namespace) -> int:
@@ -240,8 +255,8 @@ def cmd_budget(a: argparse.Namespace) -> int:
         print("이 그래프에는 Trainer 노드가 없다. 예산 검사 대상이 아니다.")
         return 0
     cfg, tn = got
-    measured = 0 if a.no_measure else _measure_tokens(a, cg, cfg)
-    res = budget_mod.for_graph(cg, cfg, tn, measured_text_tokens=measured)
+    measured, how = (0, "") if a.no_measure else _measure_tokens(a, cg, cfg)
+    res = budget_mod.for_graph(cg, cfg, tn, measured_text_tokens=measured, measured_how=how)
     print(budget_mod.render(res))
     return 0 if res.ok else 4
 
@@ -267,7 +282,8 @@ def cmd_run(a: argparse.Namespace) -> int:
     got = _trainer_cfg(a, cg)
     if got is not None and not a.skip_budget:
         cfg, tn = got
-        b = budget_mod.for_graph(cg, cfg, tn, measured_text_tokens=_measure_tokens(a, cg, cfg))
+        measured, how = _measure_tokens(a, cg, cfg)
+        b = budget_mod.for_graph(cg, cfg, tn, measured_text_tokens=measured, measured_how=how)
         if not b.ok and cfg.budget.policy == "fail_fast":
             print(budget_mod.render(b), file=sys.stderr)
             print("", file=sys.stderr)
@@ -366,7 +382,8 @@ def cmd_train(a: argparse.Namespace) -> int:
     mat_dir = a.materialized or os.path.join("runs", run_id, "materialized")
     measured = 0
     if not a.skip_budget:
-        b = budget_mod.for_graph(cg, cfg, tn, measured_text_tokens=_measure_tokens(a, cg, cfg))
+        measured, how = _measure_tokens(a, cg, cfg)
+        b = budget_mod.for_graph(cg, cfg, tn, measured_text_tokens=measured, measured_how=how)
         if not b.ok and cfg.budget.policy == "fail_fast":
             print(budget_mod.render(b), file=sys.stderr)
             print("", file=sys.stderr)

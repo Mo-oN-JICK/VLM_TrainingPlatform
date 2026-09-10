@@ -26,6 +26,7 @@ class DryRunResult:
     violation_ratio: float = 0.0
     measured: Dict[str, str] = field(default_factory=dict)
     measured_chars: int = 0  # 샘플당 프롬프트+정답 문자 수(최대)
+    measured_text: str = ""  # 그 최대 샘플의 본문. 토크나이저가 있으면 세어서 쓴다
     report: Optional[RunReport] = None
     aborted: str = ""
 
@@ -74,7 +75,10 @@ def dryrun(
     # 정적 추정(G4)이 낙관적으로 기울지 않도록 실측 문자 수를 남긴다
     for ref, v in rep.last_values.items():
         if isinstance(v, dict) and "prompt" in v and "answer" in v:
-            res.measured_chars = max(res.measured_chars, len(v["prompt"]) + len(v["answer"]))
+            n = len(v["prompt"]) + len(v["answer"])
+            if n > res.measured_chars:
+                res.measured_chars = n
+                res.measured_text = v["prompt"] + v["answer"]
 
     if rep.quarantine:
         viol = sum(1 for q in rep.quarantine if "위반" in q.cause)
@@ -106,6 +110,7 @@ def render(res: DryRunResult) -> str:
         lines.append(f"\n중단: {res.aborted}")
     if res.measured_chars:
         lines.append(f"\n실측: 샘플당 프롬프트+정답 {res.measured_chars}자 (최대)")
+        lines.append("  토큰 수는 토크나이저가 있으면 세고, 없으면 chars_per_token으로 추정한다.")
     if res.ok:
         lines.append("\n통과. G1·G2·G3를 지났다. 남은 것은 자원 예산(G4)이다.")
     return "\n".join(lines)

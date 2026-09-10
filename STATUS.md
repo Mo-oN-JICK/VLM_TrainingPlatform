@@ -4,8 +4,8 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-10
-- 마지막 커밋: Phase 7 편집기 7차 — 세션을 넘는 History
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **191 passed**
+- 마지막 커밋: 토큰 수를 토크나이저로 센다 (3a 준비)
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **200 passed**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -347,7 +347,9 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 - [ ] `huggingface-cli download <id>` 후 `vlmt backbones --add hf:<id>`로 형상 확인
 - [ ] `trainer.yaml`의 `backbone:`을 그 id로. 그래프도 스펙도 손대지 않는다
 - [ ] `vlmt budget` → 3060 12GB에서 nf4 QLoRA가 들어가는지 확인 → `vlmt train`
-- [ ] `chars_per_token` 추정을 실제 토크나이저 카운트로 교체
+- [x] ~~`chars_per_token` 추정을 실제 토크나이저 카운트로 교체~~ — `train/tokens.py`.
+      토크나이저가 있으면 dry-run이 실제로 만든 텍스트를 세고, 없으면 비율 환산에 안전 여유를
+      얹는다. 예산 보고서가 `(토크나이저)` / `(문자 환산)` / `(선언)` / `(가정)`을 구분해 적는다
 - 완료 조건: 같은 그래프·같은 스펙에서 `backbone:` 한 줄만 바꿔 학습이 완주한다
 
 ### 3b. Phase 7 마무리 — 편집기의 남은 절반

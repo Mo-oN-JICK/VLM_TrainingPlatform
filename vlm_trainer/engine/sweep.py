@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from ..core.compiler import CompiledGraph, compile_project
 from ..spec.canonical import hash_parts
 from ..spec.recipe import Recipe, RecipeBook
+from ..train import tokens as tokens_mod
 from ..train.config import TrainerConfig
 from . import budget as budget_mod
 from . import dryrun as dryrun_mod
@@ -182,7 +183,9 @@ def run(
         # 이 bake를 공유하는 레시피들의 텍스트 길이는 같다 — 한 번만 실측한다
         dr = dryrun_mod.dryrun(cg, space, n=1, opts=RunOptions(run_id=f"bake_{key}", cache_dir=cache_dir, spec_dir=spec_dir))
         if dr.measured_chars:
-            measured[key] = int(dr.measured_chars / max(0.5, cfg.sequence.chars_per_token))
+            measured[key] = tokens_mod.measure(
+                dr.measured_text, dr.measured_chars, cfg.sequence
+            )[0]
 
     # 3) 실측을 반영해 예산을 다시 보고, 통과한 것만 순차 학습
     for rid in list(compiled):
