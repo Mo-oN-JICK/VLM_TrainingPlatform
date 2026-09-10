@@ -529,6 +529,8 @@ _EDITOR_TOOLS = (
     '<button class="btn" onclick="location.reload()">Reload</button>'
     '<span class="sep"></span>'
     '<button class="btn go" id="runbtn" onclick="vlmtRun()">Run</button>'
+    '<button class="btn" id="matbtn" onclick="vlmtMaterialize()">Materialize</button>'
+    '<button class="btn" id="trainbtn" onclick="vlmtTrain()">Train</button>'
     '<button class="btn" id="stopbtn" onclick="vlmtRunStop()" disabled>Stop</button>'
     '<label class="tgl" title="꺼져 있으면 미리보기를 생성조차 하지 않는다">'
     '<input type="checkbox" id="dbgout">Debug Output</label>'
@@ -735,6 +737,22 @@ async function vlmtRun() {
   vlmtRunPoll();
 }
 
+// 버튼 하나가 CLI 명령 하나다. 편집기가 물질화와 학습을 엮어 돌리지 않는다 —
+// 엮는 순간 CLI에 없는 경로가 하나 생긴다.
+async function vlmtMaterialize() {
+  const {code, data} = await post('/api/materialize', {});
+  if (code !== 200) { toast('물질화 거부: ' + (data.reason || ''), true); return; }
+  toast('물질화 시작 · ' + data.run_id);
+  vlmtRunPoll();
+}
+
+async function vlmtTrain() {
+  const {code, data} = await post('/api/train', {});
+  if (code !== 200) { toast('학습 거부: ' + (data.reason || ''), true); return; }
+  toast('학습 시작 · ' + data.run_id);
+  vlmtRunPoll();
+}
+
 async function vlmtRunStop() {
   const {code, data} = await post('/api/run/stop', {});
   if (code !== 200) toast(data.reason || '', true);
@@ -777,16 +795,29 @@ async function vlmtRunPoll() {
   vlmtPaint(data.states);
   vlmtDebugOut(data.previews);
   const line = document.getElementById('runline');
-  const run = document.getElementById('runbtn'), stop = document.getElementById('stopbtn');
-  if (run) run.disabled = !!data.running;
+  const stop = document.getElementById('stopbtn');
+  ['runbtn', 'matbtn', 'trainbtn'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = !!data.running;
+  });
   if (stop) stop.disabled = !data.running;
 
   if (line) {
-    if (data.running || data.phase) {
+    if (data.running || data.phase || data.kind) {
       const q = data.quarantine_total ? ' · 격리 ' + data.quarantine_total : '';
       const tail = data.running ? '' : (data.stopped ? ' · 중지' : (data.aborted ? ' · 중단' :
                    (data.exit ? ' · 실패(exit ' + data.exit + ')' : ' · 끝')));
-      line.textContent = data.run_id + ' ' + data.processed + '/' + data.total + q + tail;
+      // 학습은 샘플이 아니라 step 단위로 움직인다. 같은 자리에 다른 단위를 쓴다.
+      let body;
+      if (data.kind === 'train' && data.train && data.train.step) {
+        body = 'train ' + data.train.stage + ' step ' + data.train.step +
+               ' loss ' + Number(data.train.loss).toFixed(4);
+      } else if (data.kind && data.kind !== 'run') {
+        body = data.kind;
+      } else {
+        body = data.processed + '/' + data.total + q;
+      }
+      line.textContent = data.run_id + ' ' + body + tail;
       line.className = 'runline' + (data.aborted || (data.exit && !data.stopped) ? ' bad' : '');
     } else {
       line.textContent = '';

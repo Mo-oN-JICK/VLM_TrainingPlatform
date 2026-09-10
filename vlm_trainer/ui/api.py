@@ -146,7 +146,9 @@ class Editor:
     proc: Optional[Any] = None
     run_id: str = ""
     progress_path: str = ""
+    train_progress_path: str = ""
     console_path: str = ""
+    phase: str = ""
     stopped: bool = False
 
     @staticmethod
@@ -721,13 +723,45 @@ class Editor:
             cmd += ["--set", f"{path}={json.dumps(value, ensure_ascii=False)}"]
         return cmd
 
-    def run_start(self, limit: int = 8, debug_output: bool = False) -> Dict[str, Any]:
+    def _spawn(self, cmd: List[str], phase: str) -> Dict[str, Any]:
+        """하위 프로세스 하나를 띄운다. **버튼 하나가 CLI 명령 하나다** —
+        편집기가 여러 명령을 엮어 돌리기 시작하면 그것이 UI 전용 실행 경로다."""
         if self.proc is not None and self.proc.poll() is None:
-            return {"ok": False, "reason": "이미 실행 중이다"}
+            return {"ok": False, "reason": f"이미 {self.phase or '작업'}이 돌고 있다"}
+
+        run_dir = os.path.join(os.getcwd(), "runs", self.run_id)
+        os.makedirs(run_dir, exist_ok=True)
+        self.progress_path = os.path.join(run_dir, "progress.json")
+        self.train_progress_path = os.path.join(run_dir, "train_progress.json")
+        self.console_path = os.path.join(run_dir, f"{phase}.log")
+        self.phase = phase
+        self.stopped = False
+
+        env = dict(os.environ)
+        pkg_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        env["PYTHONPATH"] = os.pathsep.join([p for p in (pkg_root, env.get("PYTHONPATH", "")) if p])
+        try:
+            fh = open(self.console_path, "w", encoding="utf-8")
+            self.proc = subprocess.Popen(
+                cmd, stdout=fh, stderr=subprocess.STDOUT, cwd=os.getcwd(), env=env
+            )
+        except OSError as exc:
+            return {"ok": False, "reason": f"실행을 띄우지 못했다: {exc}"}
+        return {"ok": True, "run_id": self.run_id, "phase": phase, "command": " ".join(cmd)}
+
+    def _base_command(self, sub: str) -> List[str]:
+        cmd = [sys.executable, "-m", "vlm_trainer.cli.main", sub, self.path,
+               "--run-id", self.run_id or "ui"]
+        for mod in self.extra_modules:
+            cmd += ["--nodes", mod]
+        for path, value in sorted(self.overlay.items()):
+            cmd += ["--set", f"{path}={json.dumps(value, ensure_ascii=False)}"]
+        return cmd
+
+    def _ready_to_launch(self) -> Dict[str, Any]:
         if not self.valid:
             return {"ok": False, "reason": _short(self.error), "detail": self.error}
         if self.dirty:
-            # 실행은 디스크의 스펙을 돈다. 화면과 다른 것을 돌리면 결과를 믿을 수 없다.
             return {
                 "ok": False,
                 "reason": "저장하지 않은 변경이 있다 — 실행은 디스크의 스펙을 돈다",
@@ -737,34 +771,56 @@ class Editor:
                     "  Save를 먼저 누른다."
                 ),
             }
+        return {"ok": True}
 
-        self.stopped = False
+    def materialize_start(self, limit: int = 0) -> Dict[str, Any]:
+        """`vlmt materialize` — 학습이 읽을 shard를 만든다."""
+        ready = self._ready_to_launch()
+        if not ready["ok"]:
+            return ready
+        self.run_id = self.run_id or ("ui_" + time.strftime("%Y%m%dT%H%M%S"))
+        cmd = self._base_command("materialize")
+        if limit:
+            cmd += ["--limit", str(int(limit))]
+        return self._spawn(cmd, "materialize")
+
+    def train_start(self) -> Dict[str, Any]:
+        """`vlmt train` — 물질화된 shard로 학습한다.
+
+        물질화를 대신 돌려 주지 않는다. 두 단계는 사람이 터미널에서 치는 두 명령이고,
+        편집기가 그것을 엮으면 CLI에 없는 경로가 하나 생긴다.
+        """
+        ready = self._ready_to_launch()
+        if not ready["ok"]:
+            return ready
+        if not self.run_id:
+            return {
+                "ok": False,
+                "reason": "먼저 Materialize를 눌러야 한다",
+                "detail": (
+                    "학습은 물질화된 shard를 읽는다. 아직 이 세션에서 만든 것이 없다.\n"
+                    "  Materialize를 먼저 누르거나, 터미널에서 vlmt materialize를 돌려라."
+                ),
+            }
+        mat = os.path.join(os.getcwd(), "runs", self.run_id, "materialized")
+        if not os.path.isdir(mat):
+            return {
+                "ok": False,
+                "reason": "물질화된 shard가 없다",
+                "detail": f"{mat}가 없다. Materialize를 먼저 누른다.",
+            }
+        return self._spawn(self._base_command("train"), "train")
+
+    def run_start(self, limit: int = 8, debug_output: bool = False) -> Dict[str, Any]:
+        ready = self._ready_to_launch()
+        if not ready["ok"]:
+            return ready
         self.run_id = "ui_" + time.strftime("%Y%m%dT%H%M%S")
-        run_dir = os.path.join(os.getcwd(), "runs", self.run_id)
-        os.makedirs(run_dir, exist_ok=True)
-        self.progress_path = os.path.join(run_dir, "progress.json")
-        self.console_path = os.path.join(run_dir, "console.log")
-        cmd = self.run_command(limit, debug_output)
-        # 하위 프로세스가 부모와 같은 vlm_trainer를 임포트해야 한다. 저장소를 설치하지 않고
-        # 쓰는 것이 이 프로젝트의 기본 형태라, CWD에 기대면 다른 디렉터리에서 띄운 편집기의
-        # 실행이 조용히 실패한다.
-        env = dict(os.environ)
-        pkg_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        env["PYTHONPATH"] = os.pathsep.join(
-            [p for p in (pkg_root, env.get("PYTHONPATH", "")) if p]
-        )
-        try:
-            fh = open(self.console_path, "w", encoding="utf-8")
-            self.proc = subprocess.Popen(
-                cmd, stdout=fh, stderr=subprocess.STDOUT, cwd=os.getcwd(), env=env
-            )
-        except OSError as exc:
-            return {"ok": False, "reason": f"실행을 띄우지 못했다: {exc}"}
-        return {"ok": True, "run_id": self.run_id, "command": " ".join(cmd)}
+        return self._spawn(self.run_command(limit, debug_output), "run")
 
     def run_stop(self) -> Dict[str, Any]:
         if self.proc is None or self.proc.poll() is not None:
-            return {"ok": False, "reason": "실행 중이 아니다"}
+            return {"ok": False, "reason": "돌고 있는 것이 없다"}
         self.stopped = True  # 사람이 멈춘 것과 죽은 것은 다르다
         self.proc.terminate()
         return {"ok": True}
@@ -777,6 +833,8 @@ class Editor:
         out: Dict[str, Any] = {
             "running": alive,
             "run_id": self.run_id,
+            "kind": self.phase,
+            "train": self._read_train_progress(),
             "exit": None if (self.proc is None or alive) else self.proc.returncode,
             "stopped": self.stopped and self.proc is not None and not alive,
             "states": {},
@@ -786,6 +844,8 @@ class Editor:
             "aborted": "",
             "quarantine": [],
         }
+        # 물질화·학습 중에도 직전 실행이 남긴 카드 상태는 그대로 둔다.
+        # 지우면 "아무것도 안 돌았다"로 읽히는데 그것은 사실이 아니다.
         data = self._read_progress()
         if data is None:
             if not alive and self.proc is not None and not self.stopped:
@@ -840,6 +900,16 @@ class Editor:
                 return fh.read()
         except OSError:
             return None
+
+    def _read_train_progress(self) -> Dict[str, Any]:
+        """학습은 샘플이 아니라 step 단위로 움직인다. 진행 파일도 따로 있다."""
+        if self.phase != "train" or not self.train_progress_path:
+            return {}
+        try:
+            with open(self.train_progress_path, "r", encoding="utf-8") as fh:
+                return json.load(fh)
+        except (OSError, ValueError):
+            return {}
 
     def _read_progress(self) -> Optional[Dict[str, Any]]:
         if not self.progress_path or not os.path.exists(self.progress_path):

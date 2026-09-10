@@ -896,3 +896,73 @@ def test_the_panel_is_rendered_for_the_editor_only(ed_with_data):
     assert "Sample Space" in page and "vlmtSpace(" in page
     assert "샘플 22건" in page
     assert "vlmtSpace(" not in render_mod.render(ed.compiled)
+
+
+# ── 물질화와 학습 ───────────────────────────────────────────────────────
+
+
+def test_one_button_is_one_cli_command(ed):
+    """편집기가 물질화와 학습을 엮어 돌리면 CLI에 없는 경로가 하나 생긴다."""
+    ed.extra_modules = ("fixture_nodes",)
+    ed.run_id = "ui_x"
+    for sub in ("materialize", "train"):
+        cmd = ed._base_command(sub)
+        assert cmd[1:5] == ["-m", "vlm_trainer.cli.main", sub, ed.path]
+        assert cmd[cmd.index("--run-id") + 1] == "ui_x"
+        assert cmd[cmd.index("--nodes") + 1] == "fixture_nodes"
+
+
+def test_training_before_materializing_says_so(ed):
+    res = ed.train_start()
+    assert not res["ok"] and "Materialize" in res["reason"]
+    assert "vlmt materialize" in res["detail"], "터미널로도 할 수 있다는 것을 말한다"
+
+
+def test_materialize_and_train_refuse_unsaved_changes(ed):
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    for res in (ed.materialize_start(), ed.train_start()):
+        assert not res["ok"] and "저장하지 않은 변경" in res["reason"]
+
+
+def test_materialize_refuses_an_incomplete_graph(ed):
+    ed.add_node("ts.stats@1.0.0")
+    assert not ed.materialize_start()["ok"]
+
+
+def test_only_one_thing_runs_at_a_time(ed_with_data, tmp_path, monkeypatch):
+    ed = ed_with_data
+    monkeypatch.chdir(tmp_path)
+    assert ed.materialize_start()["ok"]
+    second = ed.materialize_start()
+    assert not second["ok"] and "돌고 있다" in second["reason"]
+    ed.run_stop()
+
+
+def test_the_editor_materializes_and_then_trains(ed_with_data, tmp_path, monkeypatch):
+    """끝에서 끝까지 — 두 버튼이 두 CLI 명령을 띄우고 학습이 완주한다."""
+    import time as _time
+
+    ed = ed_with_data
+    monkeypatch.chdir(tmp_path)
+
+    def wait():
+        for _ in range(1200):  # 최대 120초
+            st = ed.run_state()
+            if not st["running"]:
+                return st
+            _time.sleep(0.1)
+        raise AssertionError("끝나지 않았다")
+
+    assert ed.materialize_start()["ok"]
+    st = wait()
+    assert st["exit"] == 0, st.get("console", "")
+    assert os.path.isdir(os.path.join(tmp_path, "runs", ed.run_id, "materialized"))
+
+    assert ed.train_start()["ok"]
+    st = wait()
+    assert st["exit"] == 0, st.get("console", "")
+    assert st["kind"] == "train"
+    assert st["train"]["step"] > 0 and st["train"]["stage"]
+    assert os.path.exists(
+        os.path.join(tmp_path, "runs", ed.run_id, "train", "inference_contract.json")
+    )

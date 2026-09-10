@@ -12,6 +12,7 @@ import importlib
 import json
 import os
 import sys
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..core import registry
@@ -367,6 +368,34 @@ def cmd_infer_graph(a: argparse.Namespace) -> int:
     return 0
 
 
+def _train_logger(a: argparse.Namespace, run_id: str):
+    """콘솔에 찍고, 같은 사실을 진행 파일에도 남긴다.
+
+    실행(`run`)과 같은 통로다 — 다른 터미널이나 편집기가 학습을 지켜볼 수 있어야 하는데,
+    stdout만 있으면 그 사실이 프로세스 안에 갇힌다.
+    """
+    path = _progress_path(a, run_id)
+    if path:
+        path = os.path.join(os.path.dirname(path), "train_progress.json")
+    state = {"run_id": run_id, "phase": "train", "stage": "", "step": 0, "loss": 0.0, "at": 0.0}
+
+    def log(stage: str, step: int, loss: float) -> None:
+        print(f"    {stage} step {step:>4} loss {loss:.4f}")
+        if not path:
+            return
+        state.update(stage=stage, step=int(step), loss=float(loss), at=time.time())
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(state, fh, ensure_ascii=False)
+            os.replace(tmp, path)
+        except OSError:
+            pass  # 관찰이 학습을 죽여서는 안 된다
+
+    return log
+
+
 def cmd_train(a: argparse.Namespace) -> int:
     from ..engine.journal import Journal
     from ..train import loop as loop_mod
@@ -403,7 +432,7 @@ def cmd_train(a: argparse.Namespace) -> int:
         journal=journal,
         resume=a.resume,
         max_steps=a.max_steps,
-        on_log=lambda stage, step, loss: print(f"    {stage} step {step:>4} loss {loss:.4f}"),
+        on_log=_train_logger(a, run_id),
     )
     rep.contract = contract_mod.write(
         os.path.abspath(out_dir), cg, cfg, spec_dir, vision_tokens=measured
