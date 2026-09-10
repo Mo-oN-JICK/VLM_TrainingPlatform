@@ -24,6 +24,7 @@ from ..core.node import NodeKind
 from ..core.registry import all_defs, resolve as resolve_node
 from ..core.unify import unify_ports
 from ..engine import runner as runner_mod
+from ..engine import samples as samples_mod
 from ..spec import recipe as recipe_mod
 from ..spec.decompile import decompile, dump_yaml
 import yaml
@@ -360,23 +361,43 @@ class Editor:
         self.compiled, self.error, self.valid = cg, over_error, over_valid and base_valid
         return True
 
-    def _try(self, mutate, label: str = "편집") -> Dict[str, Any]:
-        """변경을 적용해 보고, 게이트를 통과하지 못하면 되돌린다."""
+    def _try(self, mutate, label: str = "편집", check=None, undo=None) -> Dict[str, Any]:
+        """변경을 적용해 보고, 게이트를 통과하지 못하면 되돌린다.
+
+        `check`는 컴파일 뒤·기록 전에 도는 추가 검사다. 이 자리여야 하는 이유가 있다 —
+        기록한 뒤에 되돌리면 저널에는 이미 줄이 들어간 뒤라 거부된 편집이 History에 남는다.
+        """
         before_nodes = [NodeInstance(n.id, n.type, dict(n.params)) for n in self.graph.nodes]
         before_edges = list(self.graph.edges)
         before_compiled, before_error, before_valid = self.compiled, self.error, self.valid
+
+        def rollback() -> None:
+            self.graph.nodes, self.graph.edges = before_nodes, before_edges
+            self.compiled, self.error, self.valid = before_compiled, before_error, before_valid
+            if undo is not None:
+                undo()
+
         try:
             mutate()
         except Exception as exc:
+            if undo is not None:
+                undo()
             return {"ok": False, "reason": _short(exc), "detail": str(exc)}
-        if self._recompile():
-            self.dirty = True
-            self._record(label)
-            return {"ok": True}
-        reason, detail = _short(self.error), self.error
-        self.graph.nodes, self.graph.edges = before_nodes, before_edges
-        self.compiled, self.error, self.valid = before_compiled, before_error, before_valid
-        return {"ok": False, "reason": reason, "detail": detail}
+
+        if not self._recompile():
+            reason, detail = _short(self.error), self.error
+            rollback()
+            return {"ok": False, "reason": reason, "detail": detail}
+
+        problem = check() if check is not None else ""
+        if problem:
+            rollback()
+            self._recompile()
+            return {"ok": False, "reason": _short(problem), "detail": problem}
+
+        self.dirty = True
+        self._record(label)
+        return {"ok": True}
 
     # ── 변경 ────────────────────────────────────────────────────────────
     def connect(self, src: str, dst: str) -> Dict[str, Any]:
@@ -441,6 +462,78 @@ class Editor:
             ]
 
         return self._try(go, f"노드 삭제 {node_id}")
+
+    # ── Sample Space ────────────────────────────────────────────────────
+    #
+    # 그래프 밖의 선언이지만 그래프만큼 자주 틀린다. key 하나가 어긋나면 컴파일은 통과하고
+    # 실행이 첫 샘플에서 죽는다. 그래서 고칠 때마다 **실제로 읽어 본다.**
+
+    SAMPLE_FIELDS = ("index", "key", "filter", "splits")
+
+    def sample_space_view(self) -> Dict[str, Any]:
+        ss = self.graph.sample_space
+        out: Dict[str, Any] = {
+            "index": ss.index,
+            "key": ss.key,
+            "filter": ss.filter,
+            "splits": dict(ss.splits or {}),
+            "rows": 0,
+            "columns": [],
+            "split_counts": {},
+            "error": "",
+        }
+        if self.compiled is None:
+            return out
+        try:
+            space = samples_mod.load(self.compiled.sample_space, os.path.dirname(self.path))
+        except Exception as exc:
+            out["error"] = _msg(exc)
+            return out
+
+        out["rows"] = len(space.rows)
+        cols: List[str] = []
+        for r in space.rows[:50]:
+            for c in r:
+                if c not in cols:
+                    cols.append(c)
+        out["columns"] = cols
+        counts: Dict[str, int] = {}
+        for r in space.rows:
+            counts[str(r.get("_split", ""))] = counts.get(str(r.get("_split", "")), 0) + 1
+        out["split_counts"] = counts
+        return out
+
+    def set_sample_space(self, field_name: str, value: Any) -> Dict[str, Any]:
+        """샘플 공간의 한 항목을 고친다. 그래프 편집과 같은 통로를 지난다 —
+        컴파일하고, History에 남고, Save 때 디스크에 쓰인다."""
+        if field_name not in self.SAMPLE_FIELDS:
+            return {
+                "ok": False,
+                "reason": f"sample_space에 {field_name!r} 항목은 없다 "
+                f"(있는 것: {list(self.SAMPLE_FIELDS)})",
+            }
+        if field_name == "splits" and not isinstance(value, dict):
+            return {"ok": False, "reason": "splits는 객체여야 한다"}
+
+        before = getattr(self.graph.sample_space, field_name)
+
+        def go() -> None:
+            setattr(self.graph.sample_space, field_name, value)
+
+        def back() -> None:
+            setattr(self.graph.sample_space, field_name, before)
+
+        # 컴파일은 통과해도 인덱스가 읽히지 않으면 거부한다. 읽히지 않는 선언은
+        # 실행 첫 샘플에서 죽는데, 그때는 이미 편집기를 닫은 뒤다.
+        res = self._try(
+            go,
+            f"sample_space.{field_name} = {value!r}",
+            check=lambda: self.sample_space_view()["error"],
+            undo=back,
+        )
+        if res["ok"]:
+            res["view"] = self.sample_space_view()
+        return res
 
     # ── Parameter Recipe ────────────────────────────────────────────────
     #
@@ -829,6 +922,7 @@ class Editor:
             "compat": compat_matrix(cg),
             "occupied": occupied_inputs(cg),
             "recipe": self.recipe_view(),
+            "sample_space": self.sample_space_view(),
             "overlaid": [f"{n}:{p}" for (n, p) in self._overlay_paths()],
             "history": self.history_view(),
             "cursor": self.cursor,

@@ -819,3 +819,80 @@ def test_no_preview_images_when_the_toggle_is_off(ed_with_data, tmp_path, monkey
     assert st["phase"] == "done"
     assert not st["previews"]
     assert not os.path.isdir(ed.preview_dir) or not os.listdir(ed.preview_dir)
+
+
+# ── Sample Space ────────────────────────────────────────────────────────
+
+
+def test_the_panel_reads_the_index_rather_than_echoing_it(ed_with_data):
+    """값을 보여주는 데서 그치면 key 하나가 어긋난 것을 실행 때까지 모른다."""
+    ed = ed_with_data
+    v = ed.sample_space_view()
+    assert v["error"] == ""
+    assert v["rows"] == 22 and v["split_counts"] == {"train": 11, "val": 11}
+    assert v["columns"][:2] == ["sample_id", "patient_id"]
+    assert v["key"] == "sample_id" and "quality_flag" in v["filter"]
+
+
+def test_changing_the_filter_changes_what_the_probe_reports(ed_with_data):
+    ed = ed_with_data
+    assert ed.set_sample_space("filter", "")["ok"]
+    assert ed.sample_space_view()["rows"] == 24  # 필터가 걸러내던 2건이 돌아온다
+    assert ed.dirty
+
+
+def test_a_key_that_is_not_in_the_index_is_refused(ed_with_data):
+    ed = ed_with_data
+    res = ed.set_sample_space("key", "없는열")
+    assert not res["ok"] and "키 컬럼" in res["detail"]
+    assert ed.graph.sample_space.key == "sample_id"
+    assert ed.sample_space_view()["rows"] == 22
+
+
+def test_a_missing_index_file_is_refused(ed_with_data):
+    ed = ed_with_data
+    res = ed.set_sample_space("index", "../../data/dummy/nope.jsonl")
+    assert not res["ok"] and "인덱스 파일이 없다" in res["detail"]
+    assert ed.sample_space_view()["rows"] == 22
+
+
+def test_a_refused_sample_space_edit_leaves_no_trace(ed_with_data):
+    """기록한 뒤에 되돌리면 저널에는 이미 줄이 들어간 뒤다 — 거부된 편집이 History에 남는다."""
+    ed = ed_with_data
+    import json as _json
+
+    before = len(ed.history)
+    ed.set_sample_space("key", "없는열")
+    ed.set_sample_space("index", "../../data/dummy/nope.jsonl")
+
+    assert len(ed.history) == before
+    lines = [_json.loads(ln) for ln in open(ed.history_path, encoding="utf-8") if ln.strip()]
+    assert not any("없는열" in ln["label"] or "nope" in ln["label"] for ln in lines)
+
+
+def test_unknown_sample_space_fields_are_refused(ed_with_data):
+    ed = ed_with_data
+    res = ed.set_sample_space("nodes", [])
+    assert not res["ok"] and "항목은 없다" in res["reason"]
+    res = ed.set_sample_space("splits", "문자열이 아니라 객체여야 한다")
+    assert not res["ok"] and "객체" in res["reason"]
+
+
+def test_the_sample_space_edit_survives_a_save(ed_with_data):
+    ed = ed_with_data
+    assert ed.set_sample_space("filter", "")["ok"]
+    assert ed.save()["ok"]
+
+    again = Editor.open(ed.path)
+    assert again.sample_space_view()["rows"] == 24
+    assert again.graph.sample_space.filter == ""
+
+
+def test_the_panel_is_rendered_for_the_editor_only(ed_with_data):
+    ed = ed_with_data
+    from vlm_trainer.ui import render as render_mod
+
+    page = render_mod.render_editor(ed)
+    assert "Sample Space" in page and "vlmtSpace(" in page
+    assert "샘플 22건" in page
+    assert "vlmtSpace(" not in render_mod.render(ed.compiled)

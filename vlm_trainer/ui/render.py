@@ -272,6 +272,7 @@ def render(
     tools = _EDITOR_TOOLS if editable else _VIEWER_TOOLS
     history = _history_panel(editor) if (editable and editor is not None) else ''
     recipe = _recipe_panel(editor) if (editable and editor is not None) else ''
+    space = _sample_space_panel(editor) if (editable and editor is not None) else ''
     # 오버레이가 걸려 있으면 화면의 해시와 저장될 해시가 다르다. 감추지 않는다.
     spec_hash = cg.spec_hash
     base = getattr(editor, 'base', None) if editable else None
@@ -286,6 +287,7 @@ def render(
         params=_params_panel(cg, overlaid) if editable else '',
         history=history,
         recipe=recipe,
+        space=space,
         scripts=scripts,
         tools=tools,
         banner=banner_html,
@@ -401,6 +403,9 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .rail .n{{margin-left:auto;color:#6F7478;font-size:10.5px}}
 .del{{color:#8A9196;cursor:pointer;font-size:14px;line-height:1;padding:0 2px}}
 .del:hover{{color:{T.STATE['failed']}}}
+.ssok{{font-size:11.5px;color:#A8B0B6;margin-bottom:2px}}
+.ssbad{{font-size:11.5px;color:{T.STATE['failed']};margin-bottom:4px}}
+.sscols{{font-size:10.5px;color:#6F7478;margin-bottom:6px;word-break:break-all}}
 .recipe{{margin-bottom:14px}}
 .recipe h4{{margin-bottom:4px}}
 .rdirty{{margin-left:8px;font-size:10px;color:{T.STATE['running']};font-weight:400}}
@@ -499,6 +504,7 @@ _TEMPLATE = """<!doctype html>
     {cards}
   </div></div>
   <div class="side">
+    {space}
     {recipe}
     {history}
     {params}
@@ -669,6 +675,16 @@ document.addEventListener('keydown', (ev) => {
   const sel = document.querySelector('.node.sel');
   if (sel) vlmtRemove(sel.dataset.node);
 });
+
+async function vlmtSpace(field, value, kind) {
+  if (kind === 'json') {
+    try { value = JSON.parse(value); }
+    catch (e) { toast('값이 JSON이 아니다: ' + value, true); return; }
+  }
+  const {code, data} = await post('/api/sample-space', {field: field, value: value});
+  if (code === 200) location.reload();
+  else toast('거부: ' + (data.reason || ''), true);
+}
 
 async function vlmtRecipe(id) {
   const {code, data} = await post('/api/recipe/select', {id: id});
@@ -889,6 +905,40 @@ def _library_panel(editable: bool) -> str:
             f"<span class='n'>{len(defs)}</span></summary>{''.join(rows)}</details>"
         )
     return "".join(out)
+
+
+def _sample_space_panel(editor: Any) -> str:
+    '''Sample Space 패널.
+
+    그래프 밖의 선언이지만 그래프만큼 자주 틀린다. 그래서 값을 보여주는 데서 그치지 않고
+    **실제로 읽어 본 결과**(건수·열·split 분포)를 함께 적는다. key 하나가 어긋나면
+    컴파일은 통과하고 실행이 첫 샘플에서 죽는데, 그때는 이미 편집기를 닫은 뒤다.
+    '''
+    v = editor.sample_space_view()
+
+    def row(name, value, kind="text"):
+        val = json.dumps(value, ensure_ascii=False) if kind == "json" else str(value)
+        return (
+            f'<div class="prow"><label>{html.escape(name)}</label>'
+            f'<input type="text" value="{html.escape(val)}" '
+            f"onchange=\"vlmtSpace('{name}',this.value,'{kind}')\"></div>"
+        )
+
+    if v["error"]:
+        probe = f'<div class="ssbad">{html.escape(v["error"].splitlines()[0])}</div>'
+    else:
+        splits = " · ".join(f"{k or 'split없음'} {n}" for k, n in sorted(v["split_counts"].items()))
+        cols = ", ".join(v["columns"][:10]) + (" …" if len(v["columns"]) > 10 else "")
+        probe = (
+            f'<div class="ssok">샘플 {v["rows"]}건 · {html.escape(splits)}</div>'
+            f'<div class="sscols">열: {html.escape(cols)}</div>'
+        )
+
+    return (
+        '<h4>Sample Space</h4>' + probe
+        + row("index", v["index"]) + row("key", v["key"]) + row("filter", v["filter"])
+        + row("splits", v["splits"], "json")
+    )
 
 
 def _recipe_panel(editor: Any) -> str:
