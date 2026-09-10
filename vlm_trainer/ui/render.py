@@ -451,6 +451,8 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .hrow:hover{{background:{T.NODE['bg']}}}
 .hrow.cur{{border-left-color:{T.NODE['border']};background:{T.NODE['bg']};color:#D8DCDF}}
 .hrow .ht{{color:#6F7478;font-size:10.5px}}
+.hrow.past .hl{{color:#7E868C}}
+.hrow.past .ht::after{{content:"·";margin-left:3px;color:{T.STATE['cached']}}}
 .hrow .hh{{color:#6F7478;font-size:10px;text-align:right}}
 .hrow .hdp,.hrow .hdm{{grid-column:1/4;font-family:ui-monospace,Consolas,monospace;font-size:10px;
       white-space:pre-wrap}}
@@ -966,12 +968,15 @@ def _history_panel(editor: Any) -> str:
     rows = []
     for h in editor.history_view():
         cls = "hrow cur" if h["current"] else "hrow"
+        if h.get("past"):
+            cls += " past"  # 지난 세션에서 되살린 시점
         diff = "".join(
             f'<div class="hd{"p" if ln.startswith("+") else "m"}">{html.escape(ln)}</div>'
             for ln in h["diff"][:6]
         )
         rows.append(
-            f'<div class="{cls}" onclick="vlmtRewind({h["index"]})">'
+            f'<div class="{cls}" onclick="vlmtRewind({h["index"]})" '
+            f'title="{html.escape(h.get("when") or h["at"])}">'
             f'<span class="ht">{html.escape(h["at"])}</span>'
             f'<span class="hl">{html.escape(h["label"])}</span>'
             f'<span class="hh">{html.escape(h["spec_hash"][3:11])}</span>'

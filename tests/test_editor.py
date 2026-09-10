@@ -683,3 +683,72 @@ def test_run_handlers_are_declared_like_the_rest(ed):
     called = set(re.findall(r'onclick="(vlmt\w+)\(', page))
     declared = set(re.findall(r"(?:async )?function (vlmt\w+)\(", page))
     assert {"vlmtRun", "vlmtRunStop"} <= called <= declared
+
+
+# ── 세션을 넘는 History ─────────────────────────────────────────────────
+
+
+def test_history_survives_reopening(ed):
+    """편집기를 닫았다 열어도 지난 시점으로 되감을 수 있어야 한다."""
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    ed.set_param("n_plot", "line_width", 3)
+    assert ed.save()["ok"]
+    labels_before = [h["label"] for h in ed.history_view()]
+
+    again = Editor.open(ed.path)
+    labels = [h["label"] for h in again.history_view()]
+    assert labels == labels_before, "지난 세션의 시점이 그대로 되살아나야 한다"
+    assert all(h["past"] for h in again.history_view()), "되살린 시점은 표식이 붙는다"
+
+    # 디스크의 스펙이 마지막 시점과 같으면 '열기'를 겹쳐 적지 않는다
+    assert labels.count("열기") == 1
+    assert again.compiled.nodes["n_stats"].params["z_thresh"] == 4.5
+
+    assert again.rewind(0)["ok"], "첫 시점으로 되감을 수 있어야 한다"
+    assert again.compiled.nodes["n_stats"].params["z_thresh"] == 3.0
+
+
+def test_snapshots_are_content_addressed(ed):
+    """같은 상태로 돌아오면 파일이 늘지 않는다."""
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    ed.set_param("n_stats", "z_thresh", 3.0)  # 원래 값으로
+    files = sorted(os.listdir(ed.history_store))
+    assert len(files) == 2, files  # 열기 시점과 4.5 시점 둘뿐이다
+
+
+def test_a_snapshot_that_is_gone_is_not_offered(ed):
+    """되감을 수 없는 항목을 목록에 두면 눌러도 되는 것과 아닌 것이 섞인다."""
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    ed.save()
+    for name in os.listdir(ed.history_store):
+        os.remove(os.path.join(ed.history_store, name))
+
+    again = Editor.open(ed.path)
+    assert [h["label"] for h in again.history_view()] == ["열기"]
+    assert not again.history_view()[0]["past"]
+
+
+def test_a_hand_edited_spec_gets_its_own_point(ed):
+    """저널의 마지막 시점과 디스크가 다르면 지금 상태를 새 시점으로 적는다."""
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    ed.save()
+
+    text = open(ed.path, encoding="utf-8").read().replace("z_thresh: 4.5", "z_thresh: 6.0")
+    open(ed.path, "w", encoding="utf-8").write(text)
+
+    again = Editor.open(ed.path)
+    view = again.history_view()
+    assert view[-1]["label"] == "열기" and not view[-1]["past"]
+    assert again.compiled.nodes["n_stats"].params["z_thresh"] == 6.0
+    assert again.rewind(0)["ok"]
+
+
+def test_the_journal_stays_readable(ed):
+    """저널은 사람이 읽는 diff다. 본문은 옆 저장소에 따로 둔다."""
+    import json as _json
+
+    ed.set_param("n_stats", "z_thresh", 4.5)
+    lines = [_json.loads(ln) for ln in open(ed.history_path, encoding="utf-8") if ln.strip()]
+    assert set(lines[-1]) == {"at", "label", "spec_hash", "diff"}
+    assert lines[-1]["diff"] == ["-    z_thresh: 3.0", "+    z_thresh: 4.5"]
+    assert lines[-1]["at"].startswith("20"), "세션을 넘으려면 날짜가 있어야 한다"

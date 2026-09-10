@@ -6,3 +6,4 @@ runs/
 .pytest_cache/
 solutions/*/data/dummy/
 edit_history.jsonl
+edit_history/

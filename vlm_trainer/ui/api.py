@@ -105,6 +105,8 @@ def occupied_inputs(cg: CompiledGraph) -> List[str]:
 
 
 HISTORY_FILE = "edit_history.jsonl"
+HISTORY_STORE = "edit_history"   # 시점별 스펙 본문. 내용 주소라 같은 상태로 돌아와도 파일이 늘지 않는다
+HISTORY_WINDOW = 200             # 열 때 되살릴 시점의 최대 개수
 
 
 @dataclass
@@ -116,6 +118,7 @@ class HistoryEntry:
     spec: str = ""  # canonical YAML
     at: str = ""
     diff: List[str] = field(default_factory=list)
+    past: bool = False  # 이전 세션에서 남은 시점
 
 
 @dataclass
@@ -151,7 +154,10 @@ class Editor:
         e.graph = load_project(e.path)
         e.book = recipe_mod.load(e.path)
         e._recompile()
-        e._record("열기")
+        e._load_history()
+        if not (e.history and e.compiled is not None
+                and e.history[-1].spec_hash == e.compiled.spec_hash):
+            e._record("열기")
         return e
 
     # ── History ─────────────────────────────────────────────────────────
@@ -161,6 +167,88 @@ class Editor:
 
     def _spec_text(self) -> str:
         return dump_yaml(decompile(self.base, keep_procedures=True)) if self.base else ""
+
+    @property
+    def history_store(self) -> str:
+        return os.path.join(os.path.dirname(self.path), HISTORY_STORE)
+
+    def _snapshot_path(self, spec_hash: str) -> str:
+        return os.path.join(self.history_store, spec_hash.replace(":", "_") + ".yaml")
+
+    def _keep_snapshot(self, spec_hash: str, text: str) -> None:
+        """시점의 스펙 본문을 내용 주소로 남긴다.
+
+        저널은 사람이 읽는 diff고, 되감기에는 본문이 필요하다. 둘을 한 파일에 섞으면
+        저널이 읽을 수 없게 된다. 실패해도 편집을 막지 않는다.
+        """
+        path = self._snapshot_path(spec_hash)
+        if os.path.exists(path):
+            return  # 같은 상태로 돌아온 것이다
+        try:
+            os.makedirs(self.history_store, exist_ok=True)
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write(text)
+            os.replace(tmp, path)
+        except OSError:
+            pass
+
+    def _load_snapshot(self, spec_hash: str) -> str:
+        try:
+            with open(self._snapshot_path(spec_hash), "r", encoding="utf-8") as fh:
+                return fh.read()
+        except OSError:
+            return ""
+
+    def _load_history(self) -> None:
+        """저널을 되짚어 지난 세션의 시점을 되살린다.
+
+        본문이 남아 있는 시점만 되살린다 — 되감을 수 없는 항목을 목록에 두면
+        누를 수 있는 것과 없는 것이 섞여 History가 신뢰를 잃는다.
+        """
+        lines: List[Dict[str, Any]] = []
+        try:
+            with open(self.history_path, "r", encoding="utf-8") as fh:
+                for ln in fh:
+                    ln = ln.strip()
+                    if not ln:
+                        continue
+                    try:
+                        lines.append(json.loads(ln))
+                    except ValueError:
+                        continue
+        except OSError:
+            return
+
+        for rec in lines[-HISTORY_WINDOW:]:
+            spec_hash = str(rec.get("spec_hash", ""))
+            text = self._load_snapshot(spec_hash) if spec_hash else ""
+            if not text:
+                continue
+            if self.history and self.history[-1].spec_hash == spec_hash:
+                continue  # 같은 상태가 이어지면 시점 하나다
+            self.history.append(
+                HistoryEntry(
+                    label=str(rec.get("label", "")),
+                    spec_hash=spec_hash,
+                    spec=text,
+                    at=str(rec.get("at", "")),
+                    diff=list(rec.get("diff") or [])[:12],
+                    past=True,
+                )
+            )
+        self.cursor = len(self.history) - 1
+        self._prune_snapshots({str(r.get("spec_hash", "")) for r in lines})
+
+    def _prune_snapshots(self, referenced: Any) -> None:
+        """저널이 더 이상 가리키지 않는 본문을 지운다. 저장소는 저널을 따라간다."""
+        names = {h.replace(":", "_") + ".yaml" for h in referenced if h}
+        try:
+            for name in os.listdir(self.history_store):
+                if name.endswith(".yaml") and name not in names:
+                    os.remove(os.path.join(self.history_store, name))
+        except OSError:
+            pass
 
     def _record(self, label: str) -> None:
         """편집 한 번을 시점으로 남긴다. redo 가지가 있으면 잘라낸다."""
@@ -178,11 +266,12 @@ class Editor:
             label=label,
             spec_hash=self.compiled.spec_hash,
             spec=text,
-            at=time.strftime("%H:%M:%S"),
+            at=time.strftime("%Y-%m-%d %H:%M:%S"),
             diff=diff[:12],
         )
         self.history.append(entry)
         self.cursor = len(self.history) - 1
+        self._keep_snapshot(entry.spec_hash, text)
         try:  # 저널은 사람이 읽는 기록이다. 실패해도 편집을 막지 않는다
             payload = {"at": entry.at, "label": label, "spec_hash": entry.spec_hash, "diff": diff}
             with open(self.history_path, "a", encoding="utf-8") as fh:
@@ -224,7 +313,9 @@ class Editor:
             {
                 "index": i,
                 "label": h.label,
-                "at": h.at,
+                "at": h.at[-8:],  # 시:분:초
+                "when": h.at,
+                "past": h.past,
                 "spec_hash": h.spec_hash,
                 "current": i == self.cursor,
                 "diff": h.diff,
