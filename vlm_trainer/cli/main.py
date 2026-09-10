@@ -412,6 +412,31 @@ def cmd_train(a: argparse.Namespace) -> int:
     return 0 if rep.ok else 6
 
 
+def cmd_new(a: argparse.Namespace) -> int:
+    """빈 Solution/Project 껍데기를 만들고, 원하면 편집기를 연다."""
+    from ..spec import scaffold
+
+    proj, made = scaffold.new_project(
+        a.dir,
+        solution_id=a.solution_id,
+        project_id=a.project_id,
+        name=a.name,
+        index=a.index,
+        profile=a.profile,
+    )
+    for f in made:
+        print(f"  만듦: {f}")
+    print()
+    print("그래프는 비어 있다. 노드를 놓기 전에는 컴파일되지 않는다 — Output이 하나는 있어야 한다.")
+    print(f"  편집기: vlmt edit {proj}")
+    print(f"  샘플 인덱스: project.yaml의 sample_space.index가 가리키는 JSONL을 먼저 만들어라")
+    if a.edit:
+        from ..ui import server as server_mod
+
+        server_mod.serve(proj, port=a.port, open_browser=True, extra_modules=tuple(a.nodes))
+    return 0
+
+
 def cmd_edit(a: argparse.Namespace) -> int:
     from ..ui import server as server_mod
 
@@ -682,6 +707,19 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--cache-dir", default=".cache")
     m.add_argument("--run-id", default="")
     m.set_defaults(func=cmd_materialize)
+
+    nw = sub.add_parser("new", help="빈 Solution/Project 껍데기를 만든다")
+    nw.add_argument("dir", help="만들 디렉터리 (없으면 만든다)")
+    nw.add_argument("--solution-id", default="", help="기본값은 디렉터리 이름")
+    nw.add_argument("--project-id", default="", help="기본값은 01_<solution-id>")
+    nw.add_argument("--name", default="", help="사람이 읽는 이름")
+    nw.add_argument("--index", default="data/index.jsonl",
+                    help="샘플 인덱스 JSONL의 자리 (Solution 루트 기준)")
+    nw.add_argument("--profile", default="windows_single_gpu",
+                    help="실행 프로파일 (windows_single_gpu | linux_multi_gpu)")
+    nw.add_argument("--edit", action="store_true", help="만든 뒤 편집기를 연다")
+    nw.add_argument("--port", type=int, default=8770)
+    nw.set_defaults(func=cmd_new)
 
     ed = sub.add_parser("edit", help="그래프 편집기를 연다 (127.0.0.1 로컬 서버)")
     ed.add_argument("spec")
