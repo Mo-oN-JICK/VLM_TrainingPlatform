@@ -120,8 +120,14 @@ def test_every_node_and_its_ref_appear(cg, page):
 
 
 def test_header_reports_the_gate_facts(cg, page):
+    """보이는 상자 수와 게이트가 보는 노드 수를 둘 다 적는다 —
+    하나만 적으면 카드 수와 헤더가 어긋나 보인다."""
+    shown, edges = fold(cg)
+
     assert cg.spec_hash in page
     assert f"노드 {len(cg.nodes)}" in page
+    assert f"상자 {len(shown)}" in page
+    assert f"배선 {len(edges)}" in page
     assert cg.runtime_profile in page
 
 

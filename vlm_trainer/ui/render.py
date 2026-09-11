@@ -219,6 +219,13 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
         if (src, dst) not in seen:
             seen.add((src, dst))
             edges.append((src, dst))
+
+    # 접고 나면 안쪽 노드만 있던 레인이 통째로 빈다. 빈 줄을 남기면 상자 아홉 개가
+    # 열한 줄에 걸쳐 늘어져 한눈에 안 들어온다. 순서는 지키고 번호만 촘촘히 다시 매긴다.
+    used = sorted({v.lane for v in shown.values()})
+    dense = {old: i for i, old in enumerate(used)}
+    for v in shown.values():
+        v.lane = dense[v.lane]
     return shown, edges
 
 
@@ -464,8 +471,11 @@ def render(
         debug=debug_block,
         quarantine=quarantine,
         spec_hash=spec_hash,
+        # 보이는 것과 게이트가 보는 것을 둘 다 적는다 — 접힌 상자가 몇 개를 품었는지
+        # 헤더에서 사라지면 "노드 12"와 카드 9장이 어긋나 보인다.
+        boxes=len(shown),
         nodes=len(cg.nodes),
-        edges=len(cg.edges),
+        edges=len(dedges),
         lanes=max_lane + 1,
         ci=counts["I"],
         cp=counts["P"],
@@ -660,7 +670,7 @@ _TEMPLATE = """<!doctype html>
 <div class="menubar">File &nbsp; Edit &nbsp; View &nbsp; Solution &nbsp; Node &nbsp; Plugins &nbsp; Settings &nbsp; Help</div>
 <div class="toolbar">
   <b>{title}</b>
-  <span>노드 {nodes} · 배선 {edges} · 레인 {lanes}단</span>
+  <span>상자 {boxes} · 배선 {edges} · 레인 {lanes}단 &nbsp;<em>노드 {nodes}</em></span>
   <span>I {ci} / P {cp} / O {co}</span>
   <span>프로파일 {profile}</span>
   {tools}
