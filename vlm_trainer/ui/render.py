@@ -108,6 +108,7 @@ class Shown:
     inputs: Dict[str, Any] = field(default_factory=dict)   # 이름 -> PortType
     outputs: Dict[str, Any] = field(default_factory=dict)
     summary: str = ""
+    label: str = ""         # 카드에 크게 뜨는 한국어 이름
     inner: int = 0          # 0이면 보통 노드, 1 이상이면 접힌 Procedure
     state_ids: List[str] = field(default_factory=list)      # 상태를 합쳐 볼 노드들
 
@@ -153,6 +154,7 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
             inputs={p: n.input_types.get(p) or d.inputs[p].type for p in d.inputs},
             outputs=dict(n.output_types),
             summary=_summary(cg, nid),
+            label=d.doc.label or n.ref.split("@")[0],
             state_ids=[nid],
         )
 
@@ -183,6 +185,7 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
             inputs=ins,
             outputs={k: v for k, v in outs.items() if v is not None},
             summary=", ".join(f"{k}={v}" for k, v in list(params.items())[:3]),
+            label=p.get("label") or p.get("ref", "").split("@")[0],
             inner=len(inner),
             state_ids=inner,
         )
@@ -290,10 +293,14 @@ def render(
     in_pos: Dict[str, Tuple[int, int]] = {}
     for nid, pl in placed.items():
         s = shown[nid]
-        for name, cx, cy, cw in _chips(s.outputs, pl.x, pl.y + CARD_H + CHIP_H):
+        # 카드 안의 세로 구성: [입력 칩] [카드] [출력 칩].
+        # **Input 노드는 입력 칩 줄이 아예 없다**(CSS의 `.inp .ports.top{display:none}`).
+        # 그 한 줄을 좌표 계산이 모르면 배선이 칩에서 CHIP_H만큼 떨어진 허공에서 시작하고 끝난다.
+        top_h = 0 if s.kind is NodeKind.INPUT else CHIP_H
+        for name, cx, cy, cw in _chips(s.outputs, pl.x, pl.y + top_h + CARD_H):
             _, root, is_list = _type_label(s.outputs[name])
             out_pos[f"{nid}:{name}"] = (cx + cw // 2, cy + CHIP_H, root, is_list)
-        for name, cx, cy, cw in _chips(s.inputs, pl.x, pl.y - CHIP_H):
+        for name, cx, cy, cw in _chips(s.inputs, pl.x, pl.y):
             in_pos[f"{nid}:{name}"] = (cx + cw // 2, cy)
 
     paths = []
@@ -344,7 +351,7 @@ def render(
             f'<div class="ports top">{chips_in}</div>'
             f'<div class="card" style="border-top:3px solid {T.category_color(s.category)};'
             f'border-left:4px solid {T.STATE.get(state, "#4A4A4A")}">'
-            f'<div class="hd"><span class="nm">{html.escape(nid)}</span>'
+            f'<div class="hd"><span class="nm">{html.escape(s.label)}</span>'
             f'<span class="badge b{tag}">{tag}</span>'
             + (f'<span class="fold" title="{s.inner}개 노드가 들어 있다 — 눌러서 펼친다" '
                f"onclick=\"vlmtExpand('{html.escape(nid)}')\">&#9656;{s.inner}</span>"
@@ -356,7 +363,7 @@ def render(
                if nid in boundary else "")
             + (f"<span class=\"del\" onclick=\"vlmtRemove('{nid}')\">&times;</span>" if editable else "")
             + "</div>"
-            f'<div class="ref">{html.escape(s.ref)}</div>'
+            f'<div class="ref">{html.escape(nid)} · {html.escape(s.ref)}</div>'
             f'<div class="sum">{html.escape(s.summary)}</div>'
             f'<div class="st"><span class="sdot" style="background:{T.STATE.get(state, "#4A4A4A")}">'
             f'</span>{state}{" · " + html.escape(state_extra) if state_extra else ""}</div>'

@@ -266,3 +266,61 @@ def test_a_folded_box_is_not_green_while_something_inside_failed(cg):
     shown, _ = fold(cg)
     state, extra = render_mod.state_of_many(rep, shown["p_crop"].state_ids)
     assert state == "failed" and "1/4" in extra
+
+
+def test_wires_touch_the_chips_they_connect(cg, page):
+    """배선이 칩에서 떨어져 허공에서 시작하거나 끝나면 안 된다.
+
+    카드의 세로 구성은 [입력 칩][카드][출력 칩]인데 **Input 노드는 입력 칩 줄이 없다**.
+    그 한 줄을 좌표가 모르면 모든 배선이 CHIP_H만큼 어긋난다.
+    """
+    import re
+
+    shown, edges = fold(cg)
+    placed = render_mod._layout(shown, edges)
+
+    def chip_x(nid, ports, name):
+        for n, cx, cy, cw in render_mod._chips(ports, placed[nid].x, 0):
+            if n == name:
+                return cx + cw // 2
+        raise AssertionError(f"{nid}:{name} 칩이 없다")
+
+    starts = [m for m in re.findall(r"M (\d+) (\d+) C", page)]
+    assert len(starts) == len(edges)
+
+    for src, dst in edges:
+        sn, sp = src.split(":")
+        dn, dp = dst.split(":")
+        s_node, d_node = shown[sn], shown[dn]
+
+        s_top = 0 if s_node.kind is NodeKind.INPUT else render_mod.CHIP_H
+        want_start = (
+            chip_x(sn, s_node.outputs, sp),
+            placed[sn].y + s_top + render_mod.CARD_H + render_mod.CHIP_H,
+        )
+        want_end = (chip_x(dn, d_node.inputs, dp), placed[dn].y)
+
+        needle = f"M {want_start[0]} {want_start[1]} C"
+        assert needle in page, f"{src} 배선이 출력 칩에서 시작하지 않는다"
+        assert f"{want_end[0]} {want_end[1]}\"" in page, f"{dst} 배선이 입력 칩에서 끝나지 않는다"
+
+
+def test_every_node_type_has_a_korean_name():
+    """`image.crop_by_regions`가 무슨 일을 하는지는 그 이름만 봐서는 모른다."""
+    from vlm_trainer.core.registry import all_defs
+
+    # 테스트용 fixture 노드는 화면에 뜰 일이 없으므로 뺀다
+    missing = [d.type for d in all_defs() if not d.doc.label and not d.type.startswith("test.")]
+    assert not missing, missing
+
+
+def test_the_card_shows_the_korean_name_and_keeps_the_id(cg, page):
+    from vlm_trainer.core.registry import resolve as resolve_node
+
+    shown, _ = fold(cg)
+    for nid, s in shown.items():
+        assert f'class="nm">{s.label}<' in page, f"{nid}의 한국어 이름이 카드에 없다"
+        assert nid in page, f"{nid} 라는 id도 남아 있어야 한다"
+
+    assert "이미지 읽기" in page
+    assert resolve_node("source.image@1.0.0").doc.label == "이미지 읽기"

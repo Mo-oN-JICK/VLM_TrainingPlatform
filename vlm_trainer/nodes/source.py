@@ -60,6 +60,7 @@ class ImageSourceParams:
     recipe_overridable=["column"],
     preview="image",
     doc=NodeDoc(
+        label="이미지 읽기",
         summary="sample_space의 경로 컬럼에서 이미지를 읽어 그래프에 주입한다.",
         scenario="모든 이미지 파이프라인의 시작점.",
     ),
@@ -96,7 +97,7 @@ class TimeSeriesParams:
     recipe_overridable=["column", "hz", "channels"],
     type_affecting=["hz", "channels"],
     preview="timeseries_plot",
-    doc=NodeDoc(summary="CSV/NPY 시계열을 읽어 [T, C] 배열로 주입한다."),
+    doc=NodeDoc(label="시계열 읽기", summary="CSV/NPY 시계열을 읽어 [T, C] 배열로 주입한다."),
 )
 class TimeSeriesSource(Node):
     def infer_types(self, inputs: Dict[str, PortType], params: Any) -> Dict[str, PortType]:
@@ -149,7 +150,7 @@ class TextAssetParams:
     params=TextAssetParams,
     recipe_overridable=["path", "max_chars"],
     preview="text",
-    doc=NodeDoc(summary="프롬프트에 넣을 도메인 지식 텍스트 자산을 읽는다."),
+    doc=NodeDoc(label="지식 문서 읽기", summary="프롬프트에 넣을 도메인 지식 텍스트 자산을 읽는다."),
 )
 class TextAssetSource(Node):
     def fingerprint(self, ctx: RunCtx, params: Any) -> str:
@@ -177,6 +178,7 @@ class FieldParams:
     recipe_overridable=["column"],
     preview="text",
     doc=NodeDoc(
+        label="열 하나 읽기",
         summary="sample_space의 컬럼 하나를 텍스트로 주입한다.",
         scenario="정답 라벨이나 메타데이터를 그래프로 들여올 때. semantic 태그가 누설 검사의 기준이 된다.",
     ),
@@ -206,7 +208,7 @@ class MetadataParams:
     outputs={"meta": Port(simple(BaseKind.TABLE), "메타데이터 표")},
     params=MetadataParams,
     preview="table",
-    doc=NodeDoc(summary="인덱스의 여러 컬럼을 한 표로 묶어 주입한다."),
+    doc=NodeDoc(label="데이터 열 읽기", summary="인덱스의 여러 컬럼을 한 표로 묶어 주입한다."),
 )
 class MetadataSource(Node):
     def fingerprint(self, ctx: RunCtx, params: Any) -> str:
@@ -231,6 +233,7 @@ class SchemaParams:
     params=SchemaParams,
     preview="schema",
     doc=NodeDoc(
+        label="정답 스키마",
         summary="정답 Text 스키마를 읽는다. 렌더러와 파서가 모두 이 정의에서 생성된다.",
         scenario="학습에 쓴 스키마가 추론 계약에도 그대로 실린다.",
     ),

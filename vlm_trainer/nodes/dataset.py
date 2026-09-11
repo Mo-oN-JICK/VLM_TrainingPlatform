@@ -40,7 +40,7 @@ class WrapParams:
     inputs={"item": Port(PortType(base=Var("T")), "단일 값")},
     outputs={"items": Port(PortType(base=Var("T"), list_of=ListSpec(1, 1)), "원소가 하나인 리스트")},
     params=WrapParams,
-    doc=NodeDoc(summary="단일 값을 리스트로 감싼다. 자동 승격이 없으므로 명시적으로 필요하다."),
+    doc=NodeDoc(label="목록으로 감싸기", summary="단일 값을 리스트로 감싼다. 자동 승격이 없으므로 명시적으로 필요하다."),
 )
 class ListWrap(Node):
     def infer_types(self, inputs: Dict[str, PortType], params: Any) -> Dict[str, PortType]:
@@ -71,7 +71,7 @@ class ConcatParams:
     outputs={"out": Port(PortType(base=Var("T"), list_of=ListSpec(1, 1 << 30)), "이어붙인 리스트")},
     params=ConcatParams,
     recipe_overridable=["max_n"],
-    doc=NodeDoc(summary="같은 타입의 두 리스트를 이어붙인다."),
+    doc=NodeDoc(label="목록 이어붙이기", summary="같은 타입의 두 리스트를 이어붙인다."),
 )
 class ListConcat(Node):
     def infer_types(self, inputs: Dict[str, PortType], params: Any) -> Dict[str, PortType]:
@@ -131,6 +131,7 @@ class MapParams:
     params=MapParams,
     recipe_overridable=["params"],
     doc=NodeDoc(
+        label="목록마다 적용",
         summary="리스트의 원소마다 노드 하나를 적용한다.",
         scenario="crop 여러 장을 한꺼번에 리사이즈할 때. 브로드캐스트가 없으므로 명시적으로 필요하다.",
     ),
@@ -195,6 +196,7 @@ class AssembleParams:
     recipe_overridable=["require_validated"],
     preview="sample_card",
     doc=NodeDoc(
+        label="학습 샘플 묶기",
         summary="이미지·프롬프트·정답을 학습 샘플 한 건으로 묶는다.",
         scenario="자리표시자 개수와 실제 이미지 개수를 실측으로 대조한다 — "
         "어긋나면 이미지가 조용히 무시된 채 텍스트만 학습된다.",
@@ -241,6 +243,7 @@ class ExportParams:
     recipe_overridable=["out_dir", "image_encoding"],
     preview="dry_summary",
     doc=NodeDoc(
+        label="데이터셋 내보내기",
         summary="샘플을 디스크로 내보낸다. 부작용을 일으키는 Output 노드.",
         scenario="물질화 경계 뒤의 학습은 이 산출물만 읽는다.",
     ),
@@ -289,6 +292,7 @@ class PromptExportParams:
     recipe_overridable=["out_dir"],
     preview="dry_summary",
     doc=NodeDoc(
+        label="프롬프트 내보내기",
         summary="프롬프트를 그대로 내보낸다. 추론 그래프의 종결점.",
         scenario="추론 계약이 실제로 재현되는지 확인하는 수단 — 학습 때의 프롬프트와 바이트 단위로 대조한다.",
     ),
@@ -327,6 +331,7 @@ class TrainerParams:
     per_sample=False,  # 샘플마다가 아니라 물질화된 데이터셋 전체에 한 번
     preview="budget_table",
     doc=NodeDoc(
+        label="학습",
         summary="학습 실행. 그래프의 종결점이며 Output 분류에 속한다.",
         scenario="Phase 5까지는 계획만 기록하는 스텁이다. 실제 학습 루프는 아직 없다.",
     ),

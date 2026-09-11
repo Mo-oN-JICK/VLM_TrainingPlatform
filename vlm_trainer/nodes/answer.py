@@ -34,6 +34,7 @@ class EvidenceParams:
     recipe_overridable=["rules"],
     preview="text",
     doc=NodeDoc(
+        label="근거 문장 만들기",
         summary="수치에서 단계별 근거 문장을 규칙으로 생성한다. 결정적이다.",
         scenario="LLM 윤문은 옵션이며 기본 경로에 두지 않는다 — 재현 불가능한 데이터셋이 조용히 만들어지는 것을 막는다.",
     ),
@@ -91,6 +92,7 @@ class StepwiseParams:
     recipe_overridable=["render"],
     preview="answer_render",
     doc=NodeDoc(
+        label="정답 쓰기",
         summary="스키마가 선언한 단계 순서대로 정답 Text를 만든다.",
         scenario="렌더러와 파서가 같은 스키마에서 생성되므로 학습과 추론이 어긋날 수 없다.",
     ),
@@ -150,6 +152,7 @@ class ValidateParams:
     recipe_overridable=["on_violation", "max_tokens"],
     preview="answer_validated",
     doc=NodeDoc(
+        label="정답 검사",
         summary="정답 Text가 스키마를 지키는지 검사한다.",
         scenario="위반 샘플은 격리된다. 위반율이 임계를 넘으면 dry-run이 학습 전에 멈춘다.",
     ),
@@ -200,6 +203,7 @@ class GuardParams:
     clears_taint=["label", "answer"],
     preview="leak_report",
     doc=NodeDoc(
+        label="정답 누설 검사",
         summary="정답 어휘가 프롬프트에 섞였는지 검사한다. taint를 제거하는 유일한 노드.",
         scenario="정적 taint 검사(G2)가 경로를 막고, 이 노드가 실제 문자열을 본다.",
     ),

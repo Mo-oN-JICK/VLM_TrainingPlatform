@@ -39,6 +39,7 @@ class ProposeParams:
     external_call=True,
     preview="regions_overlay",
     doc=NodeDoc(
+        label="전문가 모델 지목",
         summary="외부 전문가 모델이 의심 영역(이미지) 또는 의심 구간(시계열)을 지목한다.",
         scenario="플러그인 문자열만 바꾸면 도메인이 바뀐다. 출력 타입은 플러그인 매니페스트에서 확정된다.",
         ports="subject: 제네릭. 플러그인의 accepts와 단일화된다 / regions: 플러그인의 produces",

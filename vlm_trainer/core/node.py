@@ -35,6 +35,9 @@ class Port:
 class NodeDoc:
     """Node Quick Info 탭에 그대로 들어간다."""
 
+    # 카드에 크게 뜨는 이름. 비면 노드 타입이 그 자리를 쓴다.
+    # `image.crop_by_regions`가 무슨 일을 하는지는 그 이름만 봐서는 모른다.
+    label: str = ""
     summary: str = ""
     scenario: str = ""
     ports: str = ""
