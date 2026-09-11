@@ -324,3 +324,31 @@ def test_the_card_shows_the_korean_name_and_keeps_the_id(cg, page):
 
     assert "이미지 읽기" in page
     assert resolve_node("source.image@1.0.0").doc.label == "이미지 읽기"
+
+
+def test_the_right_panel_is_tabbed_like_the_reference(cg):
+    """설계 문서 12.1의 파티션: Debug Output(위) + 탭으로 나뉜 Configuration Panel(아래).
+    한 줄로 흘려 두면 스크롤로만 찾게 된다."""
+    from vlm_trainer.ui.render import render
+
+    page = render(cg, editable=True, editor=None)
+    for tab in ("Node Parameters", "Project Assistant", "Node Quick Info", "History"):
+        assert f'data-tab=' in page and tab in page, tab
+    assert page.count('class="tabbody"') == 4
+    assert '<div class="dbgpane">' in page
+
+
+def test_the_viewer_has_no_dead_tabs(cg, page):
+    """뷰어는 스크립트를 싣지 않는다. 눌러도 안 바뀌는 탭은 없느니만 못하다."""
+    assert '<script' not in page
+    assert 'class="tabs"' not in page
+    assert "Node Quick Info" in page, "내용은 여전히 보여야 한다"
+
+
+def test_the_library_is_searchable_in_korean(cg):
+    from vlm_trainer.ui.render import render
+
+    page = render(cg, editable=True, editor=None)
+    assert "vlmtLibFilter(" in page and 'class="libsearch"' in page
+    assert "이미지 크기 맞추기" in page, "라이브러리가 한국어 이름을 보여야 검색이 걸린다"
+    assert "adapt.image_resize" in page, "타입도 남아 있어야 한다"

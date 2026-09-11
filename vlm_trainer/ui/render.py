@@ -459,12 +459,37 @@ def render(
                    [f'{n}:{p}' for (n, p) in editor._overlay_paths()] or [])
     banner_html = f'<div class="banner">{html.escape(banner)}</div>' if banner else ""
 
+    # 오른쪽은 설계 문서 12.1의 파티션: Debug Output(위) + 탭으로 나뉜 Configuration Panel(아래).
+    # **뷰어는 스크립트를 싣지 않으므로 탭을 쓰지 않는다** — 눌러도 안 바뀌는 탭은 없느니만 못하다.
+    params_block = (
+        '<div class="doc pick">카드를 고르면 그 상자의 설정이 여기에 뜬다.</div>'
+        + _params_panel(cg, overlaid, boundary, expanded)
+        if editable
+        else ""
+    )
+    details_block = "".join(details)
+    dbg_pane = f'<div class="dbgpane">{debug_block}{quarantine}</div>'
+    if editable:
+        side = (
+            dbg_pane
+            + '<div class="cfg"><div class="tabs">'
+            + '<span class="tab on" data-tab="params">Node Parameters</span>'
+            + '<span class="tab" data-tab="assist">Project Assistant</span>'
+            + '<span class="tab" data-tab="info">Node Quick Info</span>'
+            + '<span class="tab" data-tab="hist">History</span>'
+            + "</div>"
+            + f'<div class="tabbody" data-tab="params">{params_block}</div>'
+            + f'<div class="tabbody" data-tab="assist" hidden>{space}{recipe}</div>'
+            + f'<div class="tabbody" data-tab="info" hidden>{details_block}</div>'
+            + f'<div class="tabbody" data-tab="hist" hidden>{history}</div>'
+            + "</div>"
+        )
+    else:
+        side = dbg_pane + f'<div class="tabbody"><h4>Node Quick Info</h4>{details_block}</div>'
+
     return _TEMPLATE.format(
         title=html.escape(head),
-        params=_params_panel(cg, overlaid, boundary, expanded) if editable else '',
-        history=history,
-        recipe=recipe,
-        space=space,
+        side=side,
         scripts=scripts,
         tools=tools,
         banner=banner_html,
@@ -474,12 +499,11 @@ def render(
         paths="".join(paths),
         w=width,
         h=height,
-        details="".join(details),
-        debug=debug_block,
-        quarantine=quarantine,
         spec_hash=spec_hash,
         # 보이는 것과 게이트가 보는 것을 둘 다 적는다 — 접힌 상자가 몇 개를 품었는지
         # 헤더에서 사라지면 "노드 12"와 카드 9장이 어긋나 보인다.
+        solution=html.escape(os.path.basename(os.path.dirname(
+            os.path.dirname(os.path.dirname(getattr(editor, "path", "") or "")))) or "Solution"),
         boxes=len(shown),
         nodes=len(cg.nodes),
         edges=len(dedges),
@@ -512,6 +536,26 @@ body{{margin:0;background:{T.SURFACE['chrome']};color:#D8DCDF;
 .toolbar{{background:{T.SURFACE['toolbar']};padding:7px 12px;border-bottom:1px solid {T.SURFACE['line']};
         display:flex;gap:14px;align-items:center;font-size:12px}}
 .toolbar b{{color:{T.NODE['accent']};font-weight:600}}
+.side{{display:grid;grid-template-rows:auto 1fr;padding:0;overflow:hidden}}
+.dbgpane{{overflow:auto;padding:10px 12px;max-height:48vh;
+      border-bottom:1px solid {T.SURFACE['line']}}}
+.cfg{{display:grid;grid-template-rows:auto 1fr;overflow:hidden}}
+.tabs{{display:flex;flex-wrap:wrap;gap:1px;background:{T.SURFACE['line']};
+      border-bottom:1px solid {T.SURFACE['line']}}}
+.tab{{background:{T.SURFACE['panel_alt']};color:#8A9196;font-size:11px;padding:5px 9px;
+      cursor:pointer;flex:1 1 auto;text-align:center;white-space:nowrap}}
+.tab:hover{{color:#C6CCD1}}
+.tab.on{{background:{T.SURFACE['panel']};color:{T.NODE['accent']};
+      box-shadow:inset 0 -2px 0 {T.NODE['accent']}}}
+.tabbody{{overflow:auto;padding:10px 12px}}
+.projlist{{padding:0 12px 8px;border-bottom:1px solid {T.SURFACE['line']};margin-bottom:8px}}
+.ptree{{font-size:11.5px}}
+.ptree .sol{{color:#8A9196;padding:2px 0}}
+.ptree .proj{{color:#A8B0B6;padding:2px 0 2px 14px;border-left:2px solid transparent}}
+.ptree .proj.on{{color:#D8DCDF;border-left-color:{T.NODE['border']}}}
+.libsearch{{width:calc(100% - 24px);margin:0 12px 6px;background:{T.SURFACE['canvas']};
+      color:#D8DCDF;border:1px solid {T.SURFACE['line']};font-size:11px;padding:3px 6px}}
+.libnode.hide,.rail details.hide{{display:none}}
 .shell{{display:grid;grid-template-columns:220px 1fr 340px;height:calc(100vh - 62px)}}
 .rail,.side{{background:{T.SURFACE['panel']};overflow:auto;padding:10px 0}}
 .rail{{border-right:1px solid {T.SURFACE['line']}}}
@@ -570,6 +614,9 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .prow input:focus{{outline:1px solid {T.NODE['border']}}}
 .mk{{font-size:9px;border:1px solid;border-radius:2px;padding:0 3px}}
 .mk.r{{color:{T.PORT['Image']}}} .mk.t{{color:{T.STATE['partial']}}}
+.libnode .lbl{{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.libnode .typ{{margin-left:auto;color:#5F6468;font-size:9.5px;overflow:hidden;
+      text-overflow:ellipsis;white-space:nowrap;max-width:45%}}
 .libghost{{position:fixed;z-index:50;pointer-events:none;padding:3px 8px;font-size:11px;
         background:{T.NODE['bg']};border:1px solid {T.NODE['border']};color:#D8DCDF;border-radius:3px}}
 .canvas.candrop{{outline:1px dashed {T.NODE['border']};outline-offset:-3px}}
@@ -686,23 +733,22 @@ _TEMPLATE = """<!doctype html>
 <div id="toast"></div>
 <div class="shell">
   <div class="rail">
+    <div class="projlist">
+      <h4>Projects</h4>
+      <div class="ptree">
+        <div class="sol">{solution}</div>
+        <div class="proj on">{title}</div>
+      </div>
+    </div>
     <h4>Node Library</h4>
+    <input class="libsearch" type="text" placeholder="노드 검색" oninput="vlmtLibFilter(this.value)">
     {lib}
   </div>
   <div class="canvas"><div class="stage" style="width:{w}px;height:{h}px">
     <svg class="wires" width="{w}" height="{h}">{paths}</svg>
     {cards}
   </div></div>
-  <div class="side">
-    {space}
-    {recipe}
-    {history}
-    {params}
-    {debug}
-    {quarantine}
-    <h4>Node Quick Info</h4>
-    {details}
-  </div>
+  <div class="side">{side}</div>
 </div>
 <div class="log"><b>{note}</b> &nbsp; {runline} &nbsp; spec_hash {spec_hash}</div>
 {scripts}
@@ -929,6 +975,39 @@ async function vlmtRun() {
 
 // 버튼 하나가 CLI 명령 하나다. 편집기가 물질화와 학습을 엮어 돌리지 않는다 —
 // 엮는 순간 CLI에 없는 경로가 하나 생긴다.
+// 오른쪽 패널은 탭이다 (설계 문서 12.1). 한 줄로 흘려 두면 스크롤로만 찾게 된다.
+document.addEventListener('click', (ev) => {
+  const t = ev.target.closest('.tab');
+  if (!t) return;
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  document.querySelectorAll('.tabbody').forEach(b => {
+    b.hidden = b.dataset.tab !== t.dataset.tab;
+  });
+  try { sessionStorage.setItem('tab', t.dataset.tab); } catch (e) {}
+});
+
+function vlmtLibFilter(q) {
+  const needle = (q || '').trim().toLowerCase();
+  document.querySelectorAll('.rail details').forEach(d => {
+    let any = false;
+    d.querySelectorAll('.libnode').forEach(n => {
+      const hit = !needle || n.textContent.toLowerCase().includes(needle)
+                  || (n.dataset.type || '').toLowerCase().includes(needle);
+      n.classList.toggle('hide', !hit);
+      any = any || hit;
+    });
+    d.classList.toggle('hide', !any);
+    if (needle && any) d.open = true;
+  });
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  let saved = null;
+  try { saved = sessionStorage.getItem('tab'); } catch (e) {}
+  const t = saved && document.querySelector('.tab[data-tab="' + saved + '"]');
+  if (t) t.click();
+});
+
 async function vlmtExpand(pid) {
   const {code, data} = await post('/api/expand', {id: pid});
   if (code === 200) location.reload(); else toast(data.reason || '', true);
@@ -1062,6 +1141,8 @@ document.addEventListener('keydown', (ev) => {
 function vlmtSelect(nid) {
   document.querySelectorAll('.node').forEach(n => n.classList.toggle('sel', n.dataset.node === nid));
   document.querySelectorAll('.params').forEach(p => p.classList.toggle('on', p.dataset.node === nid));
+  const hint = document.querySelector('.doc.pick');
+  if (hint) hint.hidden = !!document.querySelector('.params.on');
 }
 
 document.addEventListener('click', (ev) => {
@@ -1134,9 +1215,13 @@ def _library_panel(editable: bool) -> str:
                 if editable
                 else ""
             )
+            # 한국어 이름을 앞에, 타입은 뒤에 흐리게. 검색은 둘 다 걸린다 —
+            # 사람은 "크기"로 찾지 "adapt.image_resize"로 찾지 않는다.
             rows.append(
                 f'<div class="libnode"{attrs} title="{html.escape(d.doc.summary)}">'
-                f'<span class="badge b{tag}">{tag}</span>{html.escape(d.type)}</div>'
+                f'<span class="badge b{tag}">{tag}</span>'
+                f'<span class="lbl">{html.escape(d.doc.label or d.type)}</span>'
+                f'<span class="typ">{html.escape(d.type)}</span></div>'
             )
         out.append(
             f"<details><summary><span class='dot' style='background:"

@@ -4,8 +4,8 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-10
-- 마지막 커밋: 두 번째 도메인(vlm_parts)과 Procedure 접기 — 캔버스가 9상자로 줄었다
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **277 passed**
+- 마지막 커밋: 배선 좌표 수정 · 한국어 이름 · 우측 패널 탭화(문서 12.1 파티션)
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **283 passed**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -430,6 +430,28 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
    `evidence_missing`으로 막혔다. 기본값을 `none`으로 바꿨고, `dummy_ecg`는 네 단계 모두
    명시적으로 `required`라 그대로다
 
+
+
+### 4d. 화면 다듬기 (2026-09-11)
+
+사용자 지적 셋을 처리했다.
+
+- [x] **배선이 칩에서 떨어져 있었다.** 카드는 `[입력 칩][카드][출력 칩]`으로 쌓이는데
+      **Input 노드는 입력 칩 줄이 CSS에서 숨겨진다**(`.inp .ports.top{display:none}`).
+      좌표 계산이 그 한 줄을 몰라서 모든 배선이 CHIP_H(30px)만큼 어긋났다.
+      브라우저에서 실측해 확인했다 — 노드가 y=440, 입력 칩도 440인데 배선은 410에서 끝나고 있었다
+- [x] **박스 이름을 한국어로.** 노드 27종과 Procedure에 `label`을 붙이고 카드가 그것을 크게 쓴다.
+      인스턴스 id와 타입은 아랫줄에 남는다. 라이브러리도 한국어 이름이 앞에 오고 검색이 둘 다 걸린다
+      (패턴으로 붙이다 8개가 이웃 노드에 잘못 붙었다 — 레지스트리와 전수 대조해서 잡았다)
+- [x] **우측 패널을 설계 문서 12.1의 파티션대로.** Debug Output(위) + 탭으로 나뉜
+      Configuration Panel(아래): Node Parameters · Project Assistant · Node Quick Info · History.
+      Sample Space와 Parameter Recipe는 문서가 정한 대로 Project Assistant 안으로 들어갔다.
+      **뷰어는 스크립트를 싣지 않으므로 탭을 쓰지 않는다** — 눌러도 안 바뀌는 탭은 없느니만 못하다
+- [x] 왼쪽에 Projects List와 노드 검색창 추가 (둘 다 문서 12.1에 있던 것)
+
+**남은 차이**: `MechVisionImage/` 폴더가 비어 있어 새로 실측할 근거가 없다. 토큰은 이전에 측정해
+둔 값 그대로이고 `OBSERVED`/`ASSIGNED` 구분이 살아 있다. 캡처를 그 폴더에 넣어 주면
+Project Tabs·Log 패널·Toolbar 버튼 구성까지 맞출 수 있다.
 
 ---
 
