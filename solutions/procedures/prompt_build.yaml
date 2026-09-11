@@ -1,0 +1,32 @@
+kind: Procedure
+name: prompt_build
+version: "1.0.0"
+summary: "표의 값으로 프롬프트를 쓰고, 이미지 개수만큼 자리표시자를 넣는다."
+
+# 이미지 자리표시자 개수는 실제 이미지 개수와 반드시 같아야 한다.
+# 어긋나면 학습과 추론이 다른 프롬프트를 쓰게 되므로 image_slots가 실행 시점에 대조한다.
+exposed_inputs:
+  context: {port: "n_text:context"}
+  images: {port: "n_slots:images"}
+exposed_outputs:
+  prompt: {port: "n_slots:text"}
+exposed_params:
+  template: {node: n_text, param: template}
+  max_chars: {node: n_text, param: max_chars}
+  placeholder: {node: n_slots, param: placeholder}
+  policy: {node: n_slots, param: policy}
+
+nodes:
+  - id: n_text
+    type: "text.template@1.0.0"
+    params:
+      template: "아래 이미지를 보고 판정하시오."
+      strip: true
+      max_chars: 8000
+
+  - id: n_slots
+    type: "prompt.image_slots@1.0.0"
+    params: {placeholder: "<image>", policy: prepend}
+
+edges:
+  - {from: "n_text:text", to: "n_slots:text"}

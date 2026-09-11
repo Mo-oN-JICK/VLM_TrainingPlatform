@@ -1,0 +1,62 @@
+spec_version: 1
+kind: Project
+id: "01_parts"
+name: "부품 외관 검사"
+
+sample_space:
+  index: "../../data/parts/index.jsonl"
+  key: sample_id
+  filter: ""
+  splits:
+    strategy: group_holdout
+    group_by: lot_id          # 같은 로트가 train과 val에 동시에 들어가지 않는다
+    ratios: {train: 0.75, val: 0.25}
+    seed: 20260911
+
+nodes:
+  # ── 데이터 ──────────────────────────────────────────────────────────
+  - {id: n_img, type: "source.image@1.0.0", params: {column: image_path}}
+  - {id: n_cols, type: "source.metadata@1.0.0",
+     params: {columns: [part_name, verdict, defect, lot_id]}}
+  - {id: n_schema, type: "schema.define@1.0.0", params: {path: "../../schemas/answer.yaml"}}
+
+  # ── 조립과 종결 ────────────────────────────────────────────────────
+  - {id: n_guard, type: "answer.leakage_guard@1.0.0", params: {mode: exact, on_leak: quarantine}}
+  - {id: n_sample, type: "sample.assemble@1.0.0", params: {require_validated: true}}
+  - {id: n_train, type: "train.vlm_trainer@0.1.0",
+     params: {config_path: "trainer.yaml", out_dir: "runs/{run_id}/train"}}
+
+
+# 처리는 Procedure 세 상자로. 캔버스에서 상자 하나로 보이고, 펼치면 안의 노드가 나온다.
+procedures:
+  - id: p_prep
+    ref: "image_prep_resize@1.0.0"
+    params: {size: [448, 448], keep_aspect: true}
+
+  - id: p_prompt
+    ref: "prompt_build@1.0.0"
+    params: {template: "부품 사진이다. 부품 종류는 {part_name}이다. 외관을 보고 판정하시오.",
+             placeholder: "<image>", policy: prepend}
+
+  - id: p_answer
+    ref: "answer_build@1.0.0"
+    params: {mapping: {verdict: "verdict", defect: "defect"}, render: tagged}
+
+edges:
+  - {from: "n_img:image", to: "p_prep:image"}
+  - {from: "n_cols:meta", to: "p_prompt:context"}
+  - {from: "p_prep:images", to: "p_prompt:images"}
+  - {from: "n_schema:schema", to: "p_answer:schema"}
+  - {from: "n_cols:meta", to: "p_answer:fields"}
+  - {from: "p_prompt:prompt", to: "n_guard:prompt"}
+  - {from: "p_answer:answer", to: "n_guard:answer"}
+  - {from: "n_schema:schema", to: "n_guard:schema"}
+  - {from: "n_guard:prompt", to: "n_sample:prompt"}
+  - {from: "p_answer:answer", to: "n_sample:answer"}
+  - {from: "p_prep:images", to: "n_sample:images"}
+  - {from: "n_cols:meta", to: "n_sample:meta"}
+  - {from: "n_sample:sample", to: "n_train:sample"}
+  - {from: "n_schema:schema", to: "n_train:schema"}
+
+materialize:
+  boundary: [n_sample]

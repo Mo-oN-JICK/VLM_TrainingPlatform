@@ -130,9 +130,10 @@ def _inline_procedures(
             )
 
         # 바깥 배선을 내부 포트로 다시 꽂는다
-        def _map(ref_node: str, ref_port: str, exposed: Dict[str, str], what: str) -> Tuple[str, str]:
+        def _targets(ref_node: str, ref_port: str, exposed: Dict[str, Any], what: str):
+            """(노드, 포트) 목록. 입력은 안쪽 여러 포트로 갈라질 수 있다."""
             if ref_node != p.id:
-                return ref_node, ref_port
+                return [(ref_node, ref_port)]
             if ref_port not in exposed:
                 raise SpecError(
                     f"Procedure {p.id}({pd.ref}): 노출되지 않은 {what} 포트 {ref_port!r} "
@@ -141,14 +142,19 @@ def _inline_procedures(
                     port=f"{p.id}:{ref_port}",
                 )
             tgt = exposed[ref_port]
-            tn, tp = tgt.rsplit(":", 1)
-            return f"{p.id}/{tn}", tp
+            out = []
+            for one in tgt if isinstance(tgt, list) else [tgt]:
+                tn, tp = one.rsplit(":", 1)
+                out.append((f"{p.id}/{tn}", tp))
+            return out
 
         rewired: List[Edge] = []
         for e in edges:
-            sn, sp = _map(e.src_node, e.src_port, pd.exposed_outputs, "출력")
-            dn, dp = _map(e.dst_node, e.dst_port, pd.exposed_inputs, "입력")
-            rewired.append(Edge(sn, sp, dn, dp))
+            srcs = _targets(e.src_node, e.src_port, pd.exposed_outputs, "출력")
+            dsts = _targets(e.dst_node, e.dst_port, pd.exposed_inputs, "입력")
+            for sn, sp in srcs:
+                for dn, dp in dsts:
+                    rewired.append(Edge(sn, sp, dn, dp))
         edges = rewired
 
         procs.append(

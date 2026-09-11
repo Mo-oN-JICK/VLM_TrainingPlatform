@@ -112,6 +112,11 @@ class Shown:
     state_ids: List[str] = field(default_factory=list)      # 상태를 합쳐 볼 노드들
 
 
+def _first_port(ref: Any) -> str:
+    """노출 입력은 안쪽 여러 포트로 갈라질 수 있다. 타입은 어느 쪽이든 같으므로 첫 자리에서 읽는다."""
+    return ref[0] if isinstance(ref, list) else ref
+
+
 def _proc_of(cg: CompiledGraph, nid: str) -> str:
     """이 노드가 어느 Procedure 안에 있나. 접힌 상자 자신은 `cg.nodes`에 없다."""
     n = cg.nodes.get(nid)
@@ -157,7 +162,7 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
             continue
         ins: Dict[str, Any] = {}
         for name, ref in (p.get("exposed_inputs") or {}).items():
-            inode, iport = ref.split(":", 1)
+            inode, iport = _first_port(ref).split(":", 1)
             full = f"{pid}/{inode}"
             if full in cg.nodes:
                 d = resolve_node(cg.nodes[full].ref)
@@ -187,8 +192,9 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
     port_of_out: Dict[str, Tuple[str, str]] = {}
     for pid, p in procs.items():
         for name, ref in (p.get("exposed_inputs") or {}).items():
-            inode, iport = ref.split(":", 1)
-            port_of_in[f"{pid}/{inode}:{iport}"] = (pid, name)
+            for one in (ref if isinstance(ref, list) else [ref]):
+                inode, iport = one.split(":", 1)
+                port_of_in[f"{pid}/{inode}:{iport}"] = (pid, name)
         for name, ref in (p.get("exposed_outputs") or {}).items():
             onode, oport = ref.split(":", 1)
             port_of_out[f"{pid}/{onode}:{oport}"] = (pid, name)

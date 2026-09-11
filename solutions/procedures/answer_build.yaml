@@ -1,0 +1,30 @@
+kind: Procedure
+name: answer_build
+version: "1.0.0"
+summary: "스키마가 선언한 단계대로 정답 Text를 쓰고, 스키마를 지키는지 검사한다."
+
+# 정답의 **모양은 그래프가 아니라 스키마 파일이 정한다.** 한 열을 그대로 쓰든,
+# 여러 단계를 조립하든, 이미 완성된 문장을 가져오든 전부 mapping 한 줄의 차이다.
+exposed_inputs:
+  # 스키마는 쓰는 쪽과 검사하는 쪽 **둘 다** 필요하다
+  schema: {port: ["n_write:schema", "n_check:schema"]}
+  fields: {port: "n_write:fields"}
+exposed_outputs:
+  answer: {port: "n_check:answer"}
+exposed_params:
+  mapping: {node: n_write, param: mapping}
+  render: {node: n_write, param: render}
+  on_violation: {node: n_check, param: on_violation}
+  max_tokens: {node: n_check, param: max_tokens}
+
+nodes:
+  - id: n_write
+    type: "answer.stepwise@1.0.0"
+    params: {render: lines, mapping: {}}
+
+  - id: n_check
+    type: "answer.validate@1.0.0"
+    params: {on_violation: quarantine, max_tokens: 512}
+
+edges:
+  - {from: "n_write:answer", to: "n_check:answer"}

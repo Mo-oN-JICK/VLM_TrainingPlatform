@@ -1,0 +1,11 @@
+kind: Solution
+spec_version: 1
+id: vlm_parts
+name: "부품 외관 검사 (VLM 전용)"
+description: "이미지 한 장 + 라벨 하나. 시계열·전문가 모델·지식문서 없이 도는 최소 구성."
+
+defaults: {}
+
+runtime_profile: windows_single_gpu
+cache:
+  max_gb: 8

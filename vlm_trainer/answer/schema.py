@@ -20,7 +20,10 @@ class Step:
     type: str = "enum"  # enum | object | bool | float | int | text
     values: Tuple[str, ...] = ()
     fields: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    evidence: str = "required"  # required | optional | none
+    # 단계마다 근거 문장을 요구할지. 기본은 **요구하지 않는다** —
+    # 근거를 강제하는 것은 한 도메인의 규약이지 모든 정답의 성질이 아니다.
+    # 요구하려면 스키마에 `evidence: required`를 적는다.
+    evidence: str = "none"  # required | optional | none
     depends_on: Tuple[str, ...] = ()
     rules: Tuple[str, ...] = ()
 
@@ -54,7 +57,7 @@ class AnswerSchema:
                     type=str(s.get("type", "enum")),
                     values=tuple(s.get("values") or ()),
                     fields=dict(s.get("fields") or {}),
-                    evidence=str(s.get("evidence", "required")),
+                    evidence=str(s.get("evidence", "none")),
                     depends_on=tuple(s.get("depends_on") or ()),
                     rules=tuple(s.get("rules") or ()),
                 )

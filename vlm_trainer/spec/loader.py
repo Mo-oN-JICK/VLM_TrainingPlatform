@@ -116,7 +116,9 @@ class ProcedureDef:
     summary: str = ""
     nodes: List[NodeInstance] = field(default_factory=list)
     edges: List[Edge] = field(default_factory=list)
-    exposed_inputs: Dict[str, str] = field(default_factory=dict)  # 이름 -> "node:port"
+    # 이름 -> ["node:port", ...]. 입력 하나가 안쪽 여러 포트를 먹일 수 있다 —
+    # 스키마처럼 한 값이 두 노드에 다 필요한 경우가 흔하다. 팬인과는 다른 이야기다.
+    exposed_inputs: Dict[str, List[str]] = field(default_factory=dict)
     exposed_outputs: Dict[str, str] = field(default_factory=dict)
     exposed_params: Dict[str, tuple] = field(default_factory=dict)  # 이름 -> (node, param)
     path: str = ""
@@ -126,13 +128,22 @@ class ProcedureDef:
         return f"{self.name}@{self.version}"
 
 
-def _exposed_ports(raw: Any, where: str, kind: str) -> Dict[str, str]:
-    out: Dict[str, str] = {}
+def _exposed_ports(raw: Any, where: str, kind: str) -> Dict[str, Any]:
+    """출력은 한 자리, 입력은 여러 자리를 받을 수 있다."""
+    out: Dict[str, Any] = {}
     for name, v in (raw or {}).items():
         port = v.get("port") if isinstance(v, dict) else v
         if not port:
             raise SpecError(f"{where}: exposed_{kind}[{name}]에 port가 없다")
-        out[str(name)] = str(port)
+        if kind == "outputs":
+            if isinstance(port, list):
+                raise SpecError(
+                    f"{where}: exposed_outputs[{name}]는 포트 하나여야 한다 — "
+                    "출력이 두 곳에서 나오면 어느 값인지 정해지지 않는다"
+                )
+            out[str(name)] = str(port)
+        else:
+            out[str(name)] = [str(x) for x in (port if isinstance(port, list) else [port])]
     return out
 
 

@@ -1,0 +1,28 @@
+kind: Procedure
+name: image_prep_resize
+version: "1.0.0"
+summary: "이미지 한 장을 고정 크기로 맞춰 목록 하나로 만든다."
+
+# 가장 단순한 이미지 준비. 전문가 모델로 관심영역을 잘라 쓰려면 expert_crop을 대신 꽂는다 —
+# 출력 포트 이름과 타입이 같아서 배선 하나만 옮기면 된다.
+exposed_inputs:
+  image: {port: "n_resize:image"}
+exposed_outputs:
+  images: {port: "n_wrap:items"}
+exposed_params:
+  size: {node: n_resize, param: size}
+  mode: {node: n_resize, param: mode}
+  keep_aspect: {node: n_resize, param: keep_aspect}
+
+nodes:
+  - id: n_resize
+    type: "adapt.image_resize@1.0.0"
+    params: {size: [448, 448], mode: bilinear, keep_aspect: true, pad_value: 0}
+
+  # 자동 승격이 없으므로 한 장을 목록으로 만드는 것도 명시한다
+  - id: n_wrap
+    type: "list.wrap@1.0.0"
+    params: {}
+
+edges:
+  - {from: "n_resize:image", to: "n_wrap:item"}

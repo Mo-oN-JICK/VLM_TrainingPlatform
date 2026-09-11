@@ -1,0 +1,26 @@
+kind: AnswerSchema
+id: parts_verdict
+version: "1.0.0"
+render: tagged
+locale: ko
+
+# 정답의 모양은 여기서 정한다. 그래프는 그대로 두고 이 파일만 바꾸면
+# 한 단어짜리 분류에서 여러 단계짜리 판정문까지 간다.
+steps:
+  - id: verdict
+    label: "판정"
+    type: enum
+    values: ["정상", "불량"]
+
+  - id: defect
+    label: "결함"
+    type: enum
+    values: ["없음", "긁힘", "찍힘", "얼룩"]
+    depends_on: [verdict]
+    rules:
+      - "verdict == '정상' => defect == '없음'"
+
+constraints:
+  max_tokens: 64
+  step_order: strict
+  vocabulary: closed
