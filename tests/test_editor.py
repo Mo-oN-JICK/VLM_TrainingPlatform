@@ -37,7 +37,7 @@ def ed(tmp_path):
     shutil.copytree(
         SOLUTION,
         work,
-        ignore=shutil.ignore_patterns("data", "runs", "*.lock.yaml", "edit_history.jsonl"),
+        ignore=shutil.ignore_patterns("data", "runs", "*.lock.yaml", "edit_history*"),
     )
     return Editor.open(str(work / "projects" / "01_dummy" / "project.yaml"))
 
@@ -47,7 +47,7 @@ def ed_with_data(tmp_path):
     """데이터까지 복사한다. 실제로 그래프를 돌리는 테스트 하나만 쓴다."""
     work = tmp_path / "dummy_ecg"
     shutil.copytree(
-        SOLUTION, work, ignore=shutil.ignore_patterns("runs", "*.lock.yaml", "edit_history.jsonl")
+        SOLUTION, work, ignore=shutil.ignore_patterns("runs", "*.lock.yaml", "edit_history*")
     )
     return Editor.open(str(work / "projects" / "01_dummy" / "project.yaml"))
 
@@ -220,7 +220,11 @@ def test_editor_page_has_a_params_panel_per_node(ed):
     from vlm_trainer.ui import render as render_mod
 
     page = render_mod.render_editor(ed)
-    assert page.count('class="params"') == len(ed.compiled.order)
+    # 접힌 Procedure는 상자 하나로 센다 — 안쪽 노드는 패널에도 나오지 않는다
+    from vlm_trainer.ui.render import fold
+
+    shown, _ = fold(ed.compiled)
+    assert page.count('class="params"') == len(shown)
     assert 'data-node="n_stats"' in page
     assert "vlmtParam(" in page and "vlmtSelect(" in page
     # 선택된 카드는 실측한 선택 색을 쓴다
@@ -644,11 +648,13 @@ def test_the_editor_actually_runs_the_graph(ed_with_data, tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
     assert ed.run_start(limit=2)["ok"]
 
-    for _ in range(600):  # 최대 60초
+    for _ in range(1200):  # 최대 120초. 전체 실행 중에는 앞선 테스트의 프로세스와 겹친다
         st = ed.run_state()
         if not st["running"]:
             break
         _time.sleep(0.1)
+    else:
+        raise AssertionError("끝나지 않았다")
 
     assert st["phase"] == "done", st.get("console", "")
     assert st["exit"] == 0, st.get("console", "")
@@ -1029,9 +1035,58 @@ def test_the_page_shows_the_boundary_and_offers_the_profile(ed):
 
     page = render_mod.render_editor(ed)
     assert page.count('class="mat"') == 1, "경계에 있는 노드가 카드에 표시된다"
-    # 노드마다 하나씩, 거기에 함수 정의 하나
-    assert page.count("vlmtBoundary(") == len(ed.compiled.nodes) + 1
+    # 보이는 노드마다 하나씩, 거기에 함수 정의 하나.
+    # 접힌 Procedure 상자에는 경계 토글이 없다 — 경계는 실제 노드 이름을 가리킨다
+    from vlm_trainer.ui.render import fold
+
+    shown, _ = fold(ed.compiled)
+    plain = [k for k in shown if not shown[k].inner]
+    assert page.count("vlmtBoundary(") == len(plain) + 1
     assert 'class="prof"' in page and "linux_multi_gpu" in page
 
     viewer = render_mod.render(ed.compiled)
     assert "vlmtBoundary(" not in viewer and 'class="prof"' not in viewer
+
+
+def test_expanding_a_box_does_not_touch_the_spec(ed):
+    """접기는 보는 방식일 뿐이다. 스펙도 History도 건드리지 않는다."""
+    before_hash = ed.compiled.spec_hash
+    before_hist = len(ed.history)
+
+    assert ed.toggle_expand("p_crop")["ok"]
+    assert "p_crop" in ed.expanded
+    assert ed.compiled.spec_hash == before_hash
+    assert len(ed.history) == before_hist
+    assert not ed.dirty
+
+    assert ed.toggle_expand("p_crop")["ok"]
+    assert "p_crop" not in ed.expanded
+
+
+def test_an_unknown_procedure_says_what_exists(ed):
+    res = ed.toggle_expand("p_없음")
+    assert not res["ok"] and "p_crop" in res["reason"]
+
+
+def test_the_page_folds_by_default_and_offers_a_handle(ed):
+    from vlm_trainer.ui import render as render_mod
+
+    page = render_mod.render_editor(ed)
+    # 카드 하나 + 우측 설정 블록 하나. 안쪽 노드는 어느 쪽에도 없다
+    assert page.count('data-node="p_crop"') == 2
+    assert 'data-node="p_crop/n_crop"' not in page, "기본은 접혀 있어야 한다"
+    assert "vlmtExpand(" in page
+    assert "topk" in page, "노출 파라미터는 접힌 채로도 보인다"
+
+    ed.toggle_expand("p_crop")
+    page = render_mod.render_editor(ed)
+    assert 'data-node="p_crop/n_crop"' in page
+    assert page.count('data-node="p_crop"') == 0
+
+
+def test_the_gates_see_the_expanded_graph_either_way(ed):
+    """접혀 있든 펼쳐져 있든 컴파일 결과는 같다 — 접기가 게이트를 건드리면 안 된다."""
+    folded = ed.compiled.spec_hash
+    ed.toggle_expand("p_crop")
+    assert ed.compiled.spec_hash == folded
+    assert len(ed.compiled.nodes) == 25, "게이트는 언제나 펼쳐진 그래프를 본다"

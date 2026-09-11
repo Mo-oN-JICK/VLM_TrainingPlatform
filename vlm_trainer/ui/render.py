@@ -34,11 +34,11 @@ class Placed:
     lane: int
 
 
-def _layout(cg: CompiledGraph) -> Dict[str, Placed]:
+def _layout(shown: Dict[str, "Shown"], edges: List[Tuple[str, str]]) -> Dict[str, Placed]:
     """위상 순서대로 레인을 쌓고, 레인 안에서는 상류의 무게중심으로 좌우를 정한다."""
     lanes: Dict[int, List[str]] = {}
-    for nid in cg.order:
-        lanes.setdefault(cg.nodes[nid].lane, []).append(nid)
+    for nid, s in shown.items():
+        lanes.setdefault(s.lane, []).append(nid)
 
     placed: Dict[str, Placed] = {}
     x_of: Dict[str, float] = {}
@@ -47,7 +47,11 @@ def _layout(cg: CompiledGraph) -> Dict[str, Placed]:
     for lane in sorted(lanes):
         ids = lanes[lane]
         def key(nid: str) -> Tuple[float, str]:
-            ups = [x_of[e.src_node] for e in cg.edges if e.dst_node == nid and e.src_node in x_of]
+            ups = [
+                x_of[a.split(":")[0]]
+                for a, b in edges
+                if b.split(":")[0] == nid and a.split(":")[0] in x_of
+            ]
             return (sum(ups) / len(ups) if ups else 1e9, nid)
 
         ids = sorted(ids, key=key)
@@ -88,6 +92,130 @@ def _summary(cg: CompiledGraph, nid: str, limit: int = 3) -> str:
     return ", ".join(items)
 
 
+@dataclass
+class Shown:
+    """캔버스가 실제로 그리는 것 하나.
+
+    보통은 노드 하나지만, **접힌 Procedure면 그 안의 여러 노드를 대표하는 상자**다.
+    게이트는 언제나 펼쳐진 그래프를 보고, 접기는 보는 방식일 뿐이다.
+    """
+
+    id: str
+    ref: str
+    kind: NodeKind
+    category: str
+    lane: int
+    inputs: Dict[str, Any] = field(default_factory=dict)   # 이름 -> PortType
+    outputs: Dict[str, Any] = field(default_factory=dict)
+    summary: str = ""
+    inner: int = 0          # 0이면 보통 노드, 1 이상이면 접힌 Procedure
+    state_ids: List[str] = field(default_factory=list)      # 상태를 합쳐 볼 노드들
+
+
+def _proc_of(cg: CompiledGraph, nid: str) -> str:
+    """이 노드가 어느 Procedure 안에 있나. 접힌 상자 자신은 `cg.nodes`에 없다."""
+    n = cg.nodes.get(nid)
+    return (n.origin or "") if n is not None else ""
+
+
+def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[Tuple[str, str]]]:
+    """(그릴 것, 배선). `expanded`에 든 Procedure만 펼쳐서 그린다.
+
+    Procedure 안의 배선은 상자 안으로 사라지고, 밖으로 드나드는 배선은 노출 포트로 옮겨 붙는다.
+    """
+    expanded = set(expanded or ())
+    procs = {p["id"]: p for p in cg.procedures if p["id"] not in expanded}
+
+    # 안쪽 노드 -> 대표 상자
+    rep: Dict[str, str] = {}
+    for nid in cg.order:
+        o = _proc_of(cg, nid)
+        if o in procs:
+            rep[nid] = o
+
+    shown: Dict[str, Shown] = {}
+    for nid in cg.order:
+        if nid in rep:
+            continue
+        n = cg.nodes[nid]
+        d = resolve_node(n.ref)
+        shown[nid] = Shown(
+            id=nid,
+            ref=n.ref,
+            kind=n.kind,
+            category=n.category,
+            lane=n.lane,
+            inputs={p: n.input_types.get(p) or d.inputs[p].type for p in d.inputs},
+            outputs=dict(n.output_types),
+            summary=_summary(cg, nid),
+            state_ids=[nid],
+        )
+
+    for pid, p in procs.items():
+        inner = [i for i in cg.order if rep.get(i) == pid]
+        if not inner:
+            continue
+        ins: Dict[str, Any] = {}
+        for name, ref in (p.get("exposed_inputs") or {}).items():
+            inode, iport = ref.split(":", 1)
+            full = f"{pid}/{inode}"
+            if full in cg.nodes:
+                d = resolve_node(cg.nodes[full].ref)
+                ins[name] = cg.nodes[full].input_types.get(iport) or d.inputs[iport].type
+        outs: Dict[str, Any] = {}
+        for name, ref in (p.get("exposed_outputs") or {}).items():
+            onode, oport = ref.split(":", 1)
+            full = f"{pid}/{onode}"
+            if full in cg.nodes:
+                outs[name] = cg.nodes[full].output_types.get(oport)
+        params = p.get("params") or {}
+        shown[pid] = Shown(
+            id=pid,
+            ref=p.get("ref", ""),
+            kind=NodeKind.PROCESSING,
+            category="Procedure",
+            lane=min(cg.nodes[i].lane for i in inner),
+            inputs=ins,
+            outputs={k: v for k, v in outs.items() if v is not None},
+            summary=", ".join(f"{k}={v}" for k, v in list(params.items())[:3]),
+            inner=len(inner),
+            state_ids=inner,
+        )
+
+    # 배선을 대표 상자의 노출 포트로 옮긴다
+    port_of_in: Dict[str, Tuple[str, str]] = {}
+    port_of_out: Dict[str, Tuple[str, str]] = {}
+    for pid, p in procs.items():
+        for name, ref in (p.get("exposed_inputs") or {}).items():
+            inode, iport = ref.split(":", 1)
+            port_of_in[f"{pid}/{inode}:{iport}"] = (pid, name)
+        for name, ref in (p.get("exposed_outputs") or {}).items():
+            onode, oport = ref.split(":", 1)
+            port_of_out[f"{pid}/{onode}:{oport}"] = (pid, name)
+
+    edges: List[Tuple[str, str]] = []
+    seen = set()
+    for e in cg.edges:
+        if rep.get(e.src_node) and rep.get(e.src_node) == rep.get(e.dst_node):
+            continue  # 상자 안에서 끝나는 배선
+        src = e.src
+        if e.src_node in rep:
+            hit = port_of_out.get(e.src)
+            if hit is None:
+                continue  # 노출되지 않은 내부 출력 — 상자 밖으로 나가지 않는다
+            src = f"{hit[0]}:{hit[1]}"
+        dst = e.dst
+        if e.dst_node in rep:
+            hit = port_of_in.get(e.dst)
+            if hit is None:
+                continue
+            dst = f"{hit[0]}:{hit[1]}"
+        if (src, dst) not in seen:
+            seen.add((src, dst))
+            edges.append((src, dst))
+    return shown, edges
+
+
 def state_of(report: Any, nid: str) -> Tuple[str, str]:
     """(상태 이름, 부가 라벨). 실행 보고가 없으면 pending."""
     if report is None:
@@ -105,6 +233,21 @@ def state_of(report: Any, nid: str) -> Tuple[str, str]:
     return "pending", ""
 
 
+def state_of_many(report: Any, ids: List[str]) -> Tuple[str, str]:
+    """접힌 상자의 상태. 안에서 하나라도 실패했으면 상자가 실패다 —
+    상자가 초록인데 안이 빨간 것이 제일 나쁜 화면이다."""
+    if not ids:
+        return "pending", ""
+    if len(ids) == 1:
+        return state_of(report, ids[0])
+    seen = [state_of(report, i) for i in ids]
+    for name in ("failed", "partial", "running", "skipped", "cached", "success"):
+        hit = [e for s, e in seen if s == name]
+        if hit:
+            return name, (hit[0] if len(hit) == len(seen) else f"{len(hit)}/{len(seen)} 노드")
+    return "pending", ""
+
+
 def render(
     cg: CompiledGraph,
     *,
@@ -115,12 +258,16 @@ def render(
     compat: Optional[Dict[str, Dict[str, str]]] = None,
     banner: str = "",
     editor: Any = None,
+    expanded: Any = (),
 ) -> str:
     # 물질화 경계는 그래프 밖의 한 줄이지만 어느 노드까지 미리 굽는지를 정한다.
     # 카드에 보이지 않으면 그 한 줄이 어디에 걸리는지 알 수 없다.
     graph = getattr(editor, "graph", None) if editor is not None else None
     boundary = set(graph.materialize.boundary) if graph is not None else set()
-    placed = _layout(cg)
+    # Procedure는 기본으로 **접어서** 그린다. 25개 카드는 사람이 붙들 수 있는 수가 아니다.
+    # 게이트는 언제나 펼쳐진 그래프를 본다 — 접기는 보는 방식일 뿐이다.
+    shown, dedges = fold(cg, expanded)
+    placed = _layout(shown, dedges)
     max_lane = max((p.lane for p in placed.values()), default=0)
     width = max((p.x for p in placed.values()), default=0) + CARD_W + PAD
     height = max((p.y for p in placed.values()), default=0) + CARD_H + CHIP_H * 2 + PAD
@@ -129,17 +276,16 @@ def render(
     out_pos: Dict[str, Tuple[int, int, str, bool]] = {}
     in_pos: Dict[str, Tuple[int, int]] = {}
     for nid, pl in placed.items():
-        n = cg.nodes[nid]
-        for name, cx, cy, cw in _chips(n.output_types, pl.x, pl.y + CARD_H + CHIP_H):
-            _, root, is_list = _type_label(n.output_types[name])
+        s = shown[nid]
+        for name, cx, cy, cw in _chips(s.outputs, pl.x, pl.y + CARD_H + CHIP_H):
+            _, root, is_list = _type_label(s.outputs[name])
             out_pos[f"{nid}:{name}"] = (cx + cw // 2, cy + CHIP_H, root, is_list)
-        d = resolve_node(n.ref)
-        for name, cx, cy, cw in _chips(d.inputs, pl.x, pl.y - CHIP_H):
+        for name, cx, cy, cw in _chips(s.inputs, pl.x, pl.y - CHIP_H):
             in_pos[f"{nid}:{name}"] = (cx + cw // 2, cy)
 
     paths = []
-    for e in cg.edges:
-        a, b = out_pos.get(e.src), in_pos.get(e.dst)
+    for src_ref, dst_ref in dedges:
+        a, b = out_pos.get(src_ref), in_pos.get(dst_ref)
         if not a or not b:
             continue
         x1, y1, root, is_list = a
@@ -153,47 +299,52 @@ def render(
     # ── 노드 카드 ────────────────────────────────────────────────────
     cards = []
     for nid, pl in placed.items():
-        n = cg.nodes[nid]
-        d = resolve_node(n.ref)
-        tag = {NodeKind.INPUT: "I", NodeKind.PROCESSING: "P", NodeKind.OUTPUT: "O"}[n.kind]
-        shape = {NodeKind.INPUT: "inp", NodeKind.PROCESSING: "prc", NodeKind.OUTPUT: "out"}[n.kind]
-        state, state_extra = state_of(report, nid)
+        s = shown[nid]
+        tag = {NodeKind.INPUT: "I", NodeKind.PROCESSING: "P", NodeKind.OUTPUT: "O"}[s.kind]
+        shape = {NodeKind.INPUT: "inp", NodeKind.PROCESSING: "prc", NodeKind.OUTPUT: "out"}[s.kind]
+        state, state_extra = state_of_many(report, s.state_ids)
 
         # 입력 칩은 선언이 아니라 **컴파일이 확정한 타입**을 보여준다.
         # 제네릭이 남아 있으면 그 자체가 눈에 띄어야 한다.
-        in_types = {p: n.input_types.get(p) or d.inputs[p].type for p in d.inputs}
+        in_types, out_types = s.inputs, s.outputs
         chips_in = "".join(
             f'<div class="chip cin" data-ref="{nid}:{name}" '
             f'style="left:{cx - pl.x}px;top:0;width:{cw}px;'
             f'background:{T.port_color(_type_label(in_types[name])[1], _type_label(in_types[name])[2])}">'
             f'<span class="t">&lt;{html.escape(_type_label(in_types[name])[0])}&gt;</span>'
             f'<span class="p">{html.escape(name)}</span></div>'
-            for name, cx, cy, cw in _chips(d.inputs, pl.x, 0)
+            for name, cx, cy, cw in _chips(in_types, pl.x, 0)
         )
         chips_out = "".join(
             f'<div class="chip cout" data-ref="{nid}:{name}" '
             f'style="left:{cx - pl.x}px;top:0;width:{cw}px;'
-            f'background:{T.port_color(_type_label(n.output_types[name])[1], _type_label(n.output_types[name])[2])}">'
-            f'<span class="t">&lt;{html.escape(_type_label(n.output_types[name])[0])}&gt;</span>'
+            f'background:{T.port_color(_type_label(out_types[name])[1], _type_label(out_types[name])[2])}">'
+            f'<span class="t">&lt;{html.escape(_type_label(out_types[name])[0])}&gt;</span>'
             f'<span class="p">{html.escape(name)}</span></div>'
-            for name, cx, cy, cw in _chips(n.output_types, pl.x, 0)
+            for name, cx, cy, cw in _chips(out_types, pl.x, 0)
         )
 
         cards.append(
             f'<div class="node {shape}" data-node="{html.escape(nid)}" '
             f'style="left:{pl.x}px;top:{pl.y}px" '
-            f'title="{html.escape(nid)} · {html.escape(n.ref)}">'
+            f'title="{html.escape(nid)} · {html.escape(s.ref)}">'
             f'<div class="ports top">{chips_in}</div>'
-            f'<div class="card" style="border-top:3px solid {T.category_color(n.category)};'
+            f'<div class="card" style="border-top:3px solid {T.category_color(s.category)};'
             f'border-left:4px solid {T.STATE.get(state, "#4A4A4A")}">'
             f'<div class="hd"><span class="nm">{html.escape(nid)}</span>'
             f'<span class="badge b{tag}">{tag}</span>'
+            + (f'<span class="fold" title="{s.inner}개 노드가 들어 있다 — 눌러서 펼친다" '
+               f"onclick=\"vlmtExpand('{html.escape(nid)}')\">&#9656;{s.inner}</span>"
+               if s.inner and editable else "")
+            + ('<span class="fold" title="눌러서 접는다" '
+               f"onclick=\"vlmtExpand('{html.escape(_proc_of(cg, nid))}')\">&#9662;</span>"
+               if editable and _proc_of(cg, nid) else "")
             + ('<span class="mat" title="물질화 경계 — 여기까지 미리 굽는다">&#9640;</span>'
                if nid in boundary else "")
             + (f"<span class=\"del\" onclick=\"vlmtRemove('{nid}')\">&times;</span>" if editable else "")
             + "</div>"
-            f'<div class="ref">{html.escape(n.ref)}</div>'
-            f'<div class="sum">{html.escape(_summary(cg, nid))}</div>'
+            f'<div class="ref">{html.escape(s.ref)}</div>'
+            f'<div class="sum">{html.escape(s.summary)}</div>'
             f'<div class="st"><span class="sdot" style="background:{T.STATE.get(state, "#4A4A4A")}">'
             f'</span>{state}{" · " + html.escape(state_extra) if state_extra else ""}</div>'
             f"</div>"
@@ -290,7 +441,7 @@ def render(
 
     return _TEMPLATE.format(
         title=html.escape(head),
-        params=_params_panel(cg, overlaid, boundary) if editable else '',
+        params=_params_panel(cg, overlaid, boundary, expanded) if editable else '',
         history=history,
         recipe=recipe,
         space=space,
@@ -456,6 +607,10 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
       border:1px solid {T.SURFACE['line']};font-size:11px;padding:1px 4px}}
 .prof{{background:{T.SURFACE['canvas']};color:#D8DCDF;border:1px solid {T.SURFACE['line']};
       font-size:11px;padding:1px 4px}}
+.fold{{color:#8FE3F5;cursor:pointer;font-size:10px;margin-left:4px;padding:0 3px;
+      border:1px solid {T.NODE['border']};border-radius:2px;line-height:14px}}
+.fold:hover{{background:{T.NODE['bg']};color:#57F7E6}}
+.node .card .hd .nm{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .mat{{color:#57F7E6;font-size:11px;margin-left:4px}}
 .matt{{margin-left:auto;font-size:10.5px;color:#8FE3F5;display:flex;gap:3px;align-items:center;
       font-weight:400}}
@@ -751,6 +906,11 @@ async function vlmtRun() {
 
 // 버튼 하나가 CLI 명령 하나다. 편집기가 물질화와 학습을 엮어 돌리지 않는다 —
 // 엮는 순간 CLI에 없는 경로가 하나 생긴다.
+async function vlmtExpand(pid) {
+  const {code, data} = await post('/api/expand', {id: pid});
+  if (code === 200) location.reload(); else toast(data.reason || '', true);
+}
+
 async function vlmtBoundary(node, on) {
   const {code, data} = await post('/api/boundary', {node: node, on: on});
   if (code === 200) { sessionStorage.setItem('sel', node); location.reload(); }
@@ -932,6 +1092,7 @@ def render_editor(editor: Any) -> str:
         compat=compat_matrix(cg),
         banner=editor.error,
         editor=editor,
+        expanded=editor.expanded,
     )
 
 
@@ -1106,15 +1267,72 @@ def _history_panel(editor: Any) -> str:
     return '<h4>History</h4>' + ("".join(reversed(rows)) or '<div class="doc">기록이 없다.</div>')
 
 
-def _params_panel(cg: CompiledGraph, overlaid: Any = (), boundary: Any = ()) -> str:
+def _param_widget(nid: str, name: str, value: Any) -> str:
+    """값 하나를 고치는 입력칸. 값의 종류가 위젯을 정한다."""
+    if isinstance(value, bool):
+        return (
+            f'<input type="checkbox" {"checked" if value else ""} '
+            f"onchange=\"vlmtParam('{nid}','{name}',this.checked)\">"
+        )
+    if isinstance(value, (int, float)):
+        step = "1" if isinstance(value, int) else "any"
+        return (
+            f'<input type="number" step="{step}" value="{html.escape(str(value))}" '
+            f"onchange=\"vlmtParam('{nid}','{name}',this.valueAsNumber)\">"
+        )
+    if isinstance(value, (list, tuple, dict)):
+        return (
+            f'<input type="text" value="{html.escape(json.dumps(value, ensure_ascii=False))}" '
+            f"onchange=\"vlmtParam('{nid}','{name}',this.value,'json')\">"
+        )
+    return (
+        f'<input type="text" value="{html.escape(str(value))}" '
+        f"onchange=\"vlmtParam('{nid}','{name}',this.value)\">"
+    )
+
+
+def _params_panel(
+    cg: CompiledGraph, overlaid: Any = (), boundary: Any = (), expanded: Any = ()
+) -> str:
     """노드마다 Node Parameters 블록. 카드를 고르면 그 블록만 보인다.
+
+    **접힌 Procedure는 상자 하나에 노출 파라미터만 보인다.** 상자로 접어 놓고 패널에는
+    안쪽 노드를 전부 나열하면 접은 값어치가 사라진다.
 
     레시피가 덮고 있는 파라미터는 표식을 단다 — 그 값을 고치면 스펙이 아니라
     오버레이가 바뀌기 때문이다."""
     from .api import param_meta
 
+    expanded = set(expanded or ())
+    folded = {p["id"]: p for p in cg.procedures if p["id"] not in expanded}
+
     blocks = []
+    for pid, proc in folded.items():
+        rows = []
+        for name, target in (proc.get("exposed_params") or {}).items():
+            inner_id, inner_param = target
+            n = cg.nodes.get(inner_id)
+            if n is None:
+                continue
+            value = n.params.get(inner_param)
+            widget = _param_widget(inner_id, inner_param, value)
+            rows.append(
+                f'<div class="prow"><label>{html.escape(name)}'
+                f'<span class="mk r" title="{html.escape(inner_id)}.{html.escape(inner_param)}">'
+                f"{html.escape(inner_id.split('/')[-1])}</span></label>{widget}</div>"
+            )
+        blocks.append(
+            f'<div class="params" data-node="{html.escape(pid)}">'
+            f'<div class="phd">{html.escape(pid)} <em>{html.escape(proc.get("ref", ""))}</em></div>'
+            + ("".join(rows) or '<div class="doc">노출된 파라미터가 없다.</div>')
+            + f'<div class="doc">노드 {len([i for i in cg.order if cg.nodes[i].origin == pid])}개가 '
+            f"들어 있다. 카드의 &#9656; 로 펼친다.</div>"
+            + "</div>"
+        )
+
     for nid in cg.order:
+        if cg.nodes[nid].origin in folded:
+            continue
         n = cg.nodes[nid]
         rows = []
         for m in param_meta(n.ref, n.params):
@@ -1129,27 +1347,7 @@ def _params_panel(cg: CompiledGraph, overlaid: Any = (), boundary: Any = ()) -> 
             if m["type_affecting"]:
                 marks += '<span class="mk t" title="바꾸면 배선 타입이 다시 검사된다">type</span>'
 
-            if kind == "bool":
-                widget = (
-                    f'<input type="checkbox" {"checked" if value else ""} '
-                    f"onchange=\"vlmtParam('{nid}','{name}',this.checked)\">"
-                )
-            elif kind == "number":
-                step = "1" if isinstance(value, int) else "any"
-                widget = (
-                    f'<input type="number" step="{step}" value="{html.escape(str(value))}" '
-                    f"onchange=\"vlmtParam('{nid}','{name}',this.valueAsNumber)\">"
-                )
-            elif kind == "json":
-                widget = (
-                    f'<input type="text" value="{html.escape(json.dumps(value, ensure_ascii=False))}" '
-                    f"onchange=\"vlmtParam('{nid}','{name}',this.value,'json')\">"
-                )
-            else:
-                widget = (
-                    f'<input type="text" value="{html.escape(str(value))}" '
-                    f"onchange=\"vlmtParam('{nid}','{name}',this.value)\">"
-                )
+            widget = _param_widget(nid, name, value)
             rows.append(
                 f'<div class="prow"><label>{html.escape(name)}{marks}</label>{widget}</div>'
             )

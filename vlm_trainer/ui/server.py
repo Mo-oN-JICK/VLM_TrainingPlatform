@@ -20,7 +20,7 @@ ROUTES = ("/api/state", "/api/library", "/api/connect", "/api/disconnect",
           "/api/recipe/select", "/api/recipe/add-path", "/api/recipe/drop-path",
           "/api/recipe/store", "/api/recipe/delete", "/api/recipe/active",
           "/api/run", "/api/run/state", "/api/run/stop", "/api/sample-space",
-          "/api/materialize", "/api/train", "/api/boundary", "/api/profile")
+          "/api/materialize", "/api/train", "/api/boundary", "/api/profile", "/api/expand")
 
 
 def handle(editor: Editor, path: str, body: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
@@ -73,6 +73,8 @@ def handle(editor: Editor, path: str, body: Dict[str, Any]) -> Tuple[int, Dict[s
         res = editor.set_boundary(body["node"], bool(body["on"]))
     elif path == "/api/profile":
         res = editor.set_profile(body["profile"])
+    elif path == "/api/expand":
+        res = editor.toggle_expand(body["id"])
     elif path == "/api/sample-space":
         res = editor.set_sample_space(body["field"], body["value"])
     else:

@@ -150,6 +150,7 @@ class Editor:
     console_path: str = ""
     phase: str = ""
     stopped: bool = False
+    expanded: set = field(default_factory=set)  # 펼쳐 둔 Procedure. 화면 상태일 뿐이다
 
     @staticmethod
     def open(path: str) -> "Editor":
@@ -464,6 +465,18 @@ class Editor:
             ]
 
         return self._try(go, f"노드 삭제 {node_id}")
+
+    def toggle_expand(self, pid: str) -> Dict[str, Any]:
+        """Procedure 상자를 펼치거나 접는다.
+
+        **스펙은 바뀌지 않는다** — 보는 방식일 뿐이라 History에도 남지 않고 dirty로도 치지 않는다.
+        게이트는 언제나 펼쳐진 그래프를 본다.
+        """
+        known = {p["id"] for p in (self.compiled.procedures if self.compiled else [])}
+        if pid not in known:
+            return {"ok": False, "reason": f"그런 Procedure가 없다: {pid} (있는 것: {sorted(known)})"}
+        self.expanded.discard(pid) if pid in self.expanded else self.expanded.add(pid)
+        return {"ok": True, "expanded": sorted(self.expanded)}
 
     # ── 물질화 경계와 실행 프로파일 ──────────────────────────────────────
     #
@@ -1040,6 +1053,8 @@ class Editor:
             "recipe": self.recipe_view(),
             "sample_space": self.sample_space_view(),
             "boundary": list(self.graph.materialize.boundary),
+            "expanded": sorted(self.expanded),
+            "procedures": [p["id"] for p in cg.procedures],
             "profile": self.graph.runtime_profile,
             "profiles": self.profiles(),
             "overlaid": [f"{n}:{p}" for (n, p) in self._overlay_paths()],

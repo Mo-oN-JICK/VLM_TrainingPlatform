@@ -8,6 +8,7 @@ import re
 import pytest
 
 from vlm_trainer.core.compiler import compile_project
+from vlm_trainer.ui.render import fold
 from vlm_trainer.core.node import NodeKind
 from vlm_trainer.ui import render as render_mod
 from vlm_trainer.ui import tokens as T
@@ -36,10 +37,11 @@ def page(cg):
 
 
 def test_input_is_top_lane_and_output_is_bottom(cg):
-    placed = render_mod._layout(cg)
-    tops = [p.y for nid, p in placed.items() if cg.nodes[nid].kind is NodeKind.INPUT]
-    bots = [p.y for nid, p in placed.items() if cg.nodes[nid].kind is NodeKind.OUTPUT]
-    mids = [p.y for nid, p in placed.items() if cg.nodes[nid].kind is NodeKind.PROCESSING]
+    shown, edges = fold(cg)
+    placed = render_mod._layout(shown, edges)
+    tops = [p.y for nid, p in placed.items() if shown[nid].kind is NodeKind.INPUT]
+    bots = [p.y for nid, p in placed.items() if shown[nid].kind is NodeKind.OUTPUT]
+    mids = [p.y for nid, p in placed.items() if shown[nid].kind is NodeKind.PROCESSING]
 
     assert len(set(tops)) == 1, "Input 노드가 한 레인에 모여 있지 않다"
     assert max(tops) < min(mids), "Input이 최상단 레인이 아니다"
@@ -47,14 +49,19 @@ def test_input_is_top_lane_and_output_is_bottom(cg):
 
 
 def test_flow_is_downward_for_every_edge(cg):
-    """배선은 언제나 위에서 아래로 간다. 이 규약이 순환을 구조적으로 막는다."""
-    placed = render_mod._layout(cg)
-    for e in cg.edges:
-        assert placed[e.src_node].y < placed[e.dst_node].y, f"{e.src} -> {e.dst} 가 위로 향한다"
+    """배선은 언제나 위에서 아래로 간다. 이 규약이 순환을 구조적으로 막는다.
+
+    접힌 Procedure 상자도 예외가 아니다 — 상자 안이 여러 레인에 걸쳐 있어도
+    밖에서 보이는 배선은 전부 아래로 향해야 한다."""
+    shown, edges = fold(cg)
+    placed = render_mod._layout(shown, edges)
+    for src, dst in edges:
+        a, b = src.split(":")[0], dst.split(":")[0]
+        assert placed[a].y < placed[b].y, f"{src} -> {dst} 가 위로 향한다"
 
 
 def test_cards_do_not_overlap(cg):
-    placed = render_mod._layout(cg)
+    placed = render_mod._layout(*fold(cg))
     boxes = [(p.x, p.y, p.x + render_mod.CARD_W, p.y + render_mod.CARD_H) for p in placed.values()]
     for i, a in enumerate(boxes):
         for b in boxes[i + 1 :]:
@@ -75,7 +82,11 @@ def test_three_kinds_are_distinguished_by_shape(cg, page):
 
 
 def test_every_edge_gets_a_wire(cg, page):
-    assert page.count("<path d=") == len(cg.edges)
+    """Procedure가 접혀 있으면 그 안에서 끝나는 배선은 상자 안으로 사라진다.
+    밖에서 보이는 배선은 전부 그려져야 한다."""
+    _, shown_edges = fold(cg)
+    assert page.count("<path d=") == len(shown_edges)
+    assert len(shown_edges) < len(cg.edges), "접힌 Procedure가 있으면 배선이 줄어든다"
 
 
 def test_wire_takes_the_source_port_type_color(cg, page):
@@ -195,3 +206,57 @@ def test_view_paints_node_states_and_debug_panel(cg, tmp_path):
     blank = render_mod.render(cg)
     assert "미리보기를 만들지 않았다" in blank
     assert "pending" in blank
+
+
+# ── Procedure 접기 ──────────────────────────────────────────────────────
+
+
+def test_a_procedure_is_drawn_as_one_box(cg):
+    """25개 카드는 사람이 붙들 수 있는 수가 아니다. 캡슐화는 스펙에만 있으면 소용없다."""
+    shown, edges = fold(cg)
+
+    assert "p_crop" in shown and shown["p_crop"].inner == 4
+    assert not any(k.startswith("p_crop/") for k in shown), "안쪽 노드가 밖에 남았다"
+    assert len(shown) == len(cg.nodes) - 3
+
+
+def test_the_box_carries_the_exposed_ports_and_their_types(cg):
+    shown, _ = fold(cg)
+    box = shown["p_crop"]
+
+    assert set(box.inputs) == {"subject", "image"}
+    assert set(box.outputs) == {"crops", "regions"}
+    assert str(box.outputs["crops"]).startswith("ImageList"), str(box.outputs["crops"])
+
+
+def test_wires_move_to_the_exposed_ports(cg):
+    shown, edges = fold(cg)
+
+    assert all(not a.startswith("p_crop/") and not b.startswith("p_crop/") for a, b in edges)
+    assert any(a.startswith("p_crop:crops") for a, b in edges), "밖으로 나가는 배선이 사라졌다"
+    assert len(edges) == len(cg.edges) - 3, "상자 안에서 끝나는 배선만 사라져야 한다"
+
+
+def test_expanding_puts_the_inner_nodes_back(cg):
+    shown, edges = fold(cg, expanded=["p_crop"])
+
+    assert "p_crop" not in shown
+    assert len([k for k in shown if k.startswith("p_crop/")]) == 4
+    assert len(shown) == len(cg.nodes) and len(edges) == len(cg.edges)
+
+
+def test_a_folded_box_is_not_green_while_something_inside_failed(cg):
+    """상자가 초록인데 안이 빨간 것이 제일 나쁜 화면이다."""
+    from vlm_trainer.engine.runner import FAILED, SUCCESS, RunReport
+
+    rep = RunReport(order=list(cg.order))
+    for nid in ("p_crop/n_exp", "p_crop/n_crop", "p_crop/n_resize"):
+        rep.count(nid, SUCCESS)
+    rep.count("p_crop/n_frame", FAILED)
+
+    state, extra = render_mod.state_of_many(rep, list(cg.nodes))
+    assert state == "failed"
+
+    shown, _ = fold(cg)
+    state, extra = render_mod.state_of_many(rep, shown["p_crop"].state_ids)
+    assert state == "failed" and "1/4" in extra
