@@ -34,7 +34,8 @@ class Placed:
     lane: int
 
 
-def _layout(shown: Dict[str, "Shown"], edges: List[Tuple[str, str]]) -> Dict[str, Placed]:
+def _layout(shown: Dict[str, "Shown"], edges: List[Tuple[str, str]],
+            card_h: int = CARD_H) -> Dict[str, Placed]:
     """위상 순서대로 레인을 쌓고, 레인 안에서는 상류의 무게중심으로 좌우를 정한다."""
     lanes: Dict[int, List[str]] = {}
     for nid, s in shown.items():
@@ -63,7 +64,7 @@ def _layout(shown: Dict[str, "Shown"], edges: List[Tuple[str, str]]) -> Dict[str
             placed[nid] = Placed(
                 id=nid,
                 x=int(PAD + col * (CARD_W + COL_GAP)),
-                y=int(PAD + lane * (CARD_H + CHIP_H * 2 + LANE_GAP)),
+                y=int(PAD + lane * (card_h + CHIP_H * 2 + LANE_GAP)),
                 lane=lane,
             )
     return placed
@@ -109,6 +110,8 @@ class Shown:
     outputs: Dict[str, Any] = field(default_factory=dict)
     summary: str = ""       # 설정값 요약. 카드 본문이 아니라 툴팁으로 간다
     label: str = ""         # 카드에 크게 뜨는 한국어 이름
+    in_docs: Dict[str, str] = field(default_factory=dict)   # 포트 이름 -> 뜻
+    out_docs: Dict[str, str] = field(default_factory=dict)
     hint: str = ""          # 카드 본문 한 줄. 파라미터가 아니라 무슨 일을 하는지
     inner: int = 0          # 0이면 보통 노드, 1 이상이면 접힌 Procedure
     state_ids: List[str] = field(default_factory=list)      # 상태를 합쳐 볼 노드들
@@ -117,6 +120,73 @@ class Shown:
 def _first_port(ref: Any) -> str:
     """노출 입력은 안쪽 여러 포트로 갈라질 수 있다. 타입은 어느 쪽이든 같으므로 첫 자리에서 읽는다."""
     return ref[0] if isinstance(ref, list) else ref
+
+
+HEAD_H = 26     # 카드 머리줄
+ROW_H = 15      # 입력/처리/출력 한 줄
+BODY_PAD = 10
+
+
+def _card_rows(s: "Shown") -> int:
+    """이 카드가 몇 줄을 쓰는가. 입력 + 처리 + 출력."""
+    return max(1, len(s.inputs)) + 1 + max(1, len(s.outputs))
+
+
+def _card_height(shown: Dict[str, "Shown"]) -> int:
+    """한 그래프 안의 카드는 높이를 맞춘다.
+
+    줄 수는 노드마다 다르지만 카드마다 키가 다르면 레인이 어긋나 보인다.
+    가장 줄이 많은 카드에 맞추고, 레이아웃과 배선이 같은 값을 쓴다.
+    """
+    rows = max((_card_rows(v) for v in shown.values()), default=3)
+    return HEAD_H + BODY_PAD + rows * ROW_H
+
+
+def _pio_rows(s: "Shown") -> str:
+    """입력 / 처리 / 출력. 포트마다 타입 색 점을 찍는다.
+
+    포트 이름(`schema`, `fields`)이 아니라 그 포트가 **무엇인지**를 적는다 —
+    이름은 배선할 때 칩에 보이고, 여기서 읽을 것은 뜻이다.
+    """
+    out = []
+
+    def row(kind: str, i: int, n: int, name: str, t: Any) -> str:
+        label = kind if n == 1 else f"{kind} {i + 1}"
+        base, root, is_list = _type_label(t)
+        doc = _port_doc(s, kind, name) or name
+        return (
+            f'<div class="pio"><span class="pdot" '
+            f'style="background:{T.port_color(root, is_list)}"></span>'
+            f'<span class="pk">{label}</span>'
+            f'<span class="pv" title="{html.escape(name)} · {html.escape(base)}">'
+            f"{html.escape(doc)}</span></div>"
+        )
+
+    if s.inputs:
+        for i, (name, t) in enumerate(s.inputs.items()):
+            out.append(row("입력", i, len(s.inputs), name, t))
+    else:
+        out.append('<div class="pio none"><span class="pdot"></span>'
+                   '<span class="pk">입력</span><span class="pv">없음</span></div>')
+
+    out.append(
+        f'<div class="pio proc"><span class="pdot"></span><span class="pk">처리</span>'
+        f'<span class="pv" title="{html.escape(s.summary)}">'
+        f"{html.escape(s.hint or s.label)}</span></div>"
+    )
+
+    if s.outputs:
+        for i, (name, t) in enumerate(s.outputs.items()):
+            out.append(row("출력", i, len(s.outputs), name, t))
+    else:
+        out.append('<div class="pio none"><span class="pdot"></span>'
+                   '<span class="pk">출력</span><span class="pv">없음</span></div>')
+    return "".join(out)
+
+
+def _port_doc(s: "Shown", kind: str, name: str) -> str:
+    table = s.in_docs if kind == "입력" else s.out_docs
+    return table.get(name, "")
 
 
 def _sum_title(s: "Shown") -> str:
@@ -169,6 +239,8 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
             summary=_summary(cg, nid),
             label=d.doc.label or n.ref.split("@")[0],
             hint=d.doc.hint,
+            in_docs={p: port.doc for p, port in d.inputs.items()},
+            out_docs={p: port.doc for p, port in d.outputs.items()},
             state_ids=[nid],
         )
 
@@ -176,19 +248,25 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
         inner = [i for i in cg.order if rep.get(i) == pid]
         if not inner:
             continue
+        # 노출 포트의 **타입과 설명**을 안쪽 노드에서 그대로 들고 나온다.
+        # 설명이 없으면 카드에 `schema`, `fields` 같은 날것이 뜬다.
         ins: Dict[str, Any] = {}
+        in_docs: Dict[str, str] = {}
         for name, ref in (p.get("exposed_inputs") or {}).items():
             inode, iport = _first_port(ref).split(":", 1)
             full = f"{pid}/{inode}"
             if full in cg.nodes:
                 d = resolve_node(cg.nodes[full].ref)
                 ins[name] = cg.nodes[full].input_types.get(iport) or d.inputs[iport].type
+                in_docs[name] = d.inputs[iport].doc or name
         outs: Dict[str, Any] = {}
+        out_docs: Dict[str, str] = {}
         for name, ref in (p.get("exposed_outputs") or {}).items():
             onode, oport = ref.split(":", 1)
             full = f"{pid}/{onode}"
             if full in cg.nodes:
                 outs[name] = cg.nodes[full].output_types.get(oport)
+                out_docs[name] = resolve_node(cg.nodes[full].ref).outputs[oport].doc or name
         params = p.get("params") or {}
         shown[pid] = Shown(
             id=pid,
@@ -201,6 +279,8 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
             summary=", ".join(f"{k}={v}" for k, v in list(params.items())[:3]),
             label=p.get("label") or p.get("ref", "").split("@")[0],
             hint=p.get("hint", ""),
+            in_docs=in_docs,
+            out_docs=out_docs,
             inner=len(inner),
             state_ids=inner,
         )
@@ -298,10 +378,12 @@ def render(
     # Procedure는 기본으로 **접어서** 그린다. 25개 카드는 사람이 붙들 수 있는 수가 아니다.
     # 게이트는 언제나 펼쳐진 그래프를 본다 — 접기는 보는 방식일 뿐이다.
     shown, dedges = fold(cg, expanded)
-    placed = _layout(shown, dedges)
+    # 카드 높이는 그래프가 정한다 — 포트가 많은 노드에 맞춰 한 번 계산하고 모두 같이 쓴다
+    card_h = _card_height(shown)
+    placed = _layout(shown, dedges, card_h)
     max_lane = max((p.lane for p in placed.values()), default=0)
     width = max((p.x for p in placed.values()), default=0) + CARD_W + PAD
-    height = max((p.y for p in placed.values()), default=0) + CARD_H + CHIP_H * 2 + PAD
+    height = max((p.y for p in placed.values()), default=0) + card_h + CHIP_H * 2 + PAD
 
     # ── 배선(SVG) ────────────────────────────────────────────────────
     out_pos: Dict[str, Tuple[int, int, str, bool]] = {}
@@ -312,7 +394,7 @@ def render(
         # **Input 노드는 입력 칩 줄이 아예 없다**(CSS의 `.inp .ports.top{display:none}`).
         # 그 한 줄을 좌표 계산이 모르면 배선이 칩에서 CHIP_H만큼 떨어진 허공에서 시작하고 끝난다.
         top_h = 0 if s.kind is NodeKind.INPUT else CHIP_H
-        for name, cx, cy, cw in _chips(s.outputs, pl.x, pl.y + top_h + CARD_H):
+        for name, cx, cy, cw in _chips(s.outputs, pl.x, pl.y + top_h + card_h):
             _, root, is_list = _type_label(s.outputs[name])
             out_pos[f"{nid}:{name}"] = (cx + cw // 2, cy + CHIP_H, root, is_list)
         for name, cx, cy, cw in _chips(s.inputs, pl.x, pl.y):
@@ -364,10 +446,11 @@ def render(
             f'style="left:{pl.x}px;top:{pl.y}px" '
             f'title="{html.escape(nid)} · {html.escape(s.ref)}">'
             f'<div class="ports top">{chips_in}</div>'
-            f'<div class="card" style="border-top:3px solid {T.category_color(s.category)};'
+            f'<div class="card" style="height:{card_h}px;border-top:3px solid {T.category_color(s.category)};'
             f'border-left:4px solid {T.STATE.get(state, "#4A4A4A")}">'
-            f'<div class="hd"><span class="nm">{html.escape(s.label)}</span>'
-            f'<span class="badge b{tag}">{tag}</span>'
+            f'<div class="hd"><span class="nm" title="{html.escape(nid)}">{html.escape(s.label)}</span>'
+            + f'<span class="st"><span class="sdot" style="background:{T.STATE.get(state, "#4A4A4A")}"></span>{state}{" · " + html.escape(state_extra) if state_extra else ""}</span>'
+            + f'<span class="badge b{tag}" title="{tag}">{tag}</span>'
             + (f'<span class="fold" title="{s.inner}개 노드가 들어 있다 — 눌러서 펼친다" '
                f"onclick=\"vlmtExpand('{html.escape(nid)}')\">&#9656;{s.inner}</span>"
                if s.inner and editable else "")
@@ -378,13 +461,10 @@ def render(
                if nid in boundary else "")
             + (f"<span class=\"del\" onclick=\"vlmtRemove('{nid}')\">&times;</span>" if editable else "")
             + "</div>"
-            + (f'<div class="ref" title="{html.escape(nid)} · {html.escape(s.ref)}">{html.escape(nid)}</div>' if editable else "")
-            + f'<div class="sum" title="{html.escape(_sum_title(s))}">{html.escape(s.hint or s.summary)}</div>'
-            f'<div class="st"><span class="sdot" style="background:{T.STATE.get(state, "#4A4A4A")}">'
-            f'</span>{state}{" · " + html.escape(state_extra) if state_extra else ""}</div>'
-            f"</div>"
-            f'<div class="ports bot">{chips_out}</div>'
-            f"</div>"
+            + _pio_rows(s)
+            + "</div>"
+            + f'<div class="ports bot">{chips_out}</div>'
+            + "</div>"
         )
 
     # ── 좌측 레일: 카테고리별 노드 수 ────────────────────────────────
@@ -616,11 +696,20 @@ svg.wires{{position:absolute;inset:0;pointer-events:none}}
 .chip .t{{display:block;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .chip .p{{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .card{{background:{T.NODE['bg']};border:1px solid {T.NODE['border']};border-radius:3px;
-      height:{CARD_H}px;padding:7px 10px}}
+      padding:6px 9px}}
 .inp .card{{border-top-left-radius:12px;border-top-right-radius:12px}}
 .out .card{{border-bottom-left-radius:12px;border-bottom-right-radius:12px}}
 .inp .ports.top,.out .ports.bot{{display:none}}
-.hd{{display:flex;align-items:center;gap:6px}}
+.hd{{display:flex;align-items:center;gap:6px;height:{HEAD_H}px}}
+.hd .st{{margin-left:auto;display:flex;align-items:center;gap:4px;color:{T.NODE['muted']};
+      font-size:10px;white-space:nowrap}}
+.pio{{display:flex;align-items:center;gap:6px;height:{ROW_H}px;font-size:11px;
+      color:#A8B0B6;overflow:hidden}}
+.pio .pdot{{flex:0 0 auto;width:7px;height:7px;border-radius:2px;background:transparent}}
+.pio .pk{{flex:0 0 auto;color:#6F7478;font-size:10px;min-width:34px}}
+.pio .pv{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.pio.none .pv{{color:#5F6468}}
+.pio.proc .pv{{color:#C6CCD1}}
 .nm{{color:{T.NODE['title']};font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap}}
 /* margin-left:auto 는 카드 머리줄에서 배지를 오른쪽으로 밀기 위한 것이었는데,
@@ -630,7 +719,6 @@ svg.wires{{position:absolute;inset:0;pointer-events:none}}
 .bI{{color:{T.PORT['Image']}}} .bP{{color:#8A9196}} .bO{{color:{T.PORT['Table']}}}
 .ref,.sum{{color:{T.NODE['muted']};font-size:11px;white-space:nowrap;overflow:hidden;
           text-overflow:ellipsis}}
-.st{{margin-top:3px;font-size:10.5px;color:#8A9196;display:flex;align-items:center;gap:5px}}
 .sdot{{width:7px;height:7px;border-radius:50%;display:inline-block}}
 pre.pv{{background:{T.SURFACE['canvas']};border:1px solid {T.SURFACE['line']};border-radius:3px;
        padding:6px 8px;margin:4px 0;font-size:11px;line-height:1.4;color:#A8B0B6;

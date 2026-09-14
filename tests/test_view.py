@@ -277,7 +277,8 @@ def test_wires_touch_the_chips_they_connect(cg, page):
     import re
 
     shown, edges = fold(cg)
-    placed = render_mod._layout(shown, edges)
+    card_h = render_mod._card_height(shown)
+    placed = render_mod._layout(shown, edges, card_h)
 
     def chip_x(nid, ports, name):
         for n, cx, cy, cw in render_mod._chips(ports, placed[nid].x, 0):
@@ -296,7 +297,7 @@ def test_wires_touch_the_chips_they_connect(cg, page):
         s_top = 0 if s_node.kind is NodeKind.INPUT else render_mod.CHIP_H
         want_start = (
             chip_x(sn, s_node.outputs, sp),
-            placed[sn].y + s_top + render_mod.CARD_H + render_mod.CHIP_H,
+            placed[sn].y + s_top + card_h + render_mod.CHIP_H,
         )
         want_end = (chip_x(dn, d_node.inputs, dp), placed[dn].y)
 
@@ -319,9 +320,12 @@ def test_the_card_shows_the_korean_name_and_keeps_the_id(cg, page):
     읽는 사람에게 아무것도 알려주지 않으므로 뷰어 카드에서 뺐다 — 툴팁에는 남는다."""
     from vlm_trainer.core.registry import resolve as resolve_node
 
+    import re
+
     shown, _ = fold(cg)
+    names = set(re.findall(r'class="nm"[^>]*>(.*?)</span>', page))
     for nid, s in shown.items():
-        assert f'class="nm">{s.label}<' in page, f"{nid}의 한국어 이름이 카드에 없다"
+        assert s.label in names, f"{nid}의 한국어 이름이 카드에 없다"
         assert nid in page, f"{nid} 라는 id도 어딘가에는 남아 있어야 한다"
 
     assert "이미지 업로드" in page
@@ -391,7 +395,8 @@ def test_the_gate_text_is_readable_not_escaped_twice(cg):
 def test_cards_say_what_they_do_not_what_they_are_set_to(cg, page):
     """처음 보는 사람에게 `columns=['part_name', ...]` 는 소음이다."""
     assert "데이터셋의 경로 열에서 이미지를 불러옵니다" in page
-    assert 'class="sum" title=' in page, "설정값은 툴팁으로 내려간다"
+    assert 'class="pio proc"' in page, "카드 가운데 줄이 무슨 처리인지 말한다"
+    assert 'class="pio"' in page and 'class="pdot"' in page, "포트마다 색 점이 붙는다"
 
     from vlm_trainer.core.registry import all_defs
 
@@ -447,3 +452,52 @@ def test_the_card_does_not_print_the_type_ref(cg, page):
         assert "@" not in body, f"카드 줄에 타입이 남았다: {body}"
 
     assert "<em>source.image@1.0.0</em>" in page, "Node Quick Info 에는 타입이 있어야 한다"
+
+
+def test_the_card_reads_as_input_process_output(cg, page):
+    """카드는 위에서 아래로 입력 / 처리 / 출력 순으로 읽힌다."""
+    import re
+
+    body = page[page.index('data-node="n_img"') :]
+    body = body[: body.index("</div></div>")]
+    order = re.findall(r'<span class="pk">(입력|처리|출력)', body)
+    assert order == ["입력", "처리", "출력"], order
+
+    # 입력이 없는 노드는 "없음" 이라고 적는다 — 빈 줄로 두면 왜 비었는지 모른다
+    assert 'class="pio none"' in page and "없음" in page
+
+
+def test_every_port_row_carries_its_type_colour(cg, page):
+    """출력마다 색으로 구분한다 — 칩과 같은 타입 색이어야 눈으로 이어진다."""
+    import re
+
+    dots = re.findall(r'class="pdot" style="background:(#[0-9A-Fa-f]{6})"', page)
+    assert dots, "포트 줄에 색 점이 없다"
+    assert T.port_color("Image") in dots and T.port_color("Table") in dots
+
+
+def test_port_rows_say_what_the_port_means(cg, page):
+    """`schema`, `fields` 같은 이름이 아니라 그 포트가 무엇인지를 적는다."""
+    assert "원본 이미지" in page
+    assert "정답 스키마" in page
+
+    # Procedure 상자도 안쪽 노드의 포트 설명을 들고 나온다
+    from vlm_trainer.ui.render import fold
+
+    shown, _ = fold(cg)
+    box = shown["p_crop"]
+    assert box.in_docs["image"] == "원본 이미지", box.in_docs
+    assert box.out_docs["crops"] and box.out_docs["crops"] != "crops", box.out_docs
+
+
+def test_cards_share_one_height_sized_to_the_busiest_node(cg):
+    """카드마다 키가 다르면 레인이 어긋나 보인다. 줄이 가장 많은 카드에 맞춘다."""
+    from vlm_trainer.ui.render import fold
+
+    shown, _ = fold(cg)
+    h = render_mod._card_height(shown)
+    rows = max(render_mod._card_rows(v) for v in shown.values())
+
+    assert h == render_mod.HEAD_H + render_mod.BODY_PAD + rows * render_mod.ROW_H
+    page = render_mod.render(cg)
+    assert page.count(f"height:{h}px") == len(shown)
