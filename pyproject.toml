@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vlm-trainer"
+version = "0.1.0"
+description = "Mech-Vision의 규약을 모방한 노드 그래프 기반 VLM 파인튜닝 학습 도구"
+requires-python = ">=3.10"
+
+# 코어는 표준 라이브러리 + yaml만 쓴다. numpy/Pillow는 노드 구현이 쓰고,
+# torch는 학습 단계에서만 필요해 여기 넣지 않는다 — 설치 구문이 CUDA마다 다르다.
+dependencies = ["pyyaml>=6", "numpy>=1.24", "pillow>=10"]
+
+[project.scripts]
+# 문서가 내내 `vlmt`라고 부르던 명령. 지금까지는 이름만 있고 실체가 없었다.
+vlmt = "vlm_trainer.cli.main:main"
+
+[tool.setuptools.packages.find]
+include = ["vlm_trainer*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

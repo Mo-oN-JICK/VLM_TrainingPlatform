@@ -332,10 +332,12 @@ def test_the_right_panel_is_tabbed_like_the_reference(cg):
     from vlm_trainer.ui.render import render
 
     page = render(cg, editable=True, editor=None)
-    for tab in ("Node Parameters", "Project Assistant", "Node Quick Info", "History"):
-        assert f'data-tab=' in page and tab in page, tab
+    # 탭 이름은 한국어 짧은 말이다 — 영어 이름은 길어 두 줄로 접혔다
+    for tab in ("노드 설정", "프로젝트", "노드 정보", "이력"):
+        assert f">{tab}</span>" in page, tab
     assert page.count('class="tabbody"') == 4
-    assert '<div class="dbgpane">' in page
+    # 미리보기가 없으면 이 칸은 안내 한 줄뿐이다 — 48vh를 잡고 있을 이유가 없다
+    assert 'class="dbgpane slim"' in page
 
 
 def test_the_viewer_has_no_dead_tabs(cg, page):

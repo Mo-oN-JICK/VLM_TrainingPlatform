@@ -363,8 +363,8 @@ def render(
                if nid in boundary else "")
             + (f"<span class=\"del\" onclick=\"vlmtRemove('{nid}')\">&times;</span>" if editable else "")
             + "</div>"
-            f'<div class="ref">{html.escape(nid)} · {html.escape(s.ref)}</div>'
-            f'<div class="sum">{html.escape(s.summary)}</div>'
+            f'<div class="ref" title="{html.escape(nid)} · {html.escape(s.ref)}">{html.escape(nid)} · {html.escape(s.ref)}</div>'
+            f'<div class="sum" title="{html.escape(s.summary)}">{html.escape(s.summary)}</div>'
             f'<div class="st"><span class="sdot" style="background:{T.STATE.get(state, "#4A4A4A")}">'
             f'</span>{state}{" · " + html.escape(state_extra) if state_extra else ""}</div>'
             f"</div>"
@@ -468,15 +468,21 @@ def render(
         else ""
     )
     details_block = "".join(details)
-    dbg_pane = f'<div class="dbgpane">{debug_block}{quarantine}</div>'
+    # 토글이 꺼져 있으면 이 칸은 안내 한 줄뿐인데 48vh를 잡고 있었다.
+    # 비어 있을 때는 줄여 두고, 내용이 생기면 그때 자리를 준다.
+    has_preview = bool(getattr(report, "previews", None)) or bool(quarantine)
+    dbg_pane = (
+        f'<div class="dbgpane{" full" if has_preview else " slim"}">'
+        f'{debug_block}{quarantine}</div>'
+    )
     if editable:
         side = (
             dbg_pane
             + '<div class="cfg"><div class="tabs">'
-            + '<span class="tab on" data-tab="params">Node Parameters</span>'
-            + '<span class="tab" data-tab="assist">Project Assistant</span>'
-            + '<span class="tab" data-tab="info">Node Quick Info</span>'
-            + '<span class="tab" data-tab="hist">History</span>'
+            + '<span class="tab on" data-tab="params">노드 설정</span>'
+            + '<span class="tab" data-tab="assist">프로젝트</span>'
+            + '<span class="tab" data-tab="info">노드 정보</span>'
+            + '<span class="tab" data-tab="hist">이력</span>'
             + "</div>"
             + f'<div class="tabbody" data-tab="params">{params_block}</div>'
             + f'<div class="tabbody" data-tab="assist" hidden>{space}{recipe}</div>'
@@ -537,8 +543,10 @@ body{{margin:0;background:{T.SURFACE['chrome']};color:#D8DCDF;
         display:flex;gap:14px;align-items:center;font-size:12px}}
 .toolbar b{{color:{T.NODE['accent']};font-weight:600}}
 .side{{display:grid;grid-template-rows:auto 1fr;padding:0;overflow:hidden}}
-.dbgpane{{overflow:auto;padding:10px 12px;max-height:48vh;
-      border-bottom:1px solid {T.SURFACE['line']}}}
+.dbgpane{{overflow:auto;padding:10px 12px;border-bottom:1px solid {T.SURFACE['line']}}}
+.dbgpane.full{{max-height:48vh}}
+.dbgpane.slim{{max-height:74px;padding:8px 12px}}
+.dbgpane.slim h4{{margin-bottom:2px}}
 .cfg{{display:grid;grid-template-rows:auto 1fr;overflow:hidden}}
 .tabs{{display:flex;flex-wrap:wrap;gap:1px;background:{T.SURFACE['line']};
       border-bottom:1px solid {T.SURFACE['line']}}}
@@ -570,7 +578,7 @@ body{{margin:0;background:{T.SURFACE['chrome']};color:#D8DCDF;
 svg.wires{{position:absolute;inset:0;pointer-events:none}}
 .node{{position:absolute;width:{CARD_W}px}}
 .ports{{position:relative;height:{CHIP_H}px}}
-.chip{{position:absolute;height:{CHIP_H - 4}px;border-radius:3px;padding:2px 6px;overflow:hidden;
+.chip{{position:absolute;height:{CHIP_H}px;border-radius:3px;padding:2px 6px;overflow:hidden;
       color:#fff;font-size:10px;line-height:1.15}}
 .chip .t{{display:block;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .chip .p{{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
@@ -1218,10 +1226,12 @@ def _library_panel(editable: bool) -> str:
             # 한국어 이름을 앞에, 타입은 뒤에 흐리게. 검색은 둘 다 걸린다 —
             # 사람은 "크기"로 찾지 "adapt.image_resize"로 찾지 않는다.
             rows.append(
-                f'<div class="libnode"{attrs} title="{html.escape(d.doc.summary)}">'
+                # 타입을 한 줄에 같이 두면 27개 중 17개가 잘린다. 이름에 폭을 주고
+                # 타입은 툴팁으로 내린다 — 검색은 data-type 으로 여전히 걸린다.
+                f'<div class="libnode"{attrs} '
+                f'title="{html.escape(d.type)} — {html.escape(d.doc.summary)}">'
                 f'<span class="badge b{tag}">{tag}</span>'
-                f'<span class="lbl">{html.escape(d.doc.label or d.type)}</span>'
-                f'<span class="typ">{html.escape(d.type)}</span></div>'
+                f'<span class="lbl">{html.escape(d.doc.label or d.type)}</span></div>'
             )
         out.append(
             f"<details><summary><span class='dot' style='background:"
