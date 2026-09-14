@@ -277,11 +277,10 @@ def test_wires_touch_the_chips_they_connect(cg, page):
     import re
 
     shown, edges = fold(cg)
-    card_h = render_mod._card_height(shown)
-    placed = render_mod._layout(shown, edges, card_h)
+    placed = render_mod._layout(shown, edges)
 
     def chip_x(nid, ports, name):
-        for n, cx, cy, cw in render_mod._chips(ports, placed[nid].x, 0):
+        for n, cx, cy, cw in render_mod._chips(ports, placed[nid].x, 0, placed[nid].w):
             if n == name:
                 return cx + cw // 2
         raise AssertionError(f"{nid}:{name} 칩이 없다")
@@ -297,7 +296,7 @@ def test_wires_touch_the_chips_they_connect(cg, page):
         s_top = 0 if s_node.kind is NodeKind.INPUT else render_mod.CHIP_H
         want_start = (
             chip_x(sn, s_node.outputs, sp),
-            placed[sn].y + s_top + card_h + render_mod.CHIP_H,
+            placed[sn].y + s_top + placed[sn].h + render_mod.CHIP_H,
         )
         want_end = (chip_x(dn, d_node.inputs, dp), placed[dn].y)
 
@@ -490,14 +489,21 @@ def test_port_rows_say_what_the_port_means(cg, page):
     assert box.out_docs["crops"] and box.out_docs["crops"] != "crops", box.out_docs
 
 
-def test_cards_share_one_height_sized_to_the_busiest_node(cg):
-    """카드마다 키가 다르면 레인이 어긋나 보인다. 줄이 가장 많은 카드에 맞춘다."""
-    from vlm_trainer.ui.render import fold
+def test_a_busier_node_gets_a_bigger_box(cg):
+    """상자 크기가 전부 같으면 무엇이 단순하고 무엇이 복잡한지 그림이 말해 주지 못한다."""
+    from vlm_trainer.ui.render import card_size, fold
 
     shown, _ = fold(cg)
-    h = render_mod._card_height(shown)
-    rows = max(render_mod._card_rows(v) for v in shown.values())
+    heights = {nid: card_size(v)[1] for nid, v in shown.items()}
+    assert len(set(heights.values())) > 1, "모든 카드가 같은 높이다"
 
-    assert h == render_mod.HEAD_H + render_mod.BODY_PAD + rows * render_mod.ROW_H
-    page = render_mod.render(cg)
-    assert page.count(f"height:{h}px") == len(shown)
+    # 포트가 많을수록 높다
+    busiest = max(shown, key=lambda k: render_mod._card_rows(shown[k]))
+    simplest = min(shown, key=lambda k: render_mod._card_rows(shown[k]))
+    assert heights[busiest] > heights[simplest]
+
+    # Procedure 는 안에 노드를 품은 만큼 옆으로도 넓다
+    proc = next((k for k, v in shown.items() if v.inner), None)
+    if proc:
+        plain = next(k for k, v in shown.items() if not v.inner)
+        assert card_size(shown[proc])[0] > card_size(shown[plain])[0]

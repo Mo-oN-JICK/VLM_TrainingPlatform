@@ -9,3 +9,4 @@ edit_history.jsonl
 edit_history/
 solutions/vlm_parts/data/
 *.egg-info/
+layout.yaml

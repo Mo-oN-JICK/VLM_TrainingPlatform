@@ -24,6 +24,17 @@ CHIP_H = 30
 LANE_GAP = 52
 COL_GAP = 34
 PAD = 48
+GRID = 16       # 격자 한 칸. 상자를 옮기면 이 배수에 붙는다
+
+
+HEAD_H = 26     # 카드 머리줄
+ROW_H = 15      # 입력/처리/출력 한 줄
+BODY_PAD = 10
+
+
+def _card_rows(s: "Shown") -> int:
+    """이 카드가 몇 줄을 쓰는가. 입력 + 처리 + 출력."""
+    return max(1, len(s.inputs)) + 1 + max(1, len(s.outputs))
 
 
 @dataclass
@@ -32,21 +43,51 @@ class Placed:
     x: int
     y: int
     lane: int
+    w: int = CARD_W
+    h: int = CARD_H
+
+
+def card_size(s: "Shown") -> Tuple[int, int]:
+    """이 상자가 차지할 (폭, 높이).
+
+    역할이 무거운 상자는 크게 그린다 — 포트가 많으면 세로로, Procedure처럼 안에 여러 노드를
+    품으면 가로로 자란다. 상자 크기가 전부 같으면 무엇이 단순하고 무엇이 복잡한지 그림이
+    말해 주지 못한다.
+    """
+    h = HEAD_H + BODY_PAD + _card_rows(s) * ROW_H
+    w = CARD_W + (min(s.inner, 4) * 24 if s.inner else 0)
+    return w, h
 
 
 def _layout(shown: Dict[str, "Shown"], edges: List[Tuple[str, str]],
-            card_h: int = CARD_H) -> Dict[str, Placed]:
-    """위상 순서대로 레인을 쌓고, 레인 안에서는 상류의 무게중심으로 좌우를 정한다."""
+            fixed: Optional[Dict[str, Tuple[int, int]]] = None) -> Dict[str, Placed]:
+    """위상 순서대로 레인을 쌓고, 레인 안에서는 상류의 무게중심으로 좌우를 정한다.
+
+    `fixed`에 좌표가 있는 노드는 그 자리에 둔다 — 사람이 옮겨 둔 것을 다시 흩지 않는다.
+    상자 크기가 제각각이므로 레인 높이는 그 레인에서 가장 높은 상자가 정한다.
+    """
+    fixed = fixed or {}
     lanes: Dict[int, List[str]] = {}
     for nid, s in shown.items():
         lanes.setdefault(s.lane, []).append(nid)
 
+    size = {nid: card_size(s) for nid, s in shown.items()}
+    lane_h = {
+        lane: max(size[i][1] for i in ids) + CHIP_H * 2 + LANE_GAP
+        for lane, ids in lanes.items()
+    }
+    lane_y: Dict[int, int] = {}
+    y = PAD
+    for lane in sorted(lanes):
+        lane_y[lane] = y
+        y += lane_h[lane]
+
     placed: Dict[str, Placed] = {}
     x_of: Dict[str, float] = {}
-    width = max((len(v) for v in lanes.values()), default=1)
 
     for lane in sorted(lanes):
         ids = lanes[lane]
+
         def key(nid: str) -> Tuple[float, str]:
             ups = [
                 x_of[a.split(":")[0]]
@@ -56,26 +97,23 @@ def _layout(shown: Dict[str, "Shown"], edges: List[Tuple[str, str]],
             return (sum(ups) / len(ups) if ups else 1e9, nid)
 
         ids = sorted(ids, key=key)
-        span = len(ids)
-        offset = (width - span) / 2.0
-        for i, nid in enumerate(ids):
-            col = offset + i
-            x_of[nid] = col
-            placed[nid] = Placed(
-                id=nid,
-                x=int(PAD + col * (CARD_W + COL_GAP)),
-                y=int(PAD + lane * (card_h + CHIP_H * 2 + LANE_GAP)),
-                lane=lane,
-            )
+        x = PAD
+        for nid in ids:
+            w, h = size[nid]
+            x_of[nid] = x
+            px, py = fixed.get(nid, (x, lane_y[lane]))
+            placed[nid] = Placed(id=nid, x=int(px), y=int(py), lane=lane, w=w, h=h)
+            x += w + COL_GAP
     return placed
 
 
-def _chips(ports: Dict[str, Any], x: int, y: int) -> List[Tuple[str, int, int, int]]:
+def _chips(ports: Dict[str, Any], x: int, y: int,
+           card_w: int = CARD_W) -> List[Tuple[str, int, int, int]]:
     """포트 칩의 (이름, x, y, 너비). 카드 폭을 균등 분할한다."""
     names = list(ports)
     if not names:
         return []
-    w = CARD_W // len(names)
+    w = card_w // len(names)
     return [(n, x + i * w, y, w - 4) for i, n in enumerate(names)]
 
 
@@ -120,26 +158,6 @@ class Shown:
 def _first_port(ref: Any) -> str:
     """노출 입력은 안쪽 여러 포트로 갈라질 수 있다. 타입은 어느 쪽이든 같으므로 첫 자리에서 읽는다."""
     return ref[0] if isinstance(ref, list) else ref
-
-
-HEAD_H = 26     # 카드 머리줄
-ROW_H = 15      # 입력/처리/출력 한 줄
-BODY_PAD = 10
-
-
-def _card_rows(s: "Shown") -> int:
-    """이 카드가 몇 줄을 쓰는가. 입력 + 처리 + 출력."""
-    return max(1, len(s.inputs)) + 1 + max(1, len(s.outputs))
-
-
-def _card_height(shown: Dict[str, "Shown"]) -> int:
-    """한 그래프 안의 카드는 높이를 맞춘다.
-
-    줄 수는 노드마다 다르지만 카드마다 키가 다르면 레인이 어긋나 보인다.
-    가장 줄이 많은 카드에 맞추고, 레이아웃과 배선이 같은 값을 쓴다.
-    """
-    rows = max((_card_rows(v) for v in shown.values()), default=3)
-    return HEAD_H + BODY_PAD + rows * ROW_H
 
 
 def _pio_rows(s: "Shown") -> str:
@@ -378,12 +396,12 @@ def render(
     # Procedure는 기본으로 **접어서** 그린다. 25개 카드는 사람이 붙들 수 있는 수가 아니다.
     # 게이트는 언제나 펼쳐진 그래프를 본다 — 접기는 보는 방식일 뿐이다.
     shown, dedges = fold(cg, expanded)
-    # 카드 높이는 그래프가 정한다 — 포트가 많은 노드에 맞춰 한 번 계산하고 모두 같이 쓴다
-    card_h = _card_height(shown)
-    placed = _layout(shown, dedges, card_h)
+    # 사람이 옮겨 둔 자리가 있으면 그대로 쓴다. 없는 노드만 자동 배치된다.
+    fixed = dict(getattr(editor, "layout", None) or {}) if editor is not None else {}
+    placed = _layout(shown, dedges, fixed)
     max_lane = max((p.lane for p in placed.values()), default=0)
-    width = max((p.x for p in placed.values()), default=0) + CARD_W + PAD
-    height = max((p.y for p in placed.values()), default=0) + card_h + CHIP_H * 2 + PAD
+    width = max((p.x + p.w for p in placed.values()), default=0) + PAD
+    height = max((p.y + p.h for p in placed.values()), default=0) + CHIP_H * 2 + PAD
 
     # ── 배선(SVG) ────────────────────────────────────────────────────
     out_pos: Dict[str, Tuple[int, int, str, bool]] = {}
@@ -394,10 +412,10 @@ def render(
         # **Input 노드는 입력 칩 줄이 아예 없다**(CSS의 `.inp .ports.top{display:none}`).
         # 그 한 줄을 좌표 계산이 모르면 배선이 칩에서 CHIP_H만큼 떨어진 허공에서 시작하고 끝난다.
         top_h = 0 if s.kind is NodeKind.INPUT else CHIP_H
-        for name, cx, cy, cw in _chips(s.outputs, pl.x, pl.y + top_h + card_h):
+        for name, cx, cy, cw in _chips(s.outputs, pl.x, pl.y + top_h + pl.h, pl.w):
             _, root, is_list = _type_label(s.outputs[name])
             out_pos[f"{nid}:{name}"] = (cx + cw // 2, cy + CHIP_H, root, is_list)
-        for name, cx, cy, cw in _chips(s.inputs, pl.x, pl.y):
+        for name, cx, cy, cw in _chips(s.inputs, pl.x, pl.y, pl.w):
             in_pos[f"{nid}:{name}"] = (cx + cw // 2, cy)
 
     paths = []
@@ -430,7 +448,7 @@ def render(
             f'background:{T.port_color(_type_label(in_types[name])[1], _type_label(in_types[name])[2])}">'
             f'<span class="t">&lt;{html.escape(_type_label(in_types[name])[0])}&gt;</span>'
             f'<span class="p">{html.escape(name)}</span></div>'
-            for name, cx, cy, cw in _chips(in_types, pl.x, 0)
+            for name, cx, cy, cw in _chips(in_types, pl.x, 0, pl.w)
         )
         chips_out = "".join(
             f'<div class="chip cout" data-ref="{nid}:{name}" '
@@ -438,15 +456,15 @@ def render(
             f'background:{T.port_color(_type_label(out_types[name])[1], _type_label(out_types[name])[2])}">'
             f'<span class="t">&lt;{html.escape(_type_label(out_types[name])[0])}&gt;</span>'
             f'<span class="p">{html.escape(name)}</span></div>'
-            for name, cx, cy, cw in _chips(out_types, pl.x, 0)
+            for name, cx, cy, cw in _chips(out_types, pl.x, 0, pl.w)
         )
 
         cards.append(
             f'<div class="node {shape}" data-node="{html.escape(nid)}" '
-            f'style="left:{pl.x}px;top:{pl.y}px" '
+            f'style="left:{pl.x}px;top:{pl.y}px;width:{pl.w}px" '
             f'title="{html.escape(nid)} · {html.escape(s.ref)}">'
             f'<div class="ports top">{chips_in}</div>'
-            f'<div class="card" style="height:{card_h}px;border-top:3px solid {T.category_color(s.category)};'
+            f'<div class="card" style="height:{pl.h}px;border-top:3px solid {T.category_color(s.category)};'
             f'border-left:4px solid {T.STATE.get(state, "#4A4A4A")}">'
             f'<div class="hd"><span class="nm" title="{html.escape(nid)}">{html.escape(s.label)}</span>'
             + f'<span class="st"><span class="sdot" style="background:{T.STATE.get(state, "#4A4A4A")}"></span>{state}{" · " + html.escape(state_extra) if state_extra else ""}</span>'
@@ -537,7 +555,7 @@ def render(
         occupied_json = json.dumps(sorted({e.dst for e in cg.edges}))
         scripts = (
             f"<script>window.COMPAT = {compat_json}; window.OCCUPIED = {occupied_json}; "
-            f"window.STATE_COLORS = {json.dumps(T.STATE)}; "
+            f"window.STATE_COLORS = {json.dumps(T.STATE)}; window.GRID = {GRID}; "
             'window.EDITABLE = "1";</script>'
             f"<script>{_EDITOR_JS}</script>"
         )
@@ -687,9 +705,19 @@ body{{margin:0;background:{T.SURFACE['chrome']};color:#D8DCDF;
 .lib .dot{{width:10px;height:10px;border-radius:2px}}
 .lib .n{{margin-left:auto;color:#6F7478;font-size:11px}}
 .canvas{{position:relative;background:{T.SURFACE['canvas']};overflow:auto}}
-.stage{{position:relative}}
+/* Mech-Vision 처럼 격자를 깐다. 자리를 눈으로 맞출 기준선이 없으면
+   자유 배치는 어질러지기만 한다. 굵은 선은 5칸마다. */
+.stage{{position:relative;
+      background-image:
+        linear-gradient({T.SURFACE['line']} 1px, transparent 1px),
+        linear-gradient(90deg, {T.SURFACE['line']} 1px, transparent 1px),
+        linear-gradient(rgba(42,42,42,.55) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(42,42,42,.55) 1px, transparent 1px);
+      background-size:{GRID * 5}px {GRID * 5}px,{GRID * 5}px {GRID * 5}px,{GRID}px {GRID}px,{GRID}px {GRID}px}}
+.node.dragging{{opacity:.85;z-index:30;cursor:grabbing}}
+.node .hd .nm{{cursor:grab}}
 svg.wires{{position:absolute;inset:0;pointer-events:none}}
-.node{{position:absolute;width:{CARD_W}px}}
+.node{{position:absolute}}
 .ports{{position:relative;height:{CHIP_H}px}}
 .chip{{position:absolute;height:{CHIP_H}px;border-radius:3px;padding:2px 6px;overflow:hidden;
       color:#fff;font-size:10px;line-height:1.15}}
@@ -930,6 +958,7 @@ _EDITOR_TOOLS = (
     '<button class="btn" onclick="vlmtRedo()">Redo</button>'
     '<button class="btn" onclick="vlmtSave()">Save</button>'
     '<button class="btn" onclick="location.reload()">Reload</button>'
+    '<button class="btn" onclick="vlmtResetLayout()" title="상자 자리를 자동 정렬로 되돌린다">자동 정렬</button>'
     '<span class="sep"></span>'
     '<button class="btn go" id="runbtn" onclick="vlmtRun()">Run</button>'
     '<button class="btn" id="matbtn" onclick="vlmtMaterialize()">Materialize</button>'
@@ -1196,6 +1225,53 @@ function vlmtGate() {
     if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
   });
   document.body.appendChild(m);
+}
+
+// 상자를 끌어 옮긴다. 머리줄의 이름을 잡고 끈다 — 칩은 배선용이라 건드리지 않는다.
+// 자리는 스펙이 아니라 layout.yaml 로 간다. 옮겨도 spec_hash 는 그대로다.
+let moveDrag = null;
+
+document.addEventListener('mousedown', (ev) => {
+  if (!window.EDITABLE) return;
+  const grip = ev.target.closest('.node .hd .nm');
+  if (!grip) return;
+  const node = grip.closest('.node');
+  ev.preventDefault();
+  moveDrag = {
+    node: node,
+    id: node.dataset.node,
+    dx: ev.clientX - node.getBoundingClientRect().left,
+    dy: ev.clientY - node.getBoundingClientRect().top,
+  };
+  node.classList.add('dragging');
+});
+
+document.addEventListener('mousemove', (ev) => {
+  if (!moveDrag) return;
+  const st = document.querySelector('.stage').getBoundingClientRect();
+  const g = window.GRID || 16;
+  const x = Math.max(0, Math.round((ev.clientX - st.left - moveDrag.dx) / g) * g);
+  const y = Math.max(0, Math.round((ev.clientY - st.top - moveDrag.dy) / g) * g);
+  moveDrag.node.style.left = x + 'px';
+  moveDrag.node.style.top = y + 'px';
+  moveDrag.x = x;
+  moveDrag.y = y;
+});
+
+document.addEventListener('mouseup', async () => {
+  if (!moveDrag) return;
+  const d = moveDrag;
+  moveDrag = null;
+  d.node.classList.remove('dragging');
+  if (d.x === undefined) return;           // 누르기만 하고 끌지 않았다
+  const {code, data} = await post('/api/move', {node: d.id, x: d.x, y: d.y});
+  if (code === 200) location.reload();
+  else toast('이동 거부: ' + (data.reason || ''), true);
+});
+
+async function vlmtResetLayout() {
+  const {code, data} = await post('/api/layout/reset', {});
+  if (code === 200) location.reload(); else toast(data.reason || '', true);
 }
 
 async function vlmtExpand(pid) {

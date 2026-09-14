@@ -106,6 +106,7 @@ def occupied_inputs(cg: CompiledGraph) -> List[str]:
 
 
 HISTORY_FILE = "edit_history.jsonl"
+LAYOUT_FILE = "layout.yaml"   # 캔버스 자리. 스펙이 아니므로 spec_hash 에 들어가지 않는다
 HISTORY_STORE = "edit_history"   # 시점별 스펙 본문. 내용 주소라 같은 상태로 돌아와도 파일이 늘지 않는다
 HISTORY_WINDOW = 200             # 열 때 되살릴 시점의 최대 개수
 
@@ -151,6 +152,7 @@ class Editor:
     phase: str = ""
     stopped: bool = False
     expanded: set = field(default_factory=set)  # 펼쳐 둔 Procedure. 화면 상태일 뿐이다
+    layout: Dict[str, Any] = field(default_factory=dict)  # 상자 id -> (x, y)
 
     @staticmethod
     def open(path: str) -> "Editor":
@@ -159,6 +161,7 @@ class Editor:
         e.book = recipe_mod.load(e.path)
         e._recompile()
         e._load_history()
+        e._load_layout()
         if not (e.history and e.compiled is not None
                 and e.history[-1].spec_hash == e.compiled.spec_hash):
             e._record("열기")
@@ -477,6 +480,59 @@ class Editor:
             return {"ok": False, "reason": f"그런 Procedure가 없다: {pid} (있는 것: {sorted(known)})"}
         self.expanded.discard(pid) if pid in self.expanded else self.expanded.add(pid)
         return {"ok": True, "expanded": sorted(self.expanded)}
+
+    # ── 캔버스 배치 ──────────────────────────────────────────────────────
+    #
+    # 좌표는 **스펙에 들어가지 않는다.** 무엇이 실행되는지와 무관한 값이라
+    # spec_hash 에 섞이면 상자를 옮긴 것만으로 캐시가 통째로 무효가 된다.
+    # 스펙 옆의 `layout.yaml` 에 따로 둔다.
+
+    @property
+    def layout_path(self) -> str:
+        return os.path.join(os.path.dirname(self.path), LAYOUT_FILE)
+
+    def _load_layout(self) -> None:
+        try:
+            with open(self.layout_path, "r", encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+        except (OSError, ValueError):
+            return
+        for nid, xy in (data.get("nodes") or {}).items():
+            try:
+                self.layout[str(nid)] = (int(xy[0]), int(xy[1]))
+            except (TypeError, ValueError, IndexError):
+                continue
+
+    def _save_layout(self) -> None:
+        try:
+            if not self.layout:
+                if os.path.exists(self.layout_path):
+                    os.remove(self.layout_path)
+                return
+            payload = {"kind": "CanvasLayout", "nodes": {k: list(v) for k, v in sorted(self.layout.items())}}
+            tmp = self.layout_path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                yaml.safe_dump(payload, fh, allow_unicode=True, sort_keys=False)
+            os.replace(tmp, self.layout_path)
+        except OSError:
+            pass  # 자리는 편의일 뿐이다. 못 적어도 편집을 막지 않는다
+
+    def move_node(self, node_id: str, x: int, y: int) -> Dict[str, Any]:
+        """상자를 옮긴다. 스펙도 History도 건드리지 않는다 — 자리는 의미가 없다."""
+        known = set(self.compiled.nodes if self.compiled else ()) | {
+            p["id"] for p in (self.compiled.procedures if self.compiled else [])
+        }
+        if node_id not in known and node_id not in self.layout:
+            return {"ok": False, "reason": f"그런 상자가 없다: {node_id}"}
+        self.layout[node_id] = (max(0, int(x)), max(0, int(y)))
+        self._save_layout()
+        return {"ok": True, "x": self.layout[node_id][0], "y": self.layout[node_id][1]}
+
+    def reset_layout(self) -> Dict[str, Any]:
+        """자동 정렬로 되돌린다."""
+        self.layout.clear()
+        self._save_layout()
+        return {"ok": True}
 
     # ── 물질화 경계와 실행 프로파일 ──────────────────────────────────────
     #
@@ -1054,6 +1110,7 @@ class Editor:
             "sample_space": self.sample_space_view(),
             "boundary": list(self.graph.materialize.boundary),
             "expanded": sorted(self.expanded),
+            "layout": {k: list(v) for k, v in self.layout.items()},
             "procedures": [p["id"] for p in cg.procedures],
             "profile": self.graph.runtime_profile,
             "profiles": self.profiles(),

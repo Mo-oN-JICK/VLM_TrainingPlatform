@@ -1090,3 +1090,55 @@ def test_the_gates_see_the_expanded_graph_either_way(ed):
     ed.toggle_expand("p_crop")
     assert ed.compiled.spec_hash == folded
     assert len(ed.compiled.nodes) == 25, "게이트는 언제나 펼쳐진 그래프를 본다"
+
+
+# ── 캔버스 자리 ─────────────────────────────────────────────────────────
+
+
+def test_moving_a_box_does_not_touch_the_spec(ed):
+    """자리는 무엇이 실행되는지와 무관하다. spec_hash 에 섞이면 상자를 옮긴 것만으로
+    캐시가 통째로 무효가 된다."""
+    before = ed.compiled.spec_hash
+    before_hist = len(ed.history)
+
+    assert ed.move_node("n_stats", 320, 480)["ok"]
+    assert ed.layout["n_stats"] == (320, 480)
+    assert ed.compiled.spec_hash == before
+    assert len(ed.history) == before_hist
+    assert not ed.dirty
+
+
+def test_the_position_survives_reopening(ed):
+    ed.move_node("n_stats", 160, 240)
+    assert os.path.exists(ed.layout_path), "layout.yaml 이 스펙 옆에 있어야 한다"
+
+    again = Editor.open(ed.path)
+    assert again.layout["n_stats"] == (160, 240)
+
+    # 스펙 파일에는 좌표가 없다
+    assert "160" not in open(ed.path, encoding="utf-8").read().split("nodes:")[0]
+
+
+def test_resetting_drops_the_file(ed):
+    ed.move_node("n_stats", 64, 64)
+    assert os.path.exists(ed.layout_path)
+
+    assert ed.reset_layout()["ok"]
+    assert ed.layout == {} and not os.path.exists(ed.layout_path)
+
+
+def test_an_unknown_box_is_refused(ed):
+    res = ed.move_node("없는상자", 10, 10)
+    assert not res["ok"] and "그런 상자가 없다" in res["reason"]
+
+
+def test_a_moved_box_keeps_its_place_and_the_rest_flow_around_it(ed):
+    from vlm_trainer.ui.render import fold
+    from vlm_trainer.ui import render as render_mod
+
+    ed.move_node("n_stats", 640, 720)
+    shown, edges = fold(ed.compiled)
+    placed = render_mod._layout(shown, edges, {k: tuple(v) for k, v in ed.layout.items()})
+
+    assert (placed["n_stats"].x, placed["n_stats"].y) == (640, 720)
+    assert (placed["n_img"].x, placed["n_img"].y) != (640, 720), "나머지는 자동 배치 그대로다"
