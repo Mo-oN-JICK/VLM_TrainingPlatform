@@ -315,15 +315,17 @@ def test_every_node_type_has_a_korean_name():
 
 
 def test_the_card_shows_the_korean_name_and_keeps_the_id(cg, page):
+    """카드는 이름과 설명을 보여준다. `n_img · source.image@1.0.0` 같은 줄은
+    읽는 사람에게 아무것도 알려주지 않으므로 뷰어 카드에서 뺐다 — 툴팁에는 남는다."""
     from vlm_trainer.core.registry import resolve as resolve_node
 
     shown, _ = fold(cg)
     for nid, s in shown.items():
         assert f'class="nm">{s.label}<' in page, f"{nid}의 한국어 이름이 카드에 없다"
-        assert nid in page, f"{nid} 라는 id도 남아 있어야 한다"
+        assert nid in page, f"{nid} 라는 id도 어딘가에는 남아 있어야 한다"
 
-    assert "이미지 읽기" in page
-    assert resolve_node("source.image@1.0.0").doc.label == "이미지 읽기"
+    assert "이미지 업로드" in page
+    assert resolve_node("source.image@1.0.0").doc.label == "이미지 업로드"
 
 
 def test_the_right_panel_is_tabbed_like_the_reference(cg):
@@ -352,8 +354,8 @@ def test_the_library_is_searchable_in_korean(cg):
 
     page = render(cg, editable=True, editor=None)
     assert "vlmtLibFilter(" in page and 'class="libsearch"' in page
-    assert "이미지 크기 맞추기" in page, "라이브러리가 한국어 이름을 보여야 검색이 걸린다"
-    assert "adapt.image_resize" in page, "타입도 남아 있어야 한다"
+    assert "이미지 리사이즈" in page, "라이브러리가 한국어 이름을 보여야 검색이 걸린다"
+    assert "adapt.image_resize" in page, "타입은 툴팁과 data-type 에 남아 있어야 한다"
 
 
 def test_a_gate_violation_does_not_push_the_canvas_around(cg):
@@ -388,7 +390,7 @@ def test_the_gate_text_is_readable_not_escaped_twice(cg):
 
 def test_cards_say_what_they_do_not_what_they_are_set_to(cg, page):
     """처음 보는 사람에게 `columns=['part_name', ...]` 는 소음이다."""
-    assert "사진을 한 장 가져옵니다" in page
+    assert "데이터셋의 경로 열에서 이미지를 불러옵니다" in page
     assert 'class="sum" title=' in page, "설정값은 툴팁으로 내려간다"
 
     from vlm_trainer.core.registry import all_defs
@@ -404,3 +406,44 @@ def test_the_parameter_panel_carries_the_expert_controls(cg):
         assert f"<summary>{section}</summary>" in page, section
     assert "vlmtDisconnect(" in page, "패널에서 배선을 끊을 수 있어야 한다"
     assert "노드 삭제" in page
+
+
+def test_library_rows_line_up_on_the_left(cg):
+    """`margin-left:auto` 가 배지를 밀어 이름 길이만큼 들쭉날쭉했다.
+    그 규칙은 카드 머리줄의 것이지 라이브러리 항목의 것이 아니다."""
+    page = render_mod.render(cg, editable=True, editor=None)
+
+    start = page.index(".badge{")
+    css = page[start : page.index("}", start)]
+    assert "margin-left:auto" not in css, "배지가 다시 오른쪽으로 밀린다"
+    assert ".hd .badge{margin-left:auto}" in page, "카드 머리줄에서는 여전히 오른쪽이다"
+
+
+def test_terms_are_industry_words_not_baby_talk(cg, page):
+    """전문 용어이면서 처음 보는 사람도 뜻이 잡히는 말이어야 한다."""
+    from vlm_trainer.core.registry import resolve as resolve_node
+
+    for ref, want in (
+        ("source.image@1.0.0", "이미지 업로드"),
+        ("source.metadata@1.0.0", "메타데이터 업로드"),
+        ("adapt.image_resize@1.0.0", "이미지 리사이즈"),
+        ("train.vlm_trainer@0.1.0", "모델 학습"),
+    ):
+        assert resolve_node(ref).doc.label == want, ref
+
+    for gone in ("사진을 한 장", "가져옵니다", "만듭니다만"):
+        assert gone not in page, gone
+
+
+def test_the_card_does_not_print_the_type_ref(cg, page):
+    """`n_img · source.image@1.0.0` 은 읽는 사람에게 아무것도 알려주지 않는다.
+
+    타입이 사라진 것이 아니라 자리를 옮겼다 — 툴팁과 Node Quick Info 에는 그대로 있다.
+    """
+    import re
+
+    bodies = re.findall(r'<div class="ref"[^>]*>(.*?)</div>', page)
+    for body in bodies:
+        assert "@" not in body, f"카드 줄에 타입이 남았다: {body}"
+
+    assert "<em>source.image@1.0.0</em>" in page, "Node Quick Info 에는 타입이 있어야 한다"

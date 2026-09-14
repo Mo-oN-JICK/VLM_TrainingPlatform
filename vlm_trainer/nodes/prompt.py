@@ -45,8 +45,8 @@ class TemplateParams:
     recipe_overridable=["template", "max_chars"],
     preview="prompt_render",
     doc=NodeDoc(
-        label="프롬프트 쓰기",
-            hint="표의 값을 빈칸에 채워 모델에게 줄 질문을 만듭니다.",
+        label="프롬프트 템플릿",
+            hint="표의 값을 템플릿 슬롯에 채워 프롬프트를 만듭니다.",
         summary="표의 값을 템플릿 슬롯에 채워 프롬프트를 만든다.",
         scenario="프롬프트 문구만 바꾸는 실험은 Parameter Recipe로 template만 덮어쓰면 된다.",
     ),
@@ -80,8 +80,8 @@ class KnowledgeParams:
     params=KnowledgeParams,
     recipe_overridable=["position", "max_chars", "header"],
     preview="prompt_render",
-    doc=NodeDoc(label="지식 문서 끼우기",
-            hint="참고 문서를 질문 앞이나 뒤에 붙입니다.", summary="도메인 지식 블록을 프롬프트 앞이나 뒤에 붙인다."),
+    doc=NodeDoc(label="참조 문서 삽입",
+            hint="도메인 지식 문서를 프롬프트 앞뒤에 붙입니다.", summary="도메인 지식 블록을 프롬프트 앞이나 뒤에 붙인다."),
 )
 class KnowledgeInject(Node):
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
@@ -113,8 +113,8 @@ class ImageSlotParams:
     recipe_overridable=["placeholder", "policy"],
     preview="prompt_render",
     doc=NodeDoc(
-        label="이미지 자리 넣기",
-            hint="사진 개수만큼 자리를 질문에 표시합니다.",
+        label="이미지 슬롯 삽입",
+            hint="이미지 개수만큼 자리표시자를 프롬프트에 넣습니다.",
         summary="이미지 개수만큼 자리표시자를 프롬프트에 넣는다.",
         scenario="자리표시자 개수와 실제 이미지 개수가 어긋나면 이미지가 조용히 무시된다. "
         "sample.assemble이 그 개수를 실측으로 대조한다.",

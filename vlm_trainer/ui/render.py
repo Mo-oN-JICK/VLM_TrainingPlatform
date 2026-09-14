@@ -378,8 +378,8 @@ def render(
                if nid in boundary else "")
             + (f"<span class=\"del\" onclick=\"vlmtRemove('{nid}')\">&times;</span>" if editable else "")
             + "</div>"
-            f'<div class="ref" title="{html.escape(nid)} · {html.escape(s.ref)}">{html.escape(nid)} · {html.escape(s.ref)}</div>'
-            f'<div class="sum" title="{html.escape(_sum_title(s))}">{html.escape(s.hint or s.summary)}</div>'
+            + (f'<div class="ref" title="{html.escape(nid)} · {html.escape(s.ref)}">{html.escape(nid)}</div>' if editable else "")
+            + f'<div class="sum" title="{html.escape(_sum_title(s))}">{html.escape(s.hint or s.summary)}</div>'
             f'<div class="st"><span class="sdot" style="background:{T.STATE.get(state, "#4A4A4A")}">'
             f'</span>{state}{" · " + html.escape(state_extra) if state_extra else ""}</div>'
             f"</div>"
@@ -623,7 +623,10 @@ svg.wires{{position:absolute;inset:0;pointer-events:none}}
 .hd{{display:flex;align-items:center;gap:6px}}
 .nm{{color:{T.NODE['title']};font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap}}
-.badge{{margin-left:auto;font-size:10px;border:1px solid;border-radius:2px;padding:0 4px}}
+/* margin-left:auto 는 카드 머리줄에서 배지를 오른쪽으로 밀기 위한 것이었는데,
+   라이브러리 항목까지 잡아 이름 길이만큼 들쭉날쭉하게 밀리고 있었다. 카드 안으로 한정한다. */
+.badge{{font-size:10px;border:1px solid;border-radius:2px;padding:0 4px;flex:0 0 auto}}
+.hd .badge{{margin-left:auto}}
 .bI{{color:{T.PORT['Image']}}} .bP{{color:#8A9196}} .bO{{color:{T.PORT['Table']}}}
 .ref,.sum{{color:{T.NODE['muted']};font-size:11px;white-space:nowrap;overflow:hidden;
           text-overflow:ellipsis}}

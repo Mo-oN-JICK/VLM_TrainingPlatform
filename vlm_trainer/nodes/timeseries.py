@@ -43,8 +43,8 @@ class StatsParams:
     recipe_overridable=["z_thresh", "channel"],
     preview="table",
     doc=NodeDoc(
-        label="시계열 요약",
-            hint="센서 기록에서 추세·주기·튀는 값을 계산합니다.",
+        label="시계열 특징 추출",
+            hint="추세·주기·이상값 개수를 계산합니다.",
         summary="추세 기울기, 자기상관 주기, 스파이크 개수를 계산한다.",
         scenario="정답 Text의 단계별 값과 근거 문장이 전부 이 수치에서 나온다.",
     ),
@@ -110,8 +110,8 @@ class PlotParams:
     type_affecting=["size"],
     preview="image",
     doc=NodeDoc(
-        label="시계열 그림 그리기",
-            hint="센서 기록을 그래프 그림으로 그립니다.",
+        label="시계열 렌더링",
+            hint="시계열을 이미지로 그려 VLM 입력으로 만듭니다.",
         summary="시계열을 이미지로 렌더한다. VLM에 시계열을 넣는 표준 경로.",
         scenario="렌더 결과가 Image 타입이므로 이후 crop·resize 체인과 그대로 결합된다.",
     ),

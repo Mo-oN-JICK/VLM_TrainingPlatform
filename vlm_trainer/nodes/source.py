@@ -60,8 +60,8 @@ class ImageSourceParams:
     recipe_overridable=["column"],
     preview="image",
     doc=NodeDoc(
-        label="이미지 읽기",
-            hint="데이터 목록에 적힌 경로에서 사진을 한 장 가져옵니다.",
+        label="이미지 업로드",
+            hint="데이터셋의 경로 열에서 이미지를 불러옵니다.",
         summary="sample_space의 경로 컬럼에서 이미지를 읽어 그래프에 주입한다.",
         scenario="모든 이미지 파이프라인의 시작점.",
     ),
@@ -98,8 +98,8 @@ class TimeSeriesParams:
     recipe_overridable=["column", "hz", "channels"],
     type_affecting=["hz", "channels"],
     preview="timeseries_plot",
-    doc=NodeDoc(label="시계열 읽기",
-            hint="센서 기록(CSV) 파일을 한 건 가져옵니다.", summary="CSV/NPY 시계열을 읽어 [T, C] 배열로 주입한다."),
+    doc=NodeDoc(label="센서 데이터 업로드",
+            hint="CSV/NPY 시계열을 [시간 x 채널] 배열로 불러옵니다.", summary="CSV/NPY 시계열을 읽어 [T, C] 배열로 주입한다."),
 )
 class TimeSeriesSource(Node):
     def infer_types(self, inputs: Dict[str, PortType], params: Any) -> Dict[str, PortType]:
@@ -152,8 +152,8 @@ class TextAssetParams:
     params=TextAssetParams,
     recipe_overridable=["path", "max_chars"],
     preview="text",
-    doc=NodeDoc(label="지식 문서 읽기",
-            hint="프롬프트에 함께 넣을 참고 문서를 읽습니다.", summary="프롬프트에 넣을 도메인 지식 텍스트 자산을 읽는다."),
+    doc=NodeDoc(label="참조 문서 업로드",
+            hint="프롬프트에 함께 넣을 도메인 지식 문서를 불러옵니다.", summary="프롬프트에 넣을 도메인 지식 텍스트 자산을 읽는다."),
 )
 class TextAssetSource(Node):
     def fingerprint(self, ctx: RunCtx, params: Any) -> str:
@@ -181,8 +181,8 @@ class FieldParams:
     recipe_overridable=["column"],
     preview="text",
     doc=NodeDoc(
-        label="열 하나 읽기",
-            hint="데이터 목록에서 열 하나를 글자로 가져옵니다.",
+        label="단일 열 업로드",
+            hint="데이터셋의 열 하나를 텍스트로 불러옵니다.",
         summary="sample_space의 컬럼 하나를 텍스트로 주입한다.",
         scenario="정답 라벨이나 메타데이터를 그래프로 들여올 때. semantic 태그가 누설 검사의 기준이 된다.",
     ),
@@ -212,8 +212,8 @@ class MetadataParams:
     outputs={"meta": Port(simple(BaseKind.TABLE), "메타데이터 표")},
     params=MetadataParams,
     preview="table",
-    doc=NodeDoc(label="데이터 열 읽기",
-            hint="데이터 목록의 열들을 표로 가져옵니다. 프롬프트와 정답이 이 값을 씁니다.", summary="인덱스의 여러 컬럼을 한 표로 묶어 주입한다."),
+    doc=NodeDoc(label="메타데이터 업로드",
+            hint="데이터셋의 열들을 표로 불러옵니다. 프롬프트와 정답이 이 값을 참조합니다.", summary="인덱스의 여러 컬럼을 한 표로 묶어 주입한다."),
 )
 class MetadataSource(Node):
     def fingerprint(self, ctx: RunCtx, params: Any) -> str:
@@ -238,8 +238,8 @@ class SchemaParams:
     params=SchemaParams,
     preview="schema",
     doc=NodeDoc(
-        label="정답 스키마",
-            hint="정답이 어떤 모양이어야 하는지 적어 둔 파일을 읽습니다.",
+        label="정답 스키마 정의",
+            hint="정답이 따라야 할 항목과 허용값을 선언합니다.",
         summary="정답 Text 스키마를 읽는다. 렌더러와 파서가 모두 이 정의에서 생성된다.",
         scenario="학습에 쓴 스키마가 추론 계약에도 그대로 실린다.",
     ),
