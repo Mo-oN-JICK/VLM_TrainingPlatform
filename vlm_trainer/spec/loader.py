@@ -122,6 +122,7 @@ class ProcedureDef:
     exposed_outputs: Dict[str, str] = field(default_factory=dict)
     exposed_params: Dict[str, tuple] = field(default_factory=dict)  # 이름 -> (node, param)
     label: str = ""   # 캔버스에 뜨는 한국어 이름
+    hint: str = ""    # 카드 본문 한 줄
     path: str = ""
 
     @property
@@ -169,6 +170,7 @@ def load_procedure(path: str) -> ProcedureDef:
         exposed_outputs=_exposed_ports(data.get("exposed_outputs"), where, "outputs"),
         exposed_params=params,
         label=str(data.get("label", "")),
+        hint=str(data.get("hint", "")),
         path=path,
     )
 

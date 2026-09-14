@@ -2,6 +2,7 @@ kind: Procedure
 name: answer_build
 version: "1.0.0"
 label: "정답 생성"
+hint: "모델이 답해야 할 문장을 만들고 모양을 확인합니다."
 summary: "스키마가 선언한 단계대로 정답 Text를 쓰고, 스키마를 지키는지 검사한다."
 
 # 정답의 **모양은 그래프가 아니라 스키마 파일이 정한다.** 한 열을 그대로 쓰든,

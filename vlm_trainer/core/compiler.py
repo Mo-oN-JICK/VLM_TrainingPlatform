@@ -162,6 +162,7 @@ def _inline_procedures(
                 "id": p.id,
                 "ref": pd.ref,
                 "label": pd.label,
+                "hint": pd.hint,
                 "summary": pd.summary,
                 "params": dict(p.params or {}),
                 "exposed_inputs": dict(pd.exposed_inputs),

@@ -38,6 +38,9 @@ class NodeDoc:
     # 카드에 크게 뜨는 이름. 비면 노드 타입이 그 자리를 쓴다.
     # `image.crop_by_regions`가 무슨 일을 하는지는 그 이름만 봐서는 모른다.
     label: str = ""
+    # 카드 본문에 뜨는 한 줄. **이 플랫폼을 처음 보는 사람** 기준으로 쓴다.
+    # `summary`는 정확한 참조 문장이라 용어가 들어가고, 그건 Node Quick Info가 맡는다.
+    hint: str = ""
     summary: str = ""
     scenario: str = ""
     ports: str = ""

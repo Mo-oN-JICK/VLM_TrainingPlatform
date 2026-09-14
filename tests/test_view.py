@@ -208,9 +208,9 @@ def test_view_paints_node_states_and_debug_panel(cg, tmp_path):
     assert "DEBUG OUTPUT" in page.upper()
     assert "렌더된 최종 프롬프트" in page
 
-    # 실행 전에는 전부 pending이고 Debug Output은 비어 있다고 말한다
+    # 실행 전에는 전부 pending이고, Debug Output은 무엇을 눌러야 하는지 말한다
     blank = render_mod.render(cg)
-    assert "미리보기를 만들지 않았다" in blank
+    assert "Debug Output" in blank and "Run" in blank
     assert "pending" in blank
 
 
@@ -354,3 +354,53 @@ def test_the_library_is_searchable_in_korean(cg):
     assert "vlmtLibFilter(" in page and 'class="libsearch"' in page
     assert "이미지 크기 맞추기" in page, "라이브러리가 한국어 이름을 보여야 검색이 걸린다"
     assert "adapt.image_resize" in page, "타입도 남아 있어야 한다"
+
+
+def test_a_gate_violation_does_not_push_the_canvas_around(cg):
+    """전문을 펼쳐 두면 캔버스를 밀어내 화면 비율이 무너진다.
+    한 줄로 알리고, 전문은 눌렀을 때 팝업으로 연다."""
+    long_error = "2건의 게이트 위반:\n\n" + "\n\n".join(f"이유 {i}: " + "가" * 80 for i in range(2))
+    page = render_mod.render(cg, editable=True, editor=None, banner=long_error)
+
+    assert page.count('class="banner"') == 1
+    assert "vlmtGate(" in page and 'id="gatetext"' in page
+    # 배너 줄에는 첫 이유 한 줄만, 나머지는 숨긴 곳에 있다
+    assert '<span class="btext">이유 0' in page
+    assert "이유 1" not in page.split('id="gatetext"')[0]
+
+
+def test_the_gate_text_does_not_steal_the_page_title(cg):
+    """오류 문구가 제목 자리로 새면 탭 이름과 좌측 목록까지 오류가 된다."""
+    page = render_mod.render(cg, title="부품 외관 검사", editable=True, editor=None,
+                             banner="1건의 게이트 위반:\n\n포트가 연결되지 않았다")
+    assert "<title>부품 외관 검사</title>" in page
+    assert "<title>1건" not in page and "<title>포트가" not in page
+
+
+def test_the_gate_text_is_readable_not_escaped_twice(cg):
+    """전문을 <script> 안에 두면 엔티티가 파싱되지 않아 &#x27; 이 그대로 보인다."""
+    page = render_mod.render(cg, editable=True, editor=None,
+                             banner="포트 'prompt'가 연결되지 않았다")
+    block = page.split('id="gatetext"')[1]
+    assert "<pre" in page.split('id="gatetext"')[0][-40:] or 'hidden>' in block[:20]
+    assert "<script" not in page[page.index('id="gatetext"') - 60 : page.index('id="gatetext"')]
+
+
+def test_cards_say_what_they_do_not_what_they_are_set_to(cg, page):
+    """처음 보는 사람에게 `columns=['part_name', ...]` 는 소음이다."""
+    assert "사진을 한 장 가져옵니다" in page
+    assert 'class="sum" title=' in page, "설정값은 툴팁으로 내려간다"
+
+    from vlm_trainer.core.registry import all_defs
+
+    missing = [d.type for d in all_defs() if not d.doc.hint and not d.type.startswith("test.")]
+    assert not missing, missing
+
+
+def test_the_parameter_panel_carries_the_expert_controls(cg):
+    """값만 고치는 패널이면 전문가는 결국 캔버스와 Quick Info를 오간다."""
+    page = render_mod.render(cg, editable=True, editor=None)
+    for section in ("하는 일", "연결", "포트 타입", "이 노드 다루기"):
+        assert f"<summary>{section}</summary>" in page, section
+    assert "vlmtDisconnect(" in page, "패널에서 배선을 끊을 수 있어야 한다"
+    assert "노드 삭제" in page

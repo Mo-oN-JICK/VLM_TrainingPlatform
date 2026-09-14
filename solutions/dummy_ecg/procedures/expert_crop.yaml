@@ -2,6 +2,7 @@ kind: Procedure
 name: expert_crop
 version: "1.0.0"
 label: "관심영역 크롭"
+hint: "다른 모델이 찍어 준 자리를 잘라 사진 목록으로 만듭니다."
 summary: "전문가 모델이 지목한 영역을 잘라 고정 크기 이미지 목록으로 만든다."
 
 # 같은 인터페이스(expert.propose)로 이미지 영역 지목과 시계열 구간 지목을 모두 받는다.

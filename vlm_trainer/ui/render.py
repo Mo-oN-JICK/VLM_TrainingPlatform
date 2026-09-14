@@ -107,8 +107,9 @@ class Shown:
     lane: int
     inputs: Dict[str, Any] = field(default_factory=dict)   # 이름 -> PortType
     outputs: Dict[str, Any] = field(default_factory=dict)
-    summary: str = ""
+    summary: str = ""       # 설정값 요약. 카드 본문이 아니라 툴팁으로 간다
     label: str = ""         # 카드에 크게 뜨는 한국어 이름
+    hint: str = ""          # 카드 본문 한 줄. 파라미터가 아니라 무슨 일을 하는지
     inner: int = 0          # 0이면 보통 노드, 1 이상이면 접힌 Procedure
     state_ids: List[str] = field(default_factory=list)      # 상태를 합쳐 볼 노드들
 
@@ -116,6 +117,18 @@ class Shown:
 def _first_port(ref: Any) -> str:
     """노출 입력은 안쪽 여러 포트로 갈라질 수 있다. 타입은 어느 쪽이든 같으므로 첫 자리에서 읽는다."""
     return ref[0] if isinstance(ref, list) else ref
+
+
+def _sum_title(s: "Shown") -> str:
+    """카드 본문은 무슨 일을 하는지 한 줄이고, 설정값은 툴팁으로 내려간다.
+
+    처음 보는 사람에게 `columns=['part_name', ...]` 는 소음이다.
+    값을 고칠 사람은 어차피 우측 패널을 연다."""
+    parts = [s.hint or s.summary]
+    if s.summary and s.hint:
+        parts.append("설정 " + s.summary)
+    sep = chr(10) + chr(10)
+    return sep.join(p for p in parts if p)
 
 
 def _proc_of(cg: CompiledGraph, nid: str) -> str:
@@ -155,6 +168,7 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
             outputs=dict(n.output_types),
             summary=_summary(cg, nid),
             label=d.doc.label or n.ref.split("@")[0],
+            hint=d.doc.hint,
             state_ids=[nid],
         )
 
@@ -186,6 +200,7 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
             outputs={k: v for k, v in outs.items() if v is not None},
             summary=", ".join(f"{k}={v}" for k, v in list(params.items())[:3]),
             label=p.get("label") or p.get("ref", "").split("@")[0],
+            hint=p.get("hint", ""),
             inner=len(inner),
             state_ids=inner,
         )
@@ -364,7 +379,7 @@ def render(
             + (f"<span class=\"del\" onclick=\"vlmtRemove('{nid}')\">&times;</span>" if editable else "")
             + "</div>"
             f'<div class="ref" title="{html.escape(nid)} · {html.escape(s.ref)}">{html.escape(nid)} · {html.escape(s.ref)}</div>'
-            f'<div class="sum" title="{html.escape(s.summary)}">{html.escape(s.summary)}</div>'
+            f'<div class="sum" title="{html.escape(_sum_title(s))}">{html.escape(s.hint or s.summary)}</div>'
             f'<div class="st"><span class="sdot" style="background:{T.STATE.get(state, "#4A4A4A")}">'
             f'</span>{state}{" · " + html.escape(state_extra) if state_extra else ""}</div>'
             f"</div>"
@@ -413,7 +428,7 @@ def render(
     )
     debug_block = (
         '<h4>Debug Output</h4><div id="debugout">'
-        + (debug or '<div class="doc">토글이 꺼져 있어 미리보기를 만들지 않았다.</div>')
+        + (debug or '<div class="doc">위쪽 <b>Debug Output</b> 을 켜고 <b>Run</b> 을 누르면 각 단계의 중간 결과가 여기에 보입니다.</div>')
         + "</div>"
     )
 
@@ -457,12 +472,28 @@ def render(
         spec_hash = f"{cg.spec_hash} (레시피 적용) · 스펙 {base.spec_hash}"
     overlaid = set(getattr(editor, 'overlay', None) and
                    [f'{n}:{p}' for (n, p) in editor._overlay_paths()] or [])
-    banner_html = f'<div class="banner">{html.escape(banner)}</div>' if banner else ""
+    # 게이트 위반 전문을 펼쳐 두면 캔버스를 밀어내 화면 비율이 무너진다.
+    # 한 줄로 알리고, 읽고 싶을 때 팝업으로 연다.
+    banner_html = ""
+    if banner:
+        lines = [ln for ln in banner.splitlines() if ln.strip()]
+        first = lines[0] if lines else banner
+        if first.endswith('게이트 위반:') and len(lines) > 1:
+            first = lines[1]
+        # 전문은 숨긴 <pre>에 둔다. <script>에 넣으면 엔티티가 날것으로 읽힌다
+        # (스크립트 안쪽은 파싱되지 않아 &#x27; 이 그대로 보인다).
+        banner_html = (
+            f'<div class="banner" onclick="vlmtGate()" title="눌러서 전문 보기">'
+            f'<span class="bmark">!</span>'
+            f'<span class="btext">{html.escape(first[:110])}</span>'
+            f'<span class="bmore">자세히 보기</span></div>'
+            f'<pre id="gatetext" hidden>{html.escape(banner)}</pre>'
+        )
 
     # 오른쪽은 설계 문서 12.1의 파티션: Debug Output(위) + 탭으로 나뉜 Configuration Panel(아래).
     # **뷰어는 스크립트를 싣지 않으므로 탭을 쓰지 않는다** — 눌러도 안 바뀌는 탭은 없느니만 못하다.
     params_block = (
-        '<div class="doc pick">카드를 고르면 그 상자의 설정이 여기에 뜬다.</div>'
+        '<div class="doc pick">가운데 그림에서 상자를 하나 누르면 그 상자의 설정이 여기에 나옵니다.</div>'
         + _params_panel(cg, overlaid, boundary, expanded)
         if editable
         else ""
@@ -540,7 +571,9 @@ body{{margin:0;background:{T.SURFACE['chrome']};color:#D8DCDF;
 .menubar{{background:{T.SURFACE['chrome']};padding:6px 12px;border-bottom:1px solid {T.SURFACE['line']};
         font-size:12px;color:#8A9196}}
 .toolbar{{background:{T.SURFACE['toolbar']};padding:7px 12px;border-bottom:1px solid {T.SURFACE['line']};
-        display:flex;gap:14px;align-items:center;font-size:12px}}
+        display:flex;gap:14px;align-items:center;font-size:12px;
+        white-space:nowrap;overflow-x:auto;overflow-y:hidden}}
+.toolbar>*{{flex:0 0 auto}}
 .toolbar b{{color:{T.NODE['accent']};font-weight:600}}
 .side{{display:grid;grid-template-rows:auto 1fr;padding:0;overflow:hidden}}
 .dbgpane{{overflow:auto;padding:10px 12px;border-bottom:1px solid {T.SURFACE['line']}}}
@@ -615,6 +648,24 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .params.on{{display:block}}
 .phd{{color:#C6CCD1;font-size:12.5px;margin:2px 0 8px}}
 .phd em{{color:#6F7478;font-style:normal;font-size:11px}}
+.ndet{{border-top:1px solid {T.SURFACE['line']};margin-top:6px;padding-top:4px}}
+.ndet>summary{{cursor:pointer;font-size:11px;color:#8A9196;list-style:none;padding:2px 0}}
+.ndet>summary::-webkit-details-marker{{display:none}}
+.ndet>summary::before{{content:'\25b8 ';color:{T.NODE['accent']}}}
+.ndet[open]>summary::before{{content:'\25be '}}
+.ndet>summary:hover{{color:#C6CCD1}}
+.wrow{{display:grid;grid-template-columns:auto 12px 1fr 18px;gap:5px;align-items:center;
+      font-size:11px;color:#A8B0B6;padding:2px 0}}
+.wrow .wp{{color:#D8DCDF}}
+.wrow .wa{{color:{T.NODE['accent']}}}
+.wrow .ws{{color:#8A9196;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.wrow .wcut{{cursor:pointer;color:#6F7478;text-align:center;line-height:18px;min-width:18px}}
+.wrow .wcut:hover{{color:{T.STATE['failed']};background:{T.NODE['bg']};border-radius:2px}}
+.trow{{font-size:10.5px;padding:2px 0}}
+.trow .tp{{color:#D8DCDF;margin-right:5px}}
+.trow code{{color:{T.NODE['accent']};font-family:ui-monospace,Consolas,monospace}}
+.nact{{display:flex;gap:6px;padding:4px 0}}
+.doc.dim{{color:#6F7478}}
 .prow{{display:grid;grid-template-columns:1fr 148px;gap:8px;align-items:center;margin-bottom:5px}}
 .prow label{{color:#A8B0B6;font-size:11.5px;display:flex;gap:4px;align-items:center}}
 .prow input[type=text],.prow input[type=number]{{background:{T.SURFACE['canvas']};color:#D8DCDF;
@@ -714,8 +765,25 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
      border-radius:3px;padding:3px 12px;font-size:12px;cursor:pointer}}
 .btn:hover{{background:{T.NODE['bg_selected']}}}
 .hint{{margin-left:auto;color:#79828A;font-size:11.5px}}
-.banner{{background:#3A2A2A;color:#E8B0B0;padding:6px 12px;font-size:12px;
-        border-bottom:1px solid {T.SURFACE['line']};white-space:pre-wrap}}
+.banner{{background:#3A2A2A;color:#E8B0B0;padding:5px 12px;font-size:12px;cursor:pointer;
+      border-bottom:1px solid {T.SURFACE['line']};display:flex;gap:8px;align-items:center;
+      white-space:nowrap;overflow:hidden}}
+.banner:hover{{background:#452F2F}}
+.bmark{{flex:0 0 auto;width:16px;height:16px;border-radius:50%;background:{T.STATE['failed']};
+      color:#1A1A1A;font-weight:700;font-size:11px;text-align:center;line-height:16px}}
+.btext{{overflow:hidden;text-overflow:ellipsis}}
+.bmore{{margin-left:auto;flex:0 0 auto;color:#E8B0B0;text-decoration:underline;font-size:11px}}
+.modal{{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;
+      justify-content:center;z-index:80}}
+.modal .box{{background:{T.SURFACE['panel']};border:1px solid {T.STATE['failed']};border-radius:4px;
+      max-width:760px;max-height:70vh;display:flex;flex-direction:column}}
+.modal .mh{{display:flex;align-items:center;gap:8px;padding:10px 14px;
+      border-bottom:1px solid {T.SURFACE['line']};color:#E8B0B0;font-size:13px;font-weight:600}}
+.modal .mb{{overflow:auto;padding:12px 14px;white-space:pre-wrap;font-size:12px;color:#D8DCDF;
+      line-height:1.55;font-family:ui-monospace,Consolas,monospace}}
+.modal .mf{{padding:8px 14px;border-top:1px solid {T.SURFACE['line']};text-align:right}}
+.modal .x{{margin-left:auto;cursor:pointer;color:#8A9196;font-size:16px}}
+.modal .x:hover{{color:#E8B0B0}}
 .chip.cout{{cursor:grab}}
 .chip.okdrop{{outline:2px solid {T.NODE['border_selected']};outline-offset:1px}}
 .chip.nodrop{{opacity:.28;cursor:not-allowed}}
@@ -780,7 +848,7 @@ _EDITOR_TOOLS = (
     '<input type="checkbox" id="dbgout">Debug Output</label>'
     '<label class="tgl">샘플 <input type="number" id="runlimit" value="8" min="1" max="999"></label>'
     '<span class="runline" id="runline"></span>'
-    '<span class="hint">출력 칩을 끌어 입력 칩에 놓는다 · 입력 칩 우클릭으로 배선 제거</span>'
+    '<span class="hint">아래쪽 색칠된 칸을 끌어 다른 상자의 위쪽 칸에 놓으면 이어집니다 · 위쪽 칸을 우클릭하면 끊어집니다</span>'
 )
 
 # 편집기 스크립트. 드래그 중에는 호환되는 입력만 밝히고, 나머지에는 **놓을 수 없다**.
@@ -1016,9 +1084,38 @@ window.addEventListener('DOMContentLoaded', () => {
   if (t) t.click();
 });
 
+// 게이트 위반 전문은 팝업으로 본다. 배너에 펼쳐 두면 캔버스를 밀어낸다.
+function vlmtGate() {
+  const src = document.getElementById('gatetext');
+  if (!src) return;
+  const old = document.querySelector('.modal');
+  if (old) { old.remove(); return; }
+  const m = document.createElement('div');
+  m.className = 'modal';
+  m.innerHTML = '<div class="box"><div class="mh">막힌 이유'
+    + '<span class="x" title="닫기">&times;</span></div>'
+    + '<pre class="mb"></pre>'
+    + '<div class="mf"><button class="btn">닫기</button></div></div>';
+  m.querySelector('.mb').textContent = src.textContent;
+  const close = () => m.remove();
+  m.addEventListener('click', (ev) => {
+    if (ev.target === m || ev.target.closest('.x') || ev.target.closest('.btn')) close();
+  });
+  document.addEventListener('keydown', function esc(ev) {
+    if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+  });
+  document.body.appendChild(m);
+}
+
 async function vlmtExpand(pid) {
   const {code, data} = await post('/api/expand', {id: pid});
   if (code === 200) location.reload(); else toast(data.reason || '', true);
+}
+
+async function vlmtDisconnect(dst) {
+  const {code, data} = await post('/api/disconnect', {to: dst});
+  if (code === 200) location.reload();
+  else toast('배선 제거 거부: ' + (data.reason || ''), true);
 }
 
 async function vlmtBoundary(node, on) {
@@ -1357,8 +1454,8 @@ def _recipe_panel(editor: Any) -> str:
             + '</div>'
         )
     else:
-        overlay = ('<div class="doc">파라미터 옆의 <b>+</b>를 누르면 그 값이 레시피의 축이 된다. '
-                   '레시피를 누르면 그 값으로 화면이 바뀐다.</div>')
+        overlay = ('<div class="doc">설정 옆의 <b>+</b> 를 누르면 그 값을 실험마다 바꿔 볼 수 있습니다. '
+                   '아래 목록에서 하나를 누르면 그 값으로 화면이 바뀝니다.</div>')
 
     return f'<div class="recipe">{head}{overlay}{"".join(rows)}</div>'
 
@@ -1382,7 +1479,58 @@ def _history_panel(editor: Any) -> str:
             f'<span class="hh">{html.escape(h["spec_hash"][3:11])}</span>'
             f"{diff}</div>"
         )
-    return '<h4>History</h4>' + ("".join(reversed(rows)) or '<div class="doc">기록이 없다.</div>')
+    return '<h4>History</h4>' + ("".join(reversed(rows)) or '<div class="doc">아직 고친 것이 없습니다.</div>')
+
+
+def _node_detail(cg: CompiledGraph, nid: str) -> str:
+    """파라미터 아래에 붙는 접이식 상세.
+
+    값만 고치는 패널이면 전문가는 결국 캔버스와 Quick Info를 오간다.
+    무엇에 연결됐는지, 포트 타입이 무엇인지, 이 노드를 어떻게 다루는지를 한자리에 둔다.
+    """
+    n = cg.nodes[nid]
+    d = resolve_node(n.ref)
+
+    wired = []
+    for port, src in sorted(n.inputs.items()):
+        wired.append(
+            f'<div class="wrow"><span class="wp">{html.escape(port)}</span>'
+            f'<span class="wa">&#8592;</span>'
+            f'<span class="ws">{html.escape(src)}</span>'
+            f'<span class="wcut" title="이 배선을 끊는다" '
+            f"onclick=\"vlmtDisconnect('{html.escape(nid)}:{html.escape(port)}')\">&times;</span></div>"
+        )
+    for port in sorted(n.output_types):
+        outs = [e.dst for e in cg.edges if e.src == f"{nid}:{port}"]
+        tgt = ", ".join(outs) if outs else "(아직 아무 데도 안 감)"
+        wired.append(
+            f'<div class="wrow"><span class="wp">{html.escape(port)}</span>'
+            f'<span class="wa">&#8594;</span>'
+            f'<span class="ws">{html.escape(tgt)}</span><span></span></div>'
+        )
+
+    types = "".join(
+        f'<div class="trow"><span class="tp">{html.escape(p)}</span>'
+        f'<code>{html.escape(str(t))}</code></div>'
+        for p, t in list(n.input_types.items()) + list(n.output_types.items())
+    )
+
+    return (
+        '<details class="ndet"><summary>하는 일</summary>'
+        f'<div class="doc">{html.escape(d.doc.hint or d.doc.summary)}</div>'
+        f'<div class="doc dim">{html.escape(d.doc.scenario)}</div></details>'
+        '<details class="ndet"><summary>연결</summary>'
+        + ("".join(wired) or '<div class="doc">아직 아무것도 이어지지 않았습니다.</div>')
+        + "</details>"
+        '<details class="ndet"><summary>포트 타입</summary>'
+        + (types or '<div class="doc">주고받는 값이 없습니다.</div>')
+        + "</details>"
+        '<details class="ndet"><summary>이 노드 다루기</summary>'
+        f'<div class="nact"><button class="btn sm" '
+        f"onclick=\"vlmtRemove('{html.escape(nid)}')\">노드 삭제</button>"
+        f'<button class="btn sm" onclick="vlmtSelect(\'{html.escape(nid)}\')">캔버스에서 보기</button>'
+        "</div></details>"
+    )
 
 
 def _param_widget(nid: str, name: str, value: Any) -> str:
@@ -1442,7 +1590,7 @@ def _params_panel(
         blocks.append(
             f'<div class="params" data-node="{html.escape(pid)}">'
             f'<div class="phd">{html.escape(pid)} <em>{html.escape(proc.get("ref", ""))}</em></div>'
-            + ("".join(rows) or '<div class="doc">노출된 파라미터가 없다.</div>')
+            + ("".join(rows) or '<div class="doc">이 상자는 고칠 값이 없습니다.</div>')
             + f'<div class="doc">노드 {len([i for i in cg.order if cg.nodes[i].origin == pid])}개가 '
             f"들어 있다. 카드의 &#9656; 로 펼친다.</div>"
             + "</div>"
@@ -1480,7 +1628,8 @@ def _params_panel(
                 + "물질화 경계</label>"
             )
             + "</div>"
-            + ("".join(rows) or '<div class="doc">파라미터가 없다.</div>')
+            + ("".join(rows) or '<div class="doc">고칠 값이 없는 노드다.</div>')
+            + _node_detail(cg, nid)
             + "</div>"
         )
     return "".join(blocks)
