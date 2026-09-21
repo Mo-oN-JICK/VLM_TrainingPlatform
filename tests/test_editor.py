@@ -1302,3 +1302,81 @@ def test_a_misspelled_param_name_is_refused_not_drafted(ed):
     assert "no_such_param" in res["detail"]
     assert ed.graph.node("n_schema").params == before, "거부됐는데 값이 남았다"
     assert ed.valid, "거부된 편집이 그래프를 망가진 채로 두었다"
+
+
+# ── 작업에 들어선 뒤 흐른 시간 ───────────────────────────────────────────
+
+
+def _running(ed, tmp_path, *, processed: int, total: int, ago: float):
+    """진행 중인 작업 하나를 흉내낸다. 시계를 믿지 않도록 값을 직접 놓는다."""
+    import json as _json
+    import time as _t
+
+    from vlm_trainer.engine import runner as runner_mod
+
+    class _Alive:
+        def poll(self):
+            return None
+
+    ed.proc = _Alive()
+    ed.launched_at = _t.time() - ago
+    ed.finished_at = 0.0
+    ed.progress_path = str(tmp_path / "progress.json")
+
+    first = ed.compiled.order[0]
+    rep = runner_mod.RunReport(order=list(ed.compiled.order), started=_t.time() - ago)
+    rep.processed = processed
+    rep.active, rep.active_since = first, _t.perf_counter() - 4.0
+    rep.node_ms[first] = 8200.0
+    with open(ed.progress_path, "w", encoding="utf-8") as fh:
+        _json.dump(runner_mod.snapshot(rep, run_id="r", total=total, phase="running"), fh)
+    return first
+
+
+def test_elapsed_time_counts_from_when_the_job_started(ed, tmp_path):
+    """노드별 누계를 다 더해도 이 값이 나오지 않는다.
+
+    캐시 적중, 샘플 적재, shard 쓰기처럼 어느 노드에도 속하지 않는 시간이 있다.
+    """
+    _running(ed, tmp_path, processed=20, total=110, ago=30.0)
+    st = ed.run_state()
+    assert 29_000 <= st["elapsed_ms"] <= 31_000
+
+
+def test_elapsed_time_stops_when_the_job_does(ed, tmp_path):
+    """다 끝난 작업의 숫자가 계속 올라가면 그것은 경과 시간이 아니라 시계다."""
+    import time as _t
+
+    class _Dead:
+        returncode = 0
+
+        def poll(self):
+            return 0
+
+    _running(ed, tmp_path, processed=110, total=110, ago=12.0)
+    ed.proc = _Dead()
+    first = ed.run_state()["elapsed_ms"]
+    _t.sleep(0.05)
+    again = ed.run_state()["elapsed_ms"]
+    assert first == again, "끝난 뒤에도 경과 시간이 흐른다"
+
+
+def test_remaining_time_is_withheld_until_the_rate_means_something(ed, tmp_path):
+    """처음 한두 건으로 "남은 40분"을 띄우면 그 수를 믿고 자리를 뜨게 된다."""
+    _running(ed, tmp_path, processed=3, total=110, ago=30.0)
+    assert ed.run_state()["eta_ms"] == 0.0
+
+    _running(ed, tmp_path, processed=20, total=110, ago=30.0)
+    eta = ed.run_state()["eta_ms"]
+    # 20건에 30초 -> 남은 90건은 135초
+    assert 130_000 <= eta <= 140_000
+
+
+def test_a_running_node_shows_this_pass_and_the_running_total(ed, tmp_path):
+    """앞만 있으면 이 노드가 전체에서 얼마나 무거운지 모르고,
+    뒤만 있으면 지금 한 건이 유난히 오래 걸리는 중인지 알 수 없다."""
+    first = _running(ed, tmp_path, processed=20, total=110, ago=30.0)
+    st = ed.run_state()
+    extra = st["states"][st["active"]]["extra"]
+    assert extra.startswith("4."), extra          # 이번에 들어가서 4초
+    assert "누계 8.2s" in extra, extra            # 지금까지 8.2초

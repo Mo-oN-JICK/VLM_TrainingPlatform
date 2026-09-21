@@ -151,6 +151,8 @@ class Editor:
     console_path: str = ""
     phase: str = ""
     stopped: bool = False
+    launched_at: float = 0.0   # 작업을 띄운 시각. 경과 시간의 기준이다
+    finished_at: float = 0.0   # 끝난 시각. 끝난 뒤에도 얼마 걸렸는지는 남아야 한다
     expanded: set = field(default_factory=set)  # 펼쳐 둔 Procedure. 화면 상태일 뿐이다
     layout: Dict[str, Any] = field(default_factory=dict)  # 상자 id -> (x, y)
 
@@ -875,6 +877,10 @@ class Editor:
         self.console_path = os.path.join(run_dir, f"{phase}.log")
         self.phase = phase
         self.stopped = False
+        # 하위 프로세스를 띄운 시각. 진행 파일의 started 보다 이쪽이 이르고,
+        # materialize 처럼 진행 파일을 쓰지 않는 단계에서도 경과 시간이 나온다.
+        self.launched_at = time.time()
+        self.finished_at = 0.0
 
         env = dict(os.environ)
         pkg_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -969,6 +975,16 @@ class Editor:
         from .render import fold, state_of_many
 
         alive = self.proc is not None and self.proc.poll() is None
+        if not alive and self.proc is not None and not self.finished_at:
+            self.finished_at = time.time()
+
+        # 작업에 들어선 뒤 흐른 시간. 끝난 뒤에는 멈춘 값이어야 한다 —
+        # 다 끝난 작업의 숫자가 계속 올라가면 그것은 경과 시간이 아니라 시계다.
+        elapsed_ms = 0.0
+        if self.launched_at:
+            end = time.time() if alive else (self.finished_at or self.launched_at)
+            elapsed_ms = max(0.0, (end - self.launched_at) * 1000)
+
         out: Dict[str, Any] = {
             "running": alive,
             "run_id": self.run_id,
@@ -983,6 +999,8 @@ class Editor:
             "aborted": "",
             "quarantine": [],
             "active": "",
+            "elapsed_ms": elapsed_ms,
+            "eta_ms": 0.0,
         }
         # 물질화·학습 중에도 직전 실행이 남긴 카드 상태는 그대로 둔다.
         # 지우면 "아무것도 안 돌았다"로 읽히는데 그것은 사실이 아니다.
@@ -1005,6 +1023,12 @@ class Editor:
                 "previews": self._preview_urls(data.get("previews", {})),
             }
         )
+        # 남은 시간은 지금까지의 속도로만 민다. 평균이 흔들리는 초반에는 내지 않는다 —
+        # 처음 한두 건으로 "남은 시간 40분"을 띄우면 그 수를 믿고 자리를 뜨게 된다.
+        done, total = out["processed"], out["total"]
+        if alive and done >= 5 and total > done and elapsed_ms > 0:
+            out["eta_ms"] = elapsed_ms / done * (total - done)
+
         # 캔버스가 쓰는 id로 답한다. 접힌 Procedure는 안쪽 노드 id로 그려져 있지 않으므로
         # compiled.order를 그대로 내보내면 상자가 실행 내내 아무 색도 바뀌지 않는다.
         if self.compiled is not None:

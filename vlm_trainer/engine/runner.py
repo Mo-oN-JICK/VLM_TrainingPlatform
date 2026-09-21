@@ -82,6 +82,10 @@ class RunReport:
     # 느린 노드 앞에서 화면이 멈춘 것인지 그 노드가 도는 중인지 구별되지 않는다.
     active: str = ""
     active_since: float = 0.0
+    # 작업에 들어선 시각. 노드별 누계를 다 더해도 이 값이 나오지 않는다 —
+    # 캐시 적중, 샘플 적재, shard 쓰기처럼 어느 노드에도 속하지 않는 시간이 있다.
+    # "얼마나 돌았나"에 답하려면 벽시계가 따로 있어야 한다.
+    started: float = 0.0
 
     def count(self, node_id: str, state: str) -> None:
         self.node_state.setdefault(node_id, {})
@@ -102,6 +106,10 @@ def snapshot(rep: RunReport, *, run_id: str, total: int, phase: str) -> Dict[str
         "run_id": run_id,
         "phase": phase,  # running | done | aborted
         "at": time.time(),
+        # 작업이 시작한 시각과 그로부터 흐른 시간. 보는 쪽이 자기 시계로 빼면
+        # 두 프로세스의 시계가 어긋난 만큼 틀린다. 낸 쪽이 계산해 준다.
+        "started": rep.started,
+        "elapsed_ms": (time.time() - rep.started) * 1000 if rep.started else 0.0,
         "total": total,
         "processed": rep.processed,
         "order": list(rep.order),
@@ -145,6 +153,7 @@ def report_from_snapshot(data: Dict[str, Any]) -> RunReport:
     rep.cache = dict(data.get("cache") or {})
     rep.processed = int(data.get("processed") or 0)
     rep.aborted = str(data.get("aborted") or "")
+    rep.started = float(data.get("started") or 0.0)
     rep.active = str(data.get("active") or "")
     # 스냅샷의 active_ms는 이미 경과한 밀리초다. 다시 시작 시각으로 되돌려 둔다.
     rep.active_since = time.perf_counter() - float(data.get("active_ms") or 0.0) / 1000.0
@@ -220,7 +229,7 @@ def execute(
 ) -> RunReport:
     opts = opts or RunOptions()
     cache = CacheStore(root=opts.cache_dir, enabled=opts.use_cache, backend=opts.cache_backend)
-    rep = RunReport(order=list(cg.order))
+    rep = RunReport(order=list(cg.order), started=time.time())
     space_fp = samples_mod.fingerprint(space)
 
     plan = [i for i in cg.order if targets is None or i in targets]

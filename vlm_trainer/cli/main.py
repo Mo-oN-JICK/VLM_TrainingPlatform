@@ -34,6 +34,20 @@ from ..train import shards as shards_mod
 from ..train import contract as contract_mod
 
 
+def _took(ms: float) -> str:
+    """밀리초를 사람이 읽는 단위로. 편집기 카드(`render._ms`)와 같은 규칙을 쓴다 —
+    같은 값이 터미널과 화면에서 다르게 보이면 둘 중 하나가 틀린 것처럼 읽힌다."""
+    if ms < 1000:
+        return f"{ms:.0f}ms"
+    if ms < 60_000:
+        return f"{ms / 1000:.1f}s"
+    total = int(ms / 1000)
+    m, sec = divmod(total, 60)
+    if m < 60:
+        return f"{m}m {sec:02d}s"
+    return f"{m // 60}h {m % 60:02d}m"
+
+
 def _load_nodes(modules: List[str]) -> None:
     registry.load_builtin_nodes()
     for m in modules or []:
@@ -295,13 +309,14 @@ def cmd_run(a: argparse.Namespace) -> int:
 
     opts.debug_output = a.debug_output
     rep = execute(cg, space, rows, opts)
-    print(f"run {opts.run_id}: {rep.processed}/{len(rows)}건 처리")
+    took = (time.time() - rep.started) * 1000 if rep.started else 0.0
+    print(f"run {opts.run_id}: {rep.processed}/{len(rows)}건 처리 · {_took(took)}")
     print(f"  캐시 {rep.cache}")
     for nid in rep.order:
         st = rep.states_of(nid)
         if st:
             ms = rep.node_ms.get(nid, 0.0)
-            print(f"  {nid:<18} {st}  {ms:.0f}ms")
+            print(f"  {nid:<18} {st}  {_took(ms)}")
     if rep.quarantine:
         print()
         print(f"격리 {len(rep.quarantine)}건 (비율 {rep.quarantine_ratio:.1%}):")
@@ -340,8 +355,9 @@ def cmd_materialize(a: argparse.Namespace) -> int:
         limit=a.limit,
         split=a.split,
     )
+    t0 = time.time()
     rep = materialize_mod.materialize(cg, space, mo, ro)
-    print(f"run {ro.run_id}")
+    print(f"run {ro.run_id} · {_took((time.time() - t0) * 1000)}")
     print(materialize_mod.render(rep))
     if rep.ok:
         st = shards_mod.stats(rep.out_dir)
@@ -377,13 +393,17 @@ def _train_logger(a: argparse.Namespace, run_id: str):
     path = _progress_path(a, run_id)
     if path:
         path = os.path.join(os.path.dirname(path), "train_progress.json")
-    state = {"run_id": run_id, "phase": "train", "stage": "", "step": 0, "loss": 0.0, "at": 0.0}
+    started = time.time()
+    state = {"run_id": run_id, "phase": "train", "stage": "", "step": 0, "loss": 0.0,
+             "at": 0.0, "started": started, "elapsed_ms": 0.0}
 
     def log(stage: str, step: int, loss: float) -> None:
         print(f"    {stage} step {step:>4} loss {loss:.4f}")
         if not path:
             return
-        state.update(stage=stage, step=int(step), loss=float(loss), at=time.time())
+        now = time.time()
+        state.update(stage=stage, step=int(step), loss=float(loss), at=now,
+                     elapsed_ms=(now - started) * 1000)
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             tmp = path + ".tmp"
@@ -423,6 +443,7 @@ def cmd_train(a: argparse.Namespace) -> int:
         measured = b.s_vision
 
     out_dir = os.path.join("runs", run_id, "train")
+    t_train = time.time()
     journal = Journal(os.path.join("runs", run_id, "journal.jsonl"))
     rep = loop_mod.train(
         cfg,
@@ -434,10 +455,12 @@ def cmd_train(a: argparse.Namespace) -> int:
         max_steps=a.max_steps,
         on_log=_train_logger(a, run_id),
     )
+    took = (time.time() - t_train) * 1000
     rep.contract = contract_mod.write(
         os.path.abspath(out_dir), cg, cfg, spec_dir, vision_tokens=measured
     )
     print(loop_mod.render(rep))
+    print(f"  전체 {_took(took)}")
     return 0 if rep.ok else 6
 
 

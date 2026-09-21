@@ -352,8 +352,16 @@ def state_of(report: Any, nid: str) -> Tuple[str, str]:
 
     # 지금 이 노드가 돌고 있으면 누계보다 그 사실이 먼저다. 카운트가 아직 0이어도
     # (첫 샘플의 첫 통과) 화면에는 여기가 현재 위치라고 나와야 한다.
+    #
+    # 두 숫자를 같이 낸다. 앞은 **이번에 들어가서 흐른 시간**이고 뒤는 지금까지의 누계다.
+    # 앞만 있으면 이 노드가 전체에서 얼마나 무거운지 모르고, 뒤만 있으면 지금 한 건이
+    # 유난히 오래 걸리는 중인지 알 수 없다.
     if getattr(report, "active", "") == nid:
-        return "running", _elapsed(report.active_since)
+        extra = _elapsed(report.active_since)
+        total = report.node_ms.get(nid, 0.0)
+        if total >= 1.0:
+            extra += f" (누계 {_ms(total)})"
+        return "running", extra
 
     st = report.states_of(nid)
     if not st:
@@ -925,6 +933,9 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
      border-radius:3px;padding:3px 12px;font-size:12px;cursor:pointer}}
 .btn:hover{{background:{T.NODE['bg_selected']}}}
 .hint{{margin-left:auto;color:#79828A;font-size:11.5px}}
+/* 작업이 도는 동안에는 배선 안내를 접는다 — 그 순간 사람이 보는 것은 진행 상황이다 */
+body.busy .hint{{display:none}}
+.runline.live{{color:{T.STATE['running']};font-weight:600}}
 .banner{{background:#3A2A2A;color:#E8B0B0;padding:5px 12px;font-size:12px;cursor:pointer;
       border-bottom:1px solid {T.SURFACE['line']};display:flex;gap:8px;align-items:center;
       white-space:nowrap;overflow:hidden}}
@@ -1007,10 +1018,10 @@ _EDITOR_TOOLS = (
     '<button class="btn" id="stopbtn" onclick="vlmtRunStop()" disabled>Stop</button>'
     '<button class="btn on" id="followbtn" onclick="vlmtFollowToggle()" '
     'title="실행 중인 노드가 화면 밖으로 나가면 그쪽으로 옮긴다">실행 따라가기</button>'
+    '<span class="runline" id="runline"></span>'
     '<label class="tgl" title="꺼져 있으면 미리보기를 생성조차 하지 않는다">'
     '<input type="checkbox" id="dbgout">Debug Output</label>'
     '<label class="tgl">샘플 <input type="number" id="runlimit" value="8" min="1" max="999"></label>'
-    '<span class="runline" id="runline"></span>'
     '<span class="hint">아래쪽 색칠된 칸을 끌어 다른 상자의 위쪽 칸에 놓으면 이어집니다 · 위쪽 칸을 우클릭하면 끊어집니다</span>'
 )
 
@@ -1436,11 +1447,33 @@ function vlmtDebugOut(previews) {
   ids.forEach((nid, i) => { box.querySelectorAll('pre.pv')[i].textContent = previews[nid].text || ''; });
 }
 
+// 밀리초를 사람이 읽는 단위로. 서버(render.py의 _ms)와 같은 규칙을 쓴다 —
+// 같은 값이 카드와 툴바에서 다르게 보이면 둘 중 하나가 틀린 것처럼 읽힌다.
+function fmtMs(ms) {
+  if (ms < 1000) return Math.round(ms) + 'ms';
+  if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60), sec = total % 60;
+  if (m < 60) return m + 'm ' + String(sec).padStart(2, '0') + 's';
+  return Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm';
+}
+
+// 마지막으로 받은 경과 시간과 그것을 받은 시각. 사이를 화면이 메운다.
+let clockBase = null;
+setInterval(() => {
+  const line = document.getElementById('runline');
+  if (!line || !clockBase || !clockBase.live || !line.dataset.head) return;
+  const ms = clockBase.ms + (Date.now() - clockBase.at);
+  const eta = clockBase.eta ? ' · 남은 ~' + fmtMs(Math.max(0, clockBase.eta - (Date.now() - clockBase.at))) : '';
+  line.textContent = line.dataset.head + ' · ' + fmtMs(ms) + eta + (line.dataset.tail || '');
+}, 250);
+
 async function vlmtRunPoll() {
   if (runTimer) clearTimeout(runTimer);
   const {code, data} = await post('/api/run/state', {});
   if (code !== 200) return;
 
+  document.body.classList.toggle('busy', !!data.running);
   vlmtPaint(data.states);
   vlmtFollow(data.active);
   vlmtDebugOut(data.previews);
@@ -1467,9 +1500,18 @@ async function vlmtRunPoll() {
       } else {
         body = data.processed + '/' + data.total + q;
       }
-      line.textContent = data.run_id + ' ' + body + tail;
+      // 작업에 들어선 뒤 흐른 시간. 폴링은 0.7초마다라서 서버 값만 쓰면 초가 툭툭 끊긴다.
+      // 받은 값을 기준점으로 삼고 그 사이는 화면이 스스로 센다.
+      clockBase = {at: Date.now(), ms: data.elapsed_ms || 0, eta: data.eta_ms || 0,
+                   live: !!data.running};
+      const eta = data.eta_ms ? ' · 남은 ~' + fmtMs(data.eta_ms) : '';
+      line.dataset.head = data.run_id + ' ' + body;
+      line.dataset.tail = tail;
+      line.dataset.eta = eta;
+      line.textContent = data.run_id + ' ' + body + ' · ' + fmtMs(clockBase.ms) + eta + tail;
       line.className = 'runline' + (data.aborted || (data.exit && !data.stopped) ? ' bad' : '');
     } else {
+      clockBase = null;
       line.textContent = '';
     }
   }
