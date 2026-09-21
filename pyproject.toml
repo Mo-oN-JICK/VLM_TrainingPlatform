@@ -12,6 +12,13 @@ requires-python = ">=3.10"
 # torch는 학습 단계에서만 필요해 여기 넣지 않는다 — 설치 구문이 CUDA마다 다르다.
 dependencies = ["pyyaml>=6", "numpy>=1.24", "pillow>=10"]
 
+# 편집기는 선택 사항이다. PySide6는 150MB가 넘고, 학습만 돌리는 PC나
+# 헤드리스 서버에는 있을 이유가 없다. `pip install -e .[app]` 로 켠다.
+#   코어는 이것 없이도 전부 돌아야 한다 — compile / dryrun / budget / run /
+#   materialize / train / view. 테스트가 이 경계를 지킨다.
+[project.optional-dependencies]
+app = ["PySide6>=6.7"]
+
 [project.scripts]
 # 문서가 내내 `vlmt`라고 부르던 명령. 지금까지는 이름만 있고 실체가 없었다.
 vlmt = "vlm_trainer.cli.main:main"
