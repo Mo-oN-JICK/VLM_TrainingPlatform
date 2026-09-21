@@ -89,6 +89,21 @@ class GraphModel:
                 return n
         raise KeyError(node_id)
 
+    def instance(self, node_id: str) -> Any:
+        """노드든 Procedure 인스턴스든 그 id로 찾는다.
+
+        `node()`는 NodeInstance만 돌려준다. 캔버스에서 상자 하나로 보이는 Procedure의
+        노출 파라미터를 고치려면 ProcedureInstance도 같은 자리에서 잡혀야 한다 —
+        `ids`는 이미 둘을 합쳐 세면서 조회만 반쪽이었다.
+        """
+        for n in self.nodes:
+            if n.id == node_id:
+                return n
+        for p in self.procedures:
+            if p.id == node_id:
+                return p
+        raise KeyError(node_id)
+
     def incoming(self, node_id: str) -> List[Edge]:
         return [e for e in self.edges if e.dst_node == node_id]
 

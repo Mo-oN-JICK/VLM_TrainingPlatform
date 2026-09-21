@@ -832,7 +832,26 @@ def _subparsers(parser: argparse.ArgumentParser) -> List[argparse.ArgumentParser
     return out
 
 
+def _utf8_output() -> None:
+    """출력을 파일이나 파이프로 넘길 때 인코딩 때문에 죽지 않게 한다.
+
+    Windows에서 파이썬은 진짜 콘솔에는 유니코드를 그대로 쓰지만, 리다이렉트되면
+    로케일 인코딩(여기서는 cp949)을 탄다. 보고서에 쓰이는 `—`나 `·`는 cp949에
+    없어서 `vlmt budget > log.txt` 한 줄이 UnicodeEncodeError로 끝났다.
+    계산이 끝난 뒤 출력에서 죽는 것만큼 허탈한 실패도 없다.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        enc = (getattr(stream, "encoding", "") or "").lower()
+        if enc.replace("-", "") in ("utf8", "utf8mb4"):
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, OSError, ValueError):
+            pass   # 다시 설정할 수 없는 스트림이면 그대로 둔다. 관찰이 실행을 막지 않는다
+
+
 def main(argv: Optional[List[str]] = None) -> int:
+    _utf8_output()
     parser = build_parser()
     for p in _subparsers(parser):
         if any(x.dest == "spec" for x in p._actions) and not any(x.dest == "recipe" for x in p._actions):

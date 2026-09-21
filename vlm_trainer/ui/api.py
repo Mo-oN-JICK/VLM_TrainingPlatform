@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.compiler import CompiledGraph, compile_graph, current_value, override_target
 from ..core.errors import VlmtError
-from ..core.graph import Edge, GraphModel, NodeInstance
+from ..core.graph import Edge, GraphModel, NodeInstance, ProcedureInstance
 from ..core.node import NodeKind
 from ..core.registry import all_defs, resolve as resolve_node
 from ..core.unify import unify_ports
@@ -375,10 +375,16 @@ class Editor:
         """
         before_nodes = [NodeInstance(n.id, n.type, dict(n.params)) for n in self.graph.nodes]
         before_edges = list(self.graph.edges)
+        # Procedure 인스턴스도 되돌린다. 빠져 있으면 거부된 노출 파라미터 편집이
+        # 그래프에 그대로 남아, 화면은 "거부됨"인데 값은 바뀌어 있는 상태가 된다.
+        before_procs = [
+            ProcedureInstance(p.id, p.ref, dict(p.params)) for p in self.graph.procedures
+        ]
         before_compiled, before_error, before_valid = self.compiled, self.error, self.valid
 
         def rollback() -> None:
             self.graph.nodes, self.graph.edges = before_nodes, before_edges
+            self.graph.procedures = before_procs
             self.compiled, self.error, self.valid = before_compiled, before_error, before_valid
             if undo is not None:
                 undo()
@@ -434,12 +440,30 @@ class Editor:
         어느 쪽인지는 패널이 표식으로 보여준다. 덮인 값을 스펙에 써 봐야 화면에서는
         오버레이에 가려 보이지 않는다 — 그래서 조용히 스펙을 고치지 않는다.
         '''
-        path = self._overlay_paths().get((node_id, param))
+        # 오버레이 표는 **해소된 안쪽 주소**로 키를 잡는다(override_target). 패널이 보내는
+        # 것은 상자 주소(`p_prep.size`)라 그대로 조회하면 레시피가 덮고 있는데도 못 찾고
+        # 스펙을 고치러 간다 — 그러면 화면에는 오버레이에 가려 바뀐 것이 안 보인다.
+        key: Tuple[str, str] = (node_id, param)
+        if self.compiled is not None:
+            try:
+                key = override_target(self.compiled, f"{node_id}.{param}")
+            except ValueError:
+                pass
+        path = self._overlay_paths().get(key)
         if path is not None:
             return self.recipe_set(path, value)
 
         def go() -> None:
-            n = self.graph.node(node_id)
+            try:
+                n = self.graph.instance(node_id)
+            except KeyError:
+                raise VlmtError(
+                    f"'{node_id}' 라는 상자가 이 프로젝트에 없다.\n"
+                    f"  안 잡혔다면: 스펙에 없는 곳에 값을 써 두고 화면에만 반영돼,\n"
+                    f"    다음에 여는 사람은 다른 값으로 돌리게 된다.\n"
+                    f"  추정 낭비: 없음(편집이 거부됐다).\n"
+                    f"  있는 상자: {', '.join(self.graph.ids)}"
+                ) from None
             n.params[param] = value
 
         return self._try(go, f"{node_id}.{param} = {value!r}")
@@ -942,7 +966,7 @@ class Editor:
 
     def run_state(self) -> Dict[str, Any]:
         """스냅샷을 읽어 카드에 칠할 상태로. 실행이 없으면 비어 있는 답이다."""
-        from .render import state_of
+        from .render import fold, state_of_many
 
         alive = self.proc is not None and self.proc.poll() is None
         out: Dict[str, Any] = {
@@ -958,6 +982,7 @@ class Editor:
             "phase": "",
             "aborted": "",
             "quarantine": [],
+            "active": "",
         }
         # 물질화·학습 중에도 직전 실행이 남긴 카드 상태는 그대로 둔다.
         # 지우면 "아무것도 안 돌았다"로 읽히는데 그것은 사실이 아니다.
@@ -980,9 +1005,15 @@ class Editor:
                 "previews": self._preview_urls(data.get("previews", {})),
             }
         )
-        for nid in (self.compiled.order if self.compiled else []):
-            state, extra = state_of(rep, nid)
-            out["states"][nid] = {"state": state, "extra": extra}
+        # 캔버스가 쓰는 id로 답한다. 접힌 Procedure는 안쪽 노드 id로 그려져 있지 않으므로
+        # compiled.order를 그대로 내보내면 상자가 실행 내내 아무 색도 바뀌지 않는다.
+        if self.compiled is not None:
+            shown, _ = fold(self.compiled, self.expanded)
+            for sid, s in shown.items():
+                state, extra = state_of_many(rep, s.state_ids)
+                out["states"][sid] = {"state": state, "extra": extra}
+                if state == "running":
+                    out["active"] = sid
         if not alive and self.proc is not None and self.proc.returncode and not self.stopped:
             out["console"] = self._console_tail()
         return out

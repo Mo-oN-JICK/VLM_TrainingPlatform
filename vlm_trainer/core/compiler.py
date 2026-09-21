@@ -342,10 +342,14 @@ def compile_graph(
         impl = d.impl() if d.impl else None
         declared_raw = {p: port.type for p, port in d.outputs.items()}
         if impl is not None:
+            # 파라미터 확인은 draft 관용 밖에 둔다. draft가 미루는 것은 **완결성**이지
+            # 이름이 틀린 파라미터가 아니다 — 입력이 없는 노드(Input 등)는 아래 관용 분기에
+            # 언제나 걸려서, 오타 하나가 조용히 통과하고 그래프만 valid=False로 남았다.
+            params = d.build_params(cn.params)
             try:
                 outs = impl.infer_types(
                     {p: apply_subst(t, subst) for p, t in cn.input_types.items()},
-                    d.build_params(cn.params),
+                    params,
                 )
             except Exception:
                 # 아직 아무것도 물리지 않은 노드만 선언 타입으로 둔다.

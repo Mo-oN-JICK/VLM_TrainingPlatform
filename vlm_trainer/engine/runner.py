@@ -78,6 +78,10 @@ class RunReport:
     last_values: Dict[str, Any] = field(default_factory=dict)
     determinism_failures: List[str] = field(default_factory=list)
     previews: Dict[str, Any] = field(default_factory=dict)  # 노드 -> Preview (토글이 켜졌을 때만)
+    # 지금 실행 중인 노드. 누계(node_ms)만으로는 "어디까지 왔나"에 답할 수 없다 —
+    # 느린 노드 앞에서 화면이 멈춘 것인지 그 노드가 도는 중인지 구별되지 않는다.
+    active: str = ""
+    active_since: float = 0.0
 
     def count(self, node_id: str, state: str) -> None:
         self.node_state.setdefault(node_id, {})
@@ -101,6 +105,16 @@ def snapshot(rep: RunReport, *, run_id: str, total: int, phase: str) -> Dict[str
         "total": total,
         "processed": rep.processed,
         "order": list(rep.order),
+        # 지금 붙들고 있는 노드와, 그 노드에 들어간 지 얼마나 됐는지.
+        # 보는 쪽이 "멈춘 것"과 "오래 걸리는 것"을 구별하려면 둘 다 필요하다.
+        # 끝났거나 중단됐으면 비운다 — 다 끝난 그래프에 노드 하나가 계속 빛나고 있으면
+        # 그것이 마지막으로 돈 노드인지 지금 도는 노드인지 화면만 보고는 알 수 없다.
+        "active": rep.active if phase == "running" else "",
+        "active_ms": (
+            (time.perf_counter() - rep.active_since) * 1000
+            if rep.active and phase == "running"
+            else 0.0
+        ),
         "node_state": {k: dict(v) for k, v in rep.node_state.items()},
         "node_ms": dict(rep.node_ms),
         "cache": dict(rep.cache),
@@ -131,6 +145,9 @@ def report_from_snapshot(data: Dict[str, Any]) -> RunReport:
     rep.cache = dict(data.get("cache") or {})
     rep.processed = int(data.get("processed") or 0)
     rep.aborted = str(data.get("aborted") or "")
+    rep.active = str(data.get("active") or "")
+    # 스냅샷의 active_ms는 이미 경과한 밀리초다. 다시 시작 시각으로 되돌려 둔다.
+    rep.active_since = time.perf_counter() - float(data.get("active_ms") or 0.0) / 1000.0
     rep.quarantine = [
         Quarantined(q.get("sample_key", ""), q.get("node_id", ""), q.get("cause", ""), q.get("hint", ""))
         for q in (data.get("quarantine") or [])
@@ -260,6 +277,14 @@ def execute(
                     continue
 
             t0 = time.perf_counter()
+            # 여기부터가 실제로 시간을 쓰는 구간이다. 진행 파일 갱신을 샘플 단위가 아니라
+            # 노드 단위로 두는 이유 — 한 노드가 30초를 먹으면 샘플 경계는 30초 뒤에나 오고,
+            # 그동안 보는 쪽에는 아무 변화가 없어 멈춘 것처럼 보인다.
+            rep.active, rep.active_since = nid, t0
+            now = time.time()
+            if now - last_write >= opts.progress_every:
+                last_write = now
+                write_progress(rep, opts, len(rows), "running")
             try:
                 isolated = opts.isolate_external and d.external_call
                 if isolated:

@@ -206,3 +206,39 @@ def test_dryrun_stops_when_violation_ratio_is_too_high(tmp_path):
     assert not res.ok
     assert res.aborted
     assert res.quarantine and all("위반" in q for q in res.quarantine)
+
+
+def test_a_slow_node_reports_itself_while_it_is_still_running(tmp_path, monkeypatch):
+    """진행 파일 갱신이 샘플 단위였을 때의 문제를 고정한다.
+
+    한 노드가 오래 걸리면 다음 샘플 경계는 그만큼 뒤에나 오고, 그동안 보는 쪽에는
+    아무 변화가 없어 멈춘 것처럼 보였다. 이제 노드에 들어가면서 남긴다.
+    """
+    import json
+    import time
+
+    from vlm_trainer.engine import runner as runner_mod
+
+    cg, space = _load()
+    progress = str(tmp_path / "progress.json")
+    opts = _opts(tmp_path, progress_path=progress, use_cache=False)
+
+    seen: List[Dict[str, Any]] = []
+    real_write = runner_mod.write_progress
+
+    def spy(rep, o, total, phase):
+        real_write(rep, o, total, phase)
+        with open(progress, "r", encoding="utf-8") as fh:
+            seen.append(json.load(fh))
+
+    monkeypatch.setattr(runner_mod, "write_progress", spy)
+    # 진행 갱신이 노드마다 걸리도록 간격을 0으로 둔다 — 느린 노드를 흉내내는 대신
+    # 시간에 기대지 않는다. 테스트가 벽시계를 믿으면 CI에서 흔들린다.
+    opts.progress_every = 0.0
+
+    execute(cg, space, space.pick(2), opts)
+
+    running = [s for s in seen if s["phase"] == "running" and s["active"]]
+    assert running, "실행 중 스냅샷에 현재 노드가 한 번도 실리지 않았다"
+    assert all(s["active"] in cg.nodes for s in running)
+    assert seen[-1]["phase"] == "done" and seen[-1]["active"] == ""

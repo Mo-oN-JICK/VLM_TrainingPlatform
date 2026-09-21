@@ -349,6 +349,12 @@ def state_of(report: Any, nid: str) -> Tuple[str, str]:
     """(상태 이름, 부가 라벨). 실행 보고가 없으면 pending."""
     if report is None:
         return "pending", ""
+
+    # 지금 이 노드가 돌고 있으면 누계보다 그 사실이 먼저다. 카운트가 아직 0이어도
+    # (첫 샘플의 첫 통과) 화면에는 여기가 현재 위치라고 나와야 한다.
+    if getattr(report, "active", "") == nid:
+        return "running", _elapsed(report.active_since)
+
     st = report.states_of(nid)
     if not st:
         return "pending", ""
@@ -356,10 +362,28 @@ def state_of(report: Any, nid: str) -> Tuple[str, str]:
         if st.get(name):
             extra = f"{st[name]}건"
             ms = report.node_ms.get(nid, 0.0)
-            if ms and name == "success":
-                extra += f" · {ms:.0f}ms"
+            # 걸린 시간은 성공했을 때만 쓸모 있는 값이 아니다. 실패한 노드도
+            # 5ms 만에 터진 것과 40초를 쓰고 터진 것은 원인이 다르다.
+            if ms and name in ("success", "failed", "partial"):
+                extra += f" · {_ms(ms)}"
             return name, extra
     return "pending", ""
+
+
+def _ms(ms: float) -> str:
+    """밀리초를 사람이 읽는 단위로. 4자리 밀리초는 눈으로 자릿수를 세게 만든다."""
+    if ms < 1000:
+        return f"{ms:.0f}ms"
+    if ms < 60_000:
+        return f"{ms / 1000:.1f}s"
+    m, s = divmod(int(ms / 1000), 60)
+    return f"{m}m {s:02d}s"
+
+
+def _elapsed(since: float) -> str:
+    import time as _time
+
+    return _ms(max(0.0, (_time.perf_counter() - since) * 1000))
 
 
 def state_of_many(report: Any, ids: List[str]) -> Tuple[str, str]:
@@ -370,7 +394,9 @@ def state_of_many(report: Any, ids: List[str]) -> Tuple[str, str]:
     if len(ids) == 1:
         return state_of(report, ids[0])
     seen = [state_of(report, i) for i in ids]
-    for name in ("failed", "partial", "running", "skipped", "cached", "success"):
+    # running이 failed보다 앞에 온다. 실행 중에 "지금 어디"를 묻는 화면이기 때문이다 —
+    # 지나간 실패는 격리 패널과 실행이 끝난 뒤의 카드 색이 계속 들고 있다.
+    for name in ("running", "failed", "partial", "skipped", "cached", "success"):
         hit = [e for s, e in seen if s == name]
         if hit:
             return name, (hit[0] if len(hit) == len(seen) else f"{len(hit)}/{len(seen)} 노드")
@@ -763,6 +789,18 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .log{{background:{T.SURFACE['panel_alt']};border-top:1px solid {T.SURFACE['line']};
      padding:6px 12px;font-size:11.5px;color:#8A9196}}
 .node.sel .card{{background:{T.NODE['bg_selected']};border-color:{T.NODE['border_selected']}}}
+/* 지금 도는 노드. 선택(sel)과는 다른 신호라 색이 아니라 '움직임'으로 구분한다 —
+   정지 화면에서 초록 테두리 하나는 완료와 헷갈리지만, 맥동하는 것은 하나뿐이다. */
+.node.active{{z-index:20}}
+.node.active .card{{border-color:{T.STATE['running']};
+    box-shadow:0 0 0 1px {T.STATE['running']},0 0 14px -2px {T.STATE['running']};
+    animation:vlmtPulse 1.25s ease-in-out infinite}}
+@keyframes vlmtPulse{{
+  0%,100%{{box-shadow:0 0 0 1px {T.STATE['running']},0 0 6px -2px {T.STATE['running']}}}
+  50%    {{box-shadow:0 0 0 2px {T.STATE['running']},0 0 20px -1px {T.STATE['running']}}}
+}}
+/* 움직임을 원치 않는다고 밝힌 사용자에게는 테두리만 남긴다 */
+@media (prefers-reduced-motion:reduce){{.node.active .card{{animation:none}}}}
 .params{{display:none;border-bottom:1px solid {T.SURFACE['line']};padding-bottom:8px;margin-bottom:8px}}
 .params.on{{display:block}}
 .phd{{color:#C6CCD1;font-size:12.5px;margin:2px 0 8px}}
@@ -848,6 +886,9 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
       min-width:16px;line-height:16px;text-align:center;border-radius:2px}}
 .padd:hover{{color:#57F7E6;background:{T.NODE['bg']}}}
 .btn.go{{border-color:{T.STATE['running']};color:{T.STATE['running']}}}
+/* 눌려 있는 토글. 켜짐/꺼짐이 한눈에 보여야 화면이 왜 움직였는지 설명이 된다 */
+.btn.on{{border-color:{T.NODE['accent']};color:{T.NODE['accent']};
+    background:{T.NODE['bg_selected']}}}
 .btn:disabled{{opacity:.45;cursor:default}}
 .sep{{width:1px;height:16px;background:{T.SURFACE['line']};margin:0 4px}}
 .tgl{{display:flex;gap:4px;align-items:center;font-size:11px;color:#A8B0B6;margin-left:6px}}
@@ -964,6 +1005,8 @@ _EDITOR_TOOLS = (
     '<button class="btn" id="matbtn" onclick="vlmtMaterialize()">Materialize</button>'
     '<button class="btn" id="trainbtn" onclick="vlmtTrain()">Train</button>'
     '<button class="btn" id="stopbtn" onclick="vlmtRunStop()" disabled>Stop</button>'
+    '<button class="btn on" id="followbtn" onclick="vlmtFollowToggle()" '
+    'title="실행 중인 노드가 화면 밖으로 나가면 그쪽으로 옮긴다">실행 따라가기</button>'
     '<label class="tgl" title="꺼져 있으면 미리보기를 생성조차 하지 않는다">'
     '<input type="checkbox" id="dbgout">Debug Output</label>'
     '<label class="tgl">샘플 <input type="number" id="runlimit" value="8" min="1" max="999"></label>'
@@ -1323,12 +1366,60 @@ function vlmtPaint(states) {
     const color = window.STATE_COLORS[st.state] || '#4A4A4A';
     const card = node.querySelector('.card');
     if (card) card.style.borderLeftColor = color;
+    node.classList.toggle('active', st.state === 'running');
     const line = node.querySelector('.st');
     if (line) {
       line.innerHTML = '<span class="sdot" style="background:' + color + '"></span>' +
         st.state + (st.extra ? ' · ' + st.extra : '');
     }
   }
+}
+
+// 실행 중인 노드가 **바뀔 때만** 화면을 옮긴다.
+// 폴링마다 옮기면 사용자가 다른 곳을 보려 스크롤할 때마다 끌려 돌아와 캔버스를 뺏긴다.
+let followLast = '';   // 마지막으로 실제 옮긴 대상
+let followWant = '';   // 옮겨야 할 대상. 탭이 숨어 있는 동안에도 쌓인다
+function vlmtFollow(active) {
+  if (!active) return;
+  followWant = active;
+  if (active === followLast) return;
+  const cv = document.querySelector('.canvas');
+  const node = document.querySelector('.node[data-node="' + CSS.escape(active) + '"]');
+  if (!cv || !node || !document.getElementById('followbtn')?.classList.contains('on')) return;
+  followLast = active;
+
+  // 이미 충분히 보이면 가만히 둔다. 한 칸씩 흔들리는 화면이 제일 읽기 어렵다.
+  const pad = 40;
+  const r = node.getBoundingClientRect(), b = cv.getBoundingClientRect();
+  const x = r.left - b.left + cv.scrollLeft, y = r.top - b.top + cv.scrollTop;
+  const w = r.width, h = r.height;
+  const inView = x >= cv.scrollLeft + pad && x + w <= cv.scrollLeft + cv.clientWidth - pad &&
+                 y >= cv.scrollTop + pad && y + h <= cv.scrollTop + cv.clientHeight - pad;
+  if (inView) return;
+  cv.scrollTo({
+    left: Math.max(0, x + w / 2 - cv.clientWidth / 2),
+    top: Math.max(0, y + h / 2 - cv.clientHeight / 2),
+    // 숨은 탭에서는 브라우저가 부드러운 스크롤을 아예 돌리지 않는다. 그대로 두면
+    // 다른 창을 보다 돌아왔을 때 화면이 따라와 있지 않은데 followLast는 이미 같은 값이라
+    // 두 번 다시 옮겨지지 않는다.
+    behavior: document.visibilityState === 'visible' ? 'smooth' : 'auto',
+  });
+}
+
+// 돌아왔을 때 그동안 옮겨졌어야 할 곳으로 맞춰 준다
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !followWant) return;
+  const want = followWant;
+  followLast = '';
+  vlmtFollow(want);
+});
+
+function vlmtFollowToggle() {
+  const b = document.getElementById('followbtn');
+  if (!b) return;
+  b.classList.toggle('on');
+  try { localStorage.setItem('vlmt.follow', b.classList.contains('on') ? '1' : '0'); } catch (e) {}
+  if (b.classList.contains('on')) { followLast = ''; }
 }
 
 function vlmtDebugOut(previews) {
@@ -1351,6 +1442,7 @@ async function vlmtRunPoll() {
   if (code !== 200) return;
 
   vlmtPaint(data.states);
+  vlmtFollow(data.active);
   vlmtDebugOut(data.previews);
   const line = document.getElementById('runline');
   const stop = document.getElementById('stopbtn');
@@ -1390,6 +1482,15 @@ async function vlmtRunPoll() {
 
 // 페이지를 새로 열어도 돌고 있는 실행을 이어서 본다
 window.addEventListener('DOMContentLoaded', vlmtRunPoll);
+
+// 추적을 꺼 둔 사람에게 새로고침마다 다시 켜 주는 것은 설정이 아니라 잔소리다
+window.addEventListener('DOMContentLoaded', () => {
+  const b = document.getElementById('followbtn');
+  if (!b) return;
+  try {
+    if (localStorage.getItem('vlmt.follow') === '0') b.classList.remove('on');
+  } catch (e) {}
+});
 
 async function vlmtUndo() {
   const {code, data} = await post('/api/undo', {});
@@ -1748,7 +1849,12 @@ def _params_panel(
             if n is None:
                 continue
             value = n.params.get(inner_param)
-            widget = _param_widget(inner_id, inner_param, value)
+            # 값은 인라인된 안쪽 노드에서 읽고(그것이 실제로 적용된 값이다),
+            # **고치는 주소는 상자 쪽**이다. 프로젝트 스펙은 노출 이름을 인스턴스에 적는다:
+            #   - id: p_prep
+            #     params: {size: [448, 448]}
+            # 안쪽 노드는 프로시저 파일에 있어 프로젝트가 건드릴 수 있는 것이 아니다.
+            widget = _param_widget(pid, name, value)
             rows.append(
                 f'<div class="prow"><label>{html.escape(name)}'
                 f'<span class="mk r" title="{html.escape(inner_id)}.{html.escape(inner_param)}">'

@@ -1142,3 +1142,163 @@ def test_a_moved_box_keeps_its_place_and_the_rest_flow_around_it(ed):
 
     assert (placed["n_stats"].x, placed["n_stats"].y) == (640, 720)
     assert (placed["n_img"].x, placed["n_img"].y) != (640, 720), "나머지는 자동 배치 그대로다"
+
+
+# ── 실행 중인 노드를 화면이 따라간다 ──────────────────────────────────────
+
+
+def test_snapshot_carries_the_node_being_run(ed):
+    """누계(node_ms)만으로는 "어디까지 왔나"에 답이 안 된다.
+
+    느린 노드 앞에서 멈춘 것인지 그 노드가 도는 중인지 구별되지 않기 때문이다.
+    """
+    import time as _t
+
+    from vlm_trainer.engine import runner as runner_mod
+    from vlm_trainer.ui.render import state_of
+
+    rep = runner_mod.RunReport(order=list(ed.compiled.order))
+    rep.active, rep.active_since = "n_stats", _t.perf_counter() - 3.0
+
+    data = runner_mod.snapshot(rep, run_id="r1", total=4, phase="running")
+    assert data["active"] == "n_stats"
+    assert data["active_ms"] >= 2900
+
+    back = runner_mod.report_from_snapshot(data)
+    state, extra = state_of(back, "n_stats")
+    # 카운트가 아직 0이어도(첫 샘플의 첫 통과) 현재 위치로 보여야 한다
+    assert state == "running" and extra.endswith("s")
+
+
+def test_a_finished_run_highlights_nothing(ed):
+    """다 끝난 그래프에 노드 하나가 계속 빛나고 있으면 그것이 마지막으로 돈 노드인지
+    지금 도는 노드인지 화면만 보고는 알 수 없다."""
+    from vlm_trainer.engine import runner as runner_mod
+
+    rep = runner_mod.RunReport(order=list(ed.compiled.order))
+    rep.active, rep.active_since = "n_stats", 0.0
+
+    for phase in ("done", "aborted"):
+        data = runner_mod.snapshot(rep, run_id="r1", total=4, phase=phase)
+        assert data["active"] == "", phase
+        assert data["active_ms"] == 0.0, phase
+
+
+def test_elapsed_time_shows_on_finished_nodes(ed):
+    """실패한 노드도 5ms 만에 터진 것과 40초를 쓰고 터진 것은 원인이 다르다."""
+    from vlm_trainer.engine import runner as runner_mod
+    from vlm_trainer.ui.render import state_of
+
+    rep = runner_mod.RunReport(order=list(ed.compiled.order))
+    rep.count("n_stats", runner_mod.SUCCESS)
+    rep.node_ms["n_stats"] = 1234.0
+    rep.count("n_ev", runner_mod.FAILED)
+    rep.node_ms["n_ev"] = 42_000.0
+
+    assert state_of(rep, "n_stats") == ("success", "1건 · 1.2s")
+    assert state_of(rep, "n_ev") == ("failed", "1건 · 42.0s")
+
+
+def test_run_state_answers_with_the_ids_the_canvas_draws(ed, tmp_path):
+    """접힌 Procedure는 안쪽 노드 id로 그려져 있지 않다.
+
+    compiled.order를 그대로 내보내면 상자가 실행 내내 아무 색도 바뀌지 않는다.
+    """
+    import json as _json
+
+    from vlm_trainer.engine import runner as runner_mod
+    from vlm_trainer.ui.render import fold
+
+    shown, _ = fold(ed.compiled, ed.expanded)
+
+    rep = runner_mod.RunReport(order=list(ed.compiled.order))
+    rep.active, rep.active_since = ed.compiled.order[0], 0.0
+
+    ed.progress_path = str(tmp_path / "progress.json")
+    with open(ed.progress_path, "w", encoding="utf-8") as fh:
+        _json.dump(runner_mod.snapshot(rep, run_id="r1", total=2, phase="running"), fh)
+
+    st = ed.run_state()
+    assert set(st["states"]) == set(shown), "캔버스에 없는 id로 답하면 칠할 곳이 없다"
+    assert st["active"] in shown
+    assert st["states"][st["active"]]["state"] == "running"
+
+
+# ── Procedure 노출 파라미터 편집 ─────────────────────────────────────────
+
+
+def test_a_procedures_exposed_param_is_editable(ed):
+    """상자로 접힌 Procedure의 노출 파라미터를 우측 패널에서 고칠 수 있어야 한다.
+
+    `GraphModel.node()`가 NodeInstance만 뒤져서, 프로시저 상자는 이름조차 찾지 못하고
+    KeyError로 거부됐다. 화면은 입력칸을 내주는데 서버는 매번 되돌리는 상태였다.
+    """
+    before = dict(ed.graph.procedures[0].params)
+    assert ed.graph.procedures[0].id == "p_crop"
+
+    res = ed.set_param("p_crop", "topk", 3)
+    assert res["ok"], res.get("detail")
+    assert ed.graph.procedures[0].params["topk"] == 3
+    assert before["topk"] != 3, "픽스처가 이미 3이면 이 테스트는 아무것도 증명하지 못한다"
+
+
+def test_the_panel_addresses_exposed_params_by_the_box(ed):
+    """패널이 내보내는 주소가 스펙이 받는 주소와 같아야 한다.
+
+    안쪽 노드(`p_crop/n_expert`)는 Procedure 파일에 있고 프로젝트가 건드릴 수 있는 것이
+    아니다. 프로젝트는 노출 이름을 인스턴스에 적는다(`p_crop.topk`).
+    """
+    import re
+
+    from vlm_trainer.ui.render import render
+
+    html_out = render(ed.compiled, editable=True, editor=ed)
+    sent = set(re.findall(r"vlmtParam\('([^']+)','([^']+)'", html_out))
+
+    boxes = set(ed.graph.ids)
+    for nid, param in sent:
+        assert nid in boxes, f"패널이 스펙에 없는 주소로 보낸다: {nid}.{param}"
+        # 실제로 받아들여지는지까지 확인한다 — 주소만 맞고 거부되면 소용없다
+        cur = ed.set_param(nid, param, _same_value(ed, nid, param))
+        assert cur["ok"], f"{nid}.{param} 거부됨: {cur.get('detail')}"
+
+
+def _same_value(ed, nid, param):
+    """지금 값 그대로. 값을 바꾸지 않고 경로만 시험하려는 것이다."""
+    inst = ed.graph.instance(nid)
+    return inst.params.get(param)
+
+
+def test_a_rejected_procedure_edit_leaves_the_graph_alone(ed):
+    """거부된 편집이 그래프에 남으면, 화면은 '거부됨'인데 값은 바뀌어 있게 된다."""
+    before = dict(ed.graph.procedures[0].params)
+    res = ed.set_param("p_crop", "topk", "셋")  # 숫자 자리에 문자열
+    if res["ok"]:
+        pytest.skip("이 파라미터는 문자열도 받는다 — 거부 경로를 시험할 수 없다")
+    assert ed.graph.procedures[0].params == before
+
+
+def test_an_unknown_box_says_which_boxes_exist(ed):
+    """에러 메시지는 KeyError 한 줄이 아니라 무엇을 해야 하는지 말해야 한다."""
+    res = ed.set_param("없는상자", "x", 1)
+    assert not res["ok"]
+    assert "없는상자" in res["detail"]
+    assert "있는 상자" in res["detail"]
+    assert "p_crop" in res["detail"]
+
+
+def test_a_misspelled_param_name_is_refused_not_drafted(ed):
+    """draft가 미루는 것은 완결성이지 이름이 틀린 파라미터가 아니다.
+
+    입력이 없는 노드(Input 등)는 draft 관용 분기에 언제나 걸려서, 오타 하나가
+    조용히 통과하고 그래프만 valid=False로 남았다. 편집기는 ok를 돌려주는데
+    저장과 실행은 거부되는, 설명이 안 되는 상태다.
+    """
+    before = dict(ed.graph.node("n_schema").params)
+
+    res = ed.set_param("n_schema", "no_such_param", 1)
+
+    assert not res["ok"], "오타가 통과했다"
+    assert "no_such_param" in res["detail"]
+    assert ed.graph.node("n_schema").params == before, "거부됐는데 값이 남았다"
+    assert ed.valid, "거부된 편집이 그래프를 망가진 채로 두었다"
