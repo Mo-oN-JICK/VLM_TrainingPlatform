@@ -514,6 +514,22 @@ Project Tabs·Log 패널·Toolbar 버튼 구성까지 맞출 수 있다.
 
 ---
 
+## 5b. 실물 사진 데이터 (2026-09-21)
+
+`solutions/vlm_open` — Wikimedia Commons에서 모은 **실물 사진 110장**(학습 100 · 검증 10)과
+서로 다른 프롬프트 100개. 합성 도형이 아니라 진짜 사진으로 학습 경로를 태우기 위한 것이다.
+
+- [x] `tools/fetch_open_dataset.py` — 라이선스(CC0/PD/CC BY만) · 제목 · **픽셀 통계**
+      세 겹으로 거른다. 세 번째가 도면·CAD 렌더·그래프를 걷어낸다(휘도 엔트로피)
+- [x] 네 게이트 전부 통과. `run` 12건 격리 0 · `materialize` shard 2개 · `train` CUDA에서 완주
+- [x] **손실이 실제로 내려간다**: lora_ft 5.746 -> 4.387 (110건 · 4 epoch · peak 0.08GB)
+- [x] 출처 표기는 `data/open_parts/CREDITS.md`에 파일마다. CC BY의 조건이다
+- [ ] 라벨 잡음 열에 두셋. 파이프라인 시험용이지 정확도 벤치마크가 아니다
+
+`vlm_parts`의 합성 데이터는 그대로 둔다 — gitignore 대상이고 `setup.bat`이 만든다.
+
+---
+
 ## 6. 설계 문서와 구현이 다른 지점
 
 `README.md`의 표에 정리되어 있다. 요약: `blake2b`(≠blake3), `list_of` 하나로 리스트 표현(≠별도 base kind), **`DYN`(가변 차원)을 미해결 제네릭과 구분**, 손으로 쓴 YAML에 한해 순환을 구조 오류로 보고.
@@ -526,7 +542,8 @@ Project Tabs·Log 패널·Toolbar 버튼 구성까지 맞출 수 있다.
 
 - [x] ~~2B급 백본의 구체 모델 id~~ — **`Qwen/Qwen2-VL-2B-Instruct`** (2026-09-10 결정).
       어댑터는 `hf_backbone`이 config를 읽어 G4까지 답한다. 학습용 collate는 아직 없다
-- [ ] 정답 Text 스키마의 실제 도메인 — 지금은 Triad(ECG) 예시를 그대로 쓰는 중
+- [ ] 정답 Text 스키마의 실제 도메인 — 지금은 Triad(ECG) 예시를 그대로 쓰는 중.
+      `vlm_open`이 두 항목짜리 실물 도메인 하나를 먼저 보여 준다(부품 종류 + 화면 방향)
 - [x] ~~`runtime_profile` 허용 목록~~ — `windows_single_gpu`(기본)와 `linux_multi_gpu`.
       표는 "그 프로파일에서 **돌지 않는** 것"만 담는다
 - [ ] VLM 외 도메인 확장 시 노드 카테고리를 어떻게 나눌지 (코어는 이미 도메인 무관)

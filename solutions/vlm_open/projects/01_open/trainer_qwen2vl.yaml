@@ -1,0 +1,54 @@
+kind: TrainerConfig
+version: 1
+
+# 실물 백본. 가중치 4.4GB를 내려받아야 하고, Qwen2-VL 전용 collate(프로세서·image_grid_thw)가
+# 아직 없다. 지금은 compile / dryrun / budget 까지는 이 설정으로 답이 나오고,
+# train 은 tiny-vlm 쪽(trainer.yaml)을 쓴다. STATUS.md 3a 항목을 보라.
+#
+#   .venv\Scripts\python.exe -m vlm_trainer.cli.main backbones --add hf:Qwen/Qwen2-VL-2B-Instruct
+backbone: hf:Qwen/Qwen2-VL-2B-Instruct
+dtype: bf16
+quantization:
+  mode: none
+
+vision:
+  max_images_per_sample: 1
+  tiling: false
+  tokens_per_tile: 256
+
+sequence:
+  max_len: 4096
+  truncation: forbid
+
+loss:
+  chunked_ce: true
+  chunk: 512
+
+stages:
+  - name: projector_align
+    trainable: {vision_tower: "false", projector: "true", llm: "false"}
+    optimizer: adamw_torch
+    lr: 1.0e-3
+    per_device: 2
+    grad_accum: 4
+    grad_checkpointing: false
+    epochs: 4
+
+  - name: lora_ft
+    init_from: projector_align
+    trainable: {vision_tower: "false", projector: "true", llm: "lora"}
+    lora:
+      r: 16
+      alpha: 32
+      targets: [q_proj, k_proj, v_proj, o_proj]
+    optimizer: adamw_torch
+    lr: 2.0e-4
+    per_device: 2
+    grad_accum: 4
+    grad_checkpointing: true
+    epochs: 4
+
+budget:
+  device: rtx4090_24gb
+  policy: fail_fast
+  headroom_ratio: 0.10

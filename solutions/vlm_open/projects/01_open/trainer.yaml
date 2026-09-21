@@ -1,0 +1,53 @@
+kind: TrainerConfig
+version: 1
+
+# 4090에서 **지금 바로** 돌아가는 설정이다. tiny-vlm은 저장소에 들어 있는 소형 백본이라
+# 가중치를 내려받지 않고도 학습 경로 전체(데이터 적재 -> collate -> 손실 -> 저장)를 태운다.
+# 실물 2B 백본으로 옮기는 것은 trainer_qwen2vl.yaml 쪽이다.
+backbone: tiny-vlm
+dtype: bf16
+quantization:
+  mode: none
+
+vision:
+  max_images_per_sample: 1
+  tiling: false
+  tokens_per_tile: 16
+
+sequence:
+  max_len: 2048
+  truncation: forbid
+  chars_per_token: 0.34      # UTF-8 바이트 토크나이저 — 한글 한 글자가 3바이트다
+
+loss:
+  chunked_ce: true
+  chunk: 256
+
+stages:
+  - name: projector_align
+    trainable: {vision_tower: "false", projector: "true", llm: "false"}
+    optimizer: adamw_torch
+    lr: 1.0e-3
+    per_device: 4
+    grad_accum: 2
+    grad_checkpointing: false
+    epochs: 4
+
+  - name: lora_ft
+    init_from: projector_align
+    trainable: {vision_tower: "false", projector: "true", llm: "lora"}
+    lora:
+      r: 8
+      alpha: 16
+      targets: [q_proj, k_proj, v_proj, o_proj]
+    optimizer: adamw_torch
+    lr: 5.0e-4
+    per_device: 4
+    grad_accum: 2
+    grad_checkpointing: true
+    epochs: 4
+
+budget:
+  device: rtx4090_24gb
+  policy: fail_fast
+  headroom_ratio: 0.10

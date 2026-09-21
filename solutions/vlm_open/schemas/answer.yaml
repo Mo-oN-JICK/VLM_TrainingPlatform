@@ -1,0 +1,23 @@
+kind: AnswerSchema
+id: open_parts_kind
+version: "1.0.0"
+render: tagged
+locale: ko
+
+# 두 항목 다 사진에 대해 **실제로 참인 값**이다. part_type은 Wikimedia Commons의
+# 분류에서, orientation은 파일의 가로세로에서 온다. 지어낸 라벨은 없다.
+steps:
+  - id: part_type
+    label: "부품"
+    type: enum
+    values: ["기어", "베어링", "나사", "스프링", "체인", "너트", "와셔", "풀리", "리벳", "플랜지"]
+
+  - id: orientation
+    label: "화면"
+    type: enum
+    values: ["가로", "세로", "정사각"]
+
+constraints:
+  max_tokens: 48
+  step_order: strict
+  vocabulary: closed

@@ -1,0 +1,63 @@
+spec_version: 1
+kind: Project
+id: "01_open"
+name: "공개 데이터 부품 분류"
+
+# 합성 이미지가 아니라 실물 사진으로 학습 경로 전체를 태우기 위한 프로젝트다.
+# 그래프 모양은 vlm_parts와 같다 — 다른 것은 데이터와 정답 스키마뿐이다.
+sample_space:
+  index: "../../data/open_parts/index.jsonl"
+  key: sample_id
+  filter: ""
+  splits:
+    strategy: group_holdout
+    group_by: split_hint      # 수집 때 정한 train/val을 그대로 쓴다
+    ratios: {train: 0.91, val: 0.09}
+    seed: 20260921
+
+nodes:
+  # ── 데이터 ──────────────────────────────────────────────────────────
+  - {id: n_img, type: "source.image@1.0.0", params: {column: image_path}}
+  - {id: n_cols, type: "source.metadata@1.0.0",
+     params: {columns: [question, part_type, orientation, split_hint]}}
+  - {id: n_schema, type: "schema.define@1.0.0", params: {path: "../../schemas/answer.yaml"}}
+
+  # ── 조립과 종결 ────────────────────────────────────────────────────
+  - {id: n_guard, type: "answer.leakage_guard@1.0.0", params: {mode: exact, on_leak: quarantine}}
+  - {id: n_sample, type: "sample.assemble@1.0.0", params: {require_validated: true}}
+  - {id: n_train, type: "train.vlm_trainer@0.1.0",
+     params: {config_path: "trainer.yaml", out_dir: "runs/{run_id}/train"}}
+
+procedures:
+  - id: p_prep
+    ref: "image_prep_resize@1.0.0"
+    params: {size: [448, 448], keep_aspect: true}
+
+  # 프롬프트는 샘플마다 다르다. 인덱스의 question 열이 그대로 들어온다 —
+  # 100개가 전부 다른 문장이고, 어느 것에도 정답 어휘가 없다.
+  - id: p_prompt
+    ref: "prompt_build@1.0.0"
+    params: {template: "{question}", placeholder: "<image>", policy: prepend}
+
+  - id: p_answer
+    ref: "answer_build@1.0.0"
+    params: {mapping: {part_type: "part_type", orientation: "orientation"}, render: tagged}
+
+edges:
+  - {from: "n_img:image", to: "p_prep:image"}
+  - {from: "n_cols:meta", to: "p_prompt:context"}
+  - {from: "p_prep:images", to: "p_prompt:images"}
+  - {from: "n_schema:schema", to: "p_answer:schema"}
+  - {from: "n_cols:meta", to: "p_answer:fields"}
+  - {from: "p_prompt:prompt", to: "n_guard:prompt"}
+  - {from: "p_answer:answer", to: "n_guard:answer"}
+  - {from: "n_schema:schema", to: "n_guard:schema"}
+  - {from: "n_guard:prompt", to: "n_sample:prompt"}
+  - {from: "p_answer:answer", to: "n_sample:answer"}
+  - {from: "p_prep:images", to: "n_sample:images"}
+  - {from: "n_cols:meta", to: "n_sample:meta"}
+  - {from: "n_sample:sample", to: "n_train:sample"}
+  - {from: "n_schema:schema", to: "n_train:schema"}
+
+materialize:
+  boundary: [n_sample]
