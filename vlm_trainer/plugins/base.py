@@ -107,6 +107,11 @@ class BackboneSpec:
         return per_layer * self.n_layers
 
 
+# 그래프가 프롬프트에 적는 자리표시자. **플랫폼의 표기**이지 어느 모델의 토큰도 아니다.
+# 모델의 토큰으로 옮기는 일은 어댑터의 `image_placeholder()` 가 한다.
+GRAPH_PLACEHOLDER = "<image>"
+
+
 class BackboneAdapter:
     """백본 교체를 설정 한 줄로 끝내기 위한 추상 경계.
 
@@ -118,6 +123,22 @@ class BackboneAdapter:
     @classmethod
     def spec(cls) -> BackboneSpec:
         return cls.spec_data
+
+    @classmethod
+    def image_placeholder(cls) -> str:
+        """이 백본이 "여기에 이미지가 들어간다" 를 적는 방식.
+
+        그래프는 `GRAPH_PLACEHOLDER` 하나만 안다. 그것을 모델의 실제 토큰으로 옮기는 것은
+        **어댑터의 일**이다. 그래프가 모델별 토큰을 알기 시작하면 `backbone:` 한 줄로
+        모델이 바뀌지 않는다.
+
+        기본값을 그대로 두면 번역이 없다는 뜻이다. 자기 토큰이 따로 있는 백본은 반드시
+        이것을 덮어써야 한다 — **틀려도 아무도 안 알려 주기 때문이다.** Qwen2-VL 에
+        `<image>` 를 주면 프로세서가 거부하지 않고 조용히 지나간다. vocab 에 없으니
+        평범한 바이트로 쪼개지고, 이미지 토큰이 하나도 안 생긴 채 학습이 돈다.
+        손실은 내려가는데 모델은 이미지를 보지 않는다.
+        """
+        return GRAPH_PLACEHOLDER
 
     @classmethod
     def build(cls, cfg: Any, stage: Any) -> Any:

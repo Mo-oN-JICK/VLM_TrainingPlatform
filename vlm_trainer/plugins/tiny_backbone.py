@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .base import BackboneAdapter, BackboneSpec, register_backbone
+from .base import GRAPH_PLACEHOLDER, BackboneAdapter, BackboneSpec, register_backbone
 
 # 바이트 토크나이저: 0..255 = UTF-8 바이트, 그 위에 특수 토큰
 IMG_TOKEN = 256
@@ -34,7 +34,7 @@ TOKENS_PER_TILE = 16
 MAX_CONTEXT = 4096
 
 
-def encode(text: str, placeholder: str = "<image>") -> List[int]:
+def encode(text: str, placeholder: str = GRAPH_PLACEHOLDER) -> List[int]:
     """자리표시자를 이미지 토큰 하나로 바꾸고 나머지는 UTF-8 바이트로."""
     out: List[int] = []
     for i, chunk in enumerate(text.split(placeholder)):
@@ -186,7 +186,16 @@ class TinyVlmAdapter(BackboneAdapter):
         return model.llm
 
     @classmethod
-    def encode(cls, text: str, placeholder: str = "<image>") -> List[int]:
+    def image_placeholder(cls) -> str:
+        """이 백본은 그래프의 표기를 그대로 쓴다. `encode` 가 그것을 토큰 하나로 바꾼다.
+
+        번역이 없다는 뜻이지 선언이 필요 없다는 뜻이 아니다 — 이것을 적어 두어야
+        `hf:` 백본과 같은 질문에 같은 방식으로 답한다는 것이 드러난다.
+        """
+        return GRAPH_PLACEHOLDER
+
+    @classmethod
+    def encode(cls, text: str, placeholder: str = GRAPH_PLACEHOLDER) -> List[int]:
         return encode(text, placeholder)
 
     @classmethod

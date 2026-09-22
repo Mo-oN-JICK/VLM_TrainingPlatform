@@ -17,7 +17,7 @@ import os
 from typing import Any, Dict, List, Tuple
 
 from ..core.errors import RegistrationError
-from .base import BackboneAdapter, BackboneSpec, register_backbone
+from .base import GRAPH_PLACEHOLDER, BackboneAdapter, BackboneSpec, register_backbone
 
 PREFIX = "hf:"
 
@@ -187,7 +187,13 @@ class HFBackbone(BackboneAdapter):
     def build(cls, cfg: Any, stage: Any) -> Any:
         try:
             import torch
-            from transformers import AutoModelForVision2Seq
+
+            # transformers 5 에서 `AutoModelForVision2Seq` 가 사라지고 이 이름이 됐다.
+            # 둘 다 받아 둔다 — 4090 과 이 PC 의 버전이 갈릴 수 있다.
+            try:
+                from transformers import AutoModelForImageTextToText as AutoVLM
+            except ImportError:
+                from transformers import AutoModelForVision2Seq as AutoVLM
         except ImportError as e:
             raise RegistrationError(
                 "실물 백본을 쓰려면 transformers가 필요하다:\n"
@@ -213,7 +219,7 @@ class HFBackbone(BackboneAdapter):
                 if cfg.quantization.mode == "nf4"
                 else BitsAndBytesConfig(load_in_8bit=True)
             )
-        model = AutoModelForVision2Seq.from_pretrained(
+        model = AutoVLM.from_pretrained(
             os.path.dirname(cls.config_path), attn_implementation=cfg.attn_impl, **kw
         )
         return model
@@ -239,9 +245,49 @@ class HFBackbone(BackboneAdapter):
 
     @classmethod
     def processor(cls) -> Any:
-        from transformers import AutoProcessor
+        # 배치마다 불린다. 디스크에서 매번 다시 읽으면 학습보다 이쪽이 오래 걸린다.
+        proc = cls.__dict__.get("_proc")
+        if proc is None:
+            from transformers import AutoProcessor
 
-        return AutoProcessor.from_pretrained(os.path.dirname(cls.config_path))
+            proc = AutoProcessor.from_pretrained(os.path.dirname(cls.config_path))
+            cls._proc = proc
+        return proc
+
+    @classmethod
+    def image_placeholder(cls) -> str:
+        """이 백본이 "여기에 이미지가 들어간다" 를 적는 방식.
+
+        **프로세서에서 끌어낸다. 손으로 적지 않는다.** 모델마다 다르고, 틀려도 조용히
+        지나가기 때문이다 — Qwen2-VL 에 `<image>` 를 주면 예외 없이 통과하지만 vocab 에
+        없는 글자라 평범한 바이트로 쪼개지고, 이미지 토큰이 하나도 안 생긴 채 학습이 돈다.
+        손실은 내려가는데 모델은 이미지를 보지 않는다. 실측으로 확인한 함정이다.
+        """
+        ph = cls.__dict__.get("_ph")
+        if ph is not None:
+            return ph
+        proc = cls.processor()
+        tok = proc.tokenizer
+        img = getattr(proc, "image_token", None)
+        if not img:
+            cls._ph = GRAPH_PLACEHOLDER
+            return cls._ph
+        # 비전 경계 토큰이 vocab 에 있으면 감싼다. Qwen2-VL 의 채팅 템플릿이 그렇게 쓴다.
+        start, end = "<|vision_start|>", "<|vision_end|>"
+        known = tok.convert_tokens_to_ids([start, end])
+        cls._ph = (f"{start}{img}{end}"
+                   if all(i is not None and i >= 0 for i in known) else str(img))
+        return cls._ph
+
+    @classmethod
+    def _retarget(cls, text: str) -> str:
+        """그래프가 적은 자리표시자를 이 백본의 것으로 바꾼다.
+
+        그래프는 계속 `<image>` 만 안다. 무슨 토큰으로 적을지는 백본의 사정이고,
+        그래야 `backbone:` 한 줄로 모델이 바뀐다.
+        """
+        ph = cls.image_placeholder()
+        return text if ph == GRAPH_PLACEHOLDER else text.replace(GRAPH_PLACEHOLDER, ph)
 
     @classmethod
     def generate(cls, model: Any, prompt: str, images: Any, max_new: int = 64) -> str:
@@ -250,7 +296,8 @@ class HFBackbone(BackboneAdapter):
 
         proc = cls.processor()
         pil = _as_pil(images)
-        enc = proc(text=[prompt], images=[pil] if pil else None, return_tensors="pt")
+        enc = proc(text=[cls._retarget(prompt)], images=[pil] if pil else None,
+                   return_tensors="pt")
         enc = {k: (v.to(model.device) if hasattr(v, "to") else v) for k, v in enc.items()}
         with torch.no_grad():
             ids = model.generate(**enc, max_new_tokens=max_new, do_sample=False)
@@ -260,11 +307,9 @@ class HFBackbone(BackboneAdapter):
 
     @classmethod
     def collate(cls, batch: List[Dict[str, Any]], max_len: int) -> Dict[str, Any]:
-        """프로세서로 이미지와 텍스트를 함께 묶고, 손실은 정답 토큰에만 건다."""
-        import torch
-
+        """프로세서로 이미지와 텍스트를 함께 묶고, 손실은 **정답 토큰에만** 건다."""
         proc = cls.processor()
-        texts = [f"{r['prompt']}\n{r['answer']}" for r in batch]
+        texts = [cls._retarget(f"{r['prompt']}\n{r['answer']}") for r in batch]
         images = [r.get("_images") or [] for r in batch]
         enc = proc(
             text=texts,
@@ -273,15 +318,45 @@ class HFBackbone(BackboneAdapter):
             padding=True,
             truncation=False,  # 잘림은 G4가 막는다. 여기서 조용히 자르지 않는다
         )
-        labels = enc["input_ids"].clone()
-        pad = getattr(proc.tokenizer, "pad_token_id", None)
-        if pad is not None:
-            labels[labels == pad] = -100
-        for i, r in enumerate(batch):  # 프롬프트 구간은 손실에서 제외
-            n_prompt = len(proc.tokenizer(r["prompt"])["input_ids"])
-            labels[i, :n_prompt] = -100
-        enc["labels"] = labels
+        enc["labels"] = cls._answer_only_labels(batch, enc)
         return dict(enc)
+
+    @classmethod
+    def _answer_only_labels(cls, batch: List[Dict[str, Any]], enc: Any) -> Any:
+        """정답 구간만 남기고 전부 -100.
+
+        두 가지를 직접 셈해야 한다. **둘 다 틀려도 학습은 돌고 손실은 내려간다.**
+
+        하나. 프롬프트 길이는 맨 토크나이저로 세면 안 된다. 프로세서가 이미지 자리표시자
+        하나를 타일 토큰 수백 개로 부풀리기 때문이다(실측: 31 -> 286). 그 차이만큼
+        **이미지 토큰에 손실이 걸린다** — 모델에게 자기가 본 그림을 받아쓰라고 시키는 꼴이다.
+        부풀린 양은 실제로 붙은 이미지 토큰 수에서 자리표시자 수를 빼면 정확히 나온다.
+        이미지를 한 번 더 전처리할 필요가 없다.
+
+        둘. 이 토크나이저는 **왼쪽으로 패딩한다.** 앞에서부터 가리면 프롬프트가 아니라
+        패딩을 가리게 되고, 정답은 그대로인 채 프롬프트 전체에 손실이 걸린다.
+        어디서 시작하는지는 `attention_mask` 가 안다 — 패딩 방향을 추측하지 않는다.
+        """
+        proc = cls.processor()
+        ids, mask = enc["input_ids"], enc["attention_mask"]
+        labels = ids.new_full(ids.shape, -100)
+
+        img_tok = getattr(proc, "image_token", None)
+        img_id = proc.tokenizer.convert_tokens_to_ids(img_tok) if img_tok else -1
+        ph = cls.image_placeholder()
+
+        for i, r in enumerate(batch):
+            prompt = cls._retarget(r["prompt"])
+            n = len(proc.tokenizer(prompt)["input_ids"])
+            if img_id is not None and img_id >= 0:
+                # 자리표시자 하나가 토큰 여럿으로 부푼 만큼을 더한다
+                n += int((ids[i] == img_id).sum()) - prompt.count(ph)
+            keep = mask[i].nonzero()
+            off = int(keep[0]) if len(keep) else 0      # 패딩이 어디서 끝나는지
+            end = off + int(mask[i].sum())
+            start = min(off + n, end)
+            labels[i, start:end] = ids[i, start:end]
+        return labels
 
 
 def register(ref: str) -> type:
