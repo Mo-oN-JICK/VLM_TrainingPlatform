@@ -15,7 +15,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..core import registry
+from ..core import humanize, registry
 from ..core.compiler import CompileFailed, canonical_view, compile_project, current_value
 from ..core.errors import VlmtError
 from ..core.node import NodeKind
@@ -34,18 +34,10 @@ from ..train import shards as shards_mod
 from ..train import contract as contract_mod
 
 
+
 def _took(ms: float) -> str:
-    """밀리초를 사람이 읽는 단위로. 편집기 카드(`render._ms`)와 같은 규칙을 쓴다 —
-    같은 값이 터미널과 화면에서 다르게 보이면 둘 중 하나가 틀린 것처럼 읽힌다."""
-    if ms < 1000:
-        return f"{ms:.0f}ms"
-    if ms < 60_000:
-        return f"{ms / 1000:.1f}s"
-    total = int(ms / 1000)
-    m, sec = divmod(total, 60)
-    if m < 60:
-        return f"{m}m {sec:02d}s"
-    return f"{m // 60}h {m % 60:02d}m"
+    """`core.humanize.ms` 의 다른 이름. 터미널과 창이 같은 표기를 쓴다."""
+    return humanize.ms(ms)
 
 
 def _load_nodes(modules: List[str]) -> None:

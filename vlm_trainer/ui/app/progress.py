@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ...core import humanize
 from .. import tokens as T
 
 POLL_MS = 700       # 웹판과 같은 주기
@@ -21,18 +22,10 @@ TICK_MS = 250       # 경과 시간을 화면이 스스로 세는 간격
 MUTED = "color:#6F7478; font-size:11px;"
 
 
-def fmt_ms(ms: float) -> str:
-    """밀리초를 사람이 읽는 단위로. `render._ms` · CLI `_took` 과 같은 규칙이다 —
-    같은 값이 창과 터미널에서 다르게 보이면 둘 중 하나가 틀린 것처럼 읽힌다."""
-    if ms < 1000:
-        return f"{ms:.0f}ms"
-    if ms < 60_000:
-        return f"{ms / 1000:.1f}s"
-    total = int(ms / 1000)
-    m, sec = divmod(total, 60)
-    if m < 60:
-        return f"{m}m {sec:02d}s"
-    return f"{m // 60}h {m % 60:02d}m"
+
+def fmt_ms(value: float) -> str:
+    """`core.humanize.ms` 의 다른 이름. 창과 터미널이 같은 표기를 쓴다."""
+    return humanize.ms(value)
 
 
 class RunDock(QtWidgets.QDockWidget):

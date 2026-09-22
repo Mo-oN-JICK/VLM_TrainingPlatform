@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..core import humanize
 from ..core.compiler import CompiledGraph
 from ..core.node import NodeKind
 from ..core.registry import resolve as resolve_node
@@ -324,14 +325,10 @@ def state_of(report: Any, nid: str) -> Tuple[str, str]:
     return "pending", ""
 
 
-def _ms(ms: float) -> str:
-    """밀리초를 사람이 읽는 단위로. 4자리 밀리초는 눈으로 자릿수를 세게 만든다."""
-    if ms < 1000:
-        return f"{ms:.0f}ms"
-    if ms < 60_000:
-        return f"{ms / 1000:.1f}s"
-    m, s = divmod(int(ms / 1000), 60)
-    return f"{m}m {s:02d}s"
+
+def _ms(value: float) -> str:
+    """`core.humanize.ms` 의 다른 이름. 이 모듈 안의 호출부를 그대로 두기 위한 것이다."""
+    return humanize.ms(value)
 
 
 def _elapsed(since: float) -> str:
