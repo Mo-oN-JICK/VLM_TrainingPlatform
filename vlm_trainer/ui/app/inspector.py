@@ -13,9 +13,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from .. import tokens as T
 from ..api import param_meta

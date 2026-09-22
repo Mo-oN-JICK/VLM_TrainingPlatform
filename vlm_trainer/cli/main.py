@@ -481,7 +481,7 @@ def cmd_new(a: argparse.Namespace) -> int:
     print()
     print("그래프는 비어 있다. 노드를 놓기 전에는 컴파일되지 않는다 — Output이 하나는 있어야 한다.")
     print(f"  편집기: vlmt edit {proj}")
-    print(f"  샘플 인덱스: project.yaml의 sample_space.index가 가리키는 JSONL을 먼저 만들어라")
+    print("  샘플 인덱스: project.yaml의 sample_space.index가 가리키는 JSONL을 먼저 만들어라")
     if a.edit:
         from ..ui import app as app_mod
 

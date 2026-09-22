@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, List, Optional, Sequence
+from typing import Iterable, Sequence
 
 
 class VlmtError(Exception):

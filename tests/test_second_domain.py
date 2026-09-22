@@ -12,7 +12,7 @@ import os
 import pytest
 
 from vlm_trainer.core.compiler import compile_project
-from vlm_trainer.ui.render import fold
+from vlm_trainer.ui.layout import fold
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)

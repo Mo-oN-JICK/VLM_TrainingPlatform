@@ -20,7 +20,7 @@ import pytest
 
 from vlm_trainer.core import registry
 from vlm_trainer.ui import layout as L
-from vlm_trainer.ui.api import Editor, compat_matrix, occupied_inputs
+from vlm_trainer.ui.api import Editor, compat_matrix
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)

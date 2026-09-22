@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 import numpy as np
 

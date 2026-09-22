@@ -8,8 +8,9 @@ import re
 import pytest
 
 from vlm_trainer.core.compiler import compile_project
-from vlm_trainer.ui.render import fold
+from vlm_trainer.ui.layout import fold
 from vlm_trainer.core.node import NodeKind
+from vlm_trainer.ui import layout as layout_mod
 from vlm_trainer.ui import render as render_mod
 from vlm_trainer.ui import tokens as T
 
@@ -38,7 +39,7 @@ def page(cg):
 
 def test_input_is_top_lane_and_output_is_bottom(cg):
     shown, edges = fold(cg)
-    placed = render_mod._layout(shown, edges)
+    placed = layout_mod._layout(shown, edges)
     tops = [p.y for nid, p in placed.items() if shown[nid].kind is NodeKind.INPUT]
     bots = [p.y for nid, p in placed.items() if shown[nid].kind is NodeKind.OUTPUT]
     mids = [p.y for nid, p in placed.items() if shown[nid].kind is NodeKind.PROCESSING]
@@ -54,15 +55,15 @@ def test_flow_is_downward_for_every_edge(cg):
     접힌 Procedure 상자도 예외가 아니다 — 상자 안이 여러 레인에 걸쳐 있어도
     밖에서 보이는 배선은 전부 아래로 향해야 한다."""
     shown, edges = fold(cg)
-    placed = render_mod._layout(shown, edges)
+    placed = layout_mod._layout(shown, edges)
     for src, dst in edges:
         a, b = src.split(":")[0], dst.split(":")[0]
         assert placed[a].y < placed[b].y, f"{src} -> {dst} 가 위로 향한다"
 
 
 def test_cards_do_not_overlap(cg):
-    placed = render_mod._layout(*fold(cg))
-    boxes = [(p.x, p.y, p.x + render_mod.CARD_W, p.y + render_mod.CARD_H) for p in placed.values()]
+    placed = layout_mod._layout(*fold(cg))
+    boxes = [(p.x, p.y, p.x + layout_mod.CARD_W, p.y + layout_mod.CARD_H) for p in placed.values()]
     for i, a in enumerate(boxes):
         for b in boxes[i + 1 :]:
             overlap = a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
@@ -260,11 +261,11 @@ def test_a_folded_box_is_not_green_while_something_inside_failed(cg):
         rep.count(nid, SUCCESS)
     rep.count("p_crop/n_frame", FAILED)
 
-    state, extra = render_mod.state_of_many(rep, list(cg.nodes))
+    state, extra = layout_mod.state_of_many(rep, list(cg.nodes))
     assert state == "failed"
 
     shown, _ = fold(cg)
-    state, extra = render_mod.state_of_many(rep, shown["p_crop"].state_ids)
+    state, extra = layout_mod.state_of_many(rep, shown["p_crop"].state_ids)
     assert state == "failed" and "1/4" in extra
 
 
@@ -277,10 +278,10 @@ def test_wires_touch_the_chips_they_connect(cg, page):
     import re
 
     shown, edges = fold(cg)
-    placed = render_mod._layout(shown, edges)
+    placed = layout_mod._layout(shown, edges)
 
     def chip_x(nid, ports, name):
-        for n, cx, cy, cw in render_mod._chips(ports, placed[nid].x, 0, placed[nid].w):
+        for n, cx, cy, cw in layout_mod._chips(ports, placed[nid].x, 0, placed[nid].w):
             if n == name:
                 return cx + cw // 2
         raise AssertionError(f"{nid}:{name} 칩이 없다")
@@ -293,10 +294,10 @@ def test_wires_touch_the_chips_they_connect(cg, page):
         dn, dp = dst.split(":")
         s_node, d_node = shown[sn], shown[dn]
 
-        s_top = 0 if s_node.kind is NodeKind.INPUT else render_mod.CHIP_H
+        s_top = 0 if s_node.kind is NodeKind.INPUT else layout_mod.CHIP_H
         want_start = (
             chip_x(sn, s_node.outputs, sp),
-            placed[sn].y + s_top + placed[sn].h + render_mod.CHIP_H,
+            placed[sn].y + s_top + placed[sn].h + layout_mod.CHIP_H,
         )
         want_end = (chip_x(dn, d_node.inputs, dp), placed[dn].y)
 
@@ -449,7 +450,7 @@ def test_port_rows_say_what_the_port_means(cg, page):
     assert "정답 스키마" in page
 
     # Procedure 상자도 안쪽 노드의 포트 설명을 들고 나온다
-    from vlm_trainer.ui.render import fold
+    from vlm_trainer.ui.layout import fold
 
     shown, _ = fold(cg)
     box = shown["p_crop"]
@@ -459,15 +460,15 @@ def test_port_rows_say_what_the_port_means(cg, page):
 
 def test_a_busier_node_gets_a_bigger_box(cg):
     """상자 크기가 전부 같으면 무엇이 단순하고 무엇이 복잡한지 그림이 말해 주지 못한다."""
-    from vlm_trainer.ui.render import card_size, fold
+    from vlm_trainer.ui.layout import card_size, fold
 
     shown, _ = fold(cg)
     heights = {nid: card_size(v)[1] for nid, v in shown.items()}
     assert len(set(heights.values())) > 1, "모든 카드가 같은 높이다"
 
     # 포트가 많을수록 높다
-    busiest = max(shown, key=lambda k: render_mod._card_rows(shown[k]))
-    simplest = min(shown, key=lambda k: render_mod._card_rows(shown[k]))
+    busiest = max(shown, key=lambda k: layout_mod._card_rows(shown[k]))
+    simplest = min(shown, key=lambda k: layout_mod._card_rows(shown[k]))
     assert heights[busiest] > heights[simplest]
 
     # Procedure 는 안에 노드를 품은 만큼 옆으로도 넓다

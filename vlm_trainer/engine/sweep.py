@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..core.compiler import CompiledGraph, compile_project
 from ..spec.canonical import hash_parts
-from ..spec.recipe import Recipe, RecipeBook
+from ..spec.recipe import Recipe
 from ..train import tokens as tokens_mod
 from ..train.config import TrainerConfig
 from . import budget as budget_mod

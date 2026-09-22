@@ -11,7 +11,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 import torch
 from torch.utils.data import DataLoader, Dataset

@@ -10,7 +10,7 @@ import csv
 import os
 from dataclasses import dataclass, field
 from hashlib import blake2b
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 
@@ -20,13 +20,7 @@ from ..core.registry import register
 from ..core.types import (
     DYN,
     BaseKind,
-    Color,
-    DType,
-    Frame,
-    Layout,
-    Norm,
     PortType,
-    Range,
     image,
     simple,
     text,

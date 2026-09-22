@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, List
 
 import pytest
 
 from vlm_trainer.core.compiler import CompileFailed, compile_graph
 from vlm_trainer.core.graph import Edge, GraphModel, Materialize, NodeInstance
-from vlm_trainer.core.node import NodeKind
 
 
 def build(nodes: List[tuple], edges: List[tuple], **kw: Any) -> GraphModel:

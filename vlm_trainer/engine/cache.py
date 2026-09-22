@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import os
 import pickle
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from hashlib import blake2b
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from .storage import resolve_backend
 

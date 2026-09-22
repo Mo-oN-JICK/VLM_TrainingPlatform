@@ -7,11 +7,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from ..core.node import Node, NodeDoc, NodeKind, Port, RunCtx
 from ..core.registry import register
-from ..core.types import ANY, BaseKind, PortType, image, simple, text
+from ..core.types import ANY, BaseKind, image, simple, text
 
 
 def _fill(template: str, values: Dict[str, Any]) -> str:

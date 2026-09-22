@@ -6,15 +6,13 @@ Phase 2의 실제 노드 카탈로그가 들어오기 전까지 컴파일러를 
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from dataclasses import dataclass
+from typing import Any, Dict
 
 from vlm_trainer.core.node import Node, NodeKind, Port, RunCtx
 from vlm_trainer.core.registry import register
 from vlm_trainer.core.types import (
-    ANY,
     BaseKind,
-    Color,
     DType,
     DimVar,
     Frame,

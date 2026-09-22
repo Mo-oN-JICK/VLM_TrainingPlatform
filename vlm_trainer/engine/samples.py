@@ -10,7 +10,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from hashlib import blake2b
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List
 
 from ..core.errors import SpecError
 

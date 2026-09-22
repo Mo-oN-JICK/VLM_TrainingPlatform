@@ -10,8 +10,7 @@ from __future__ import annotations
 import html
 import json
 import os
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from ..core.compiler import CompiledGraph
 from ..core.node import NodeKind
@@ -20,31 +19,17 @@ from . import tokens as T
 # 배치와 상태 계산은 layout.py 에 있다. Qt 캔버스가 같은 것을 쓴다 —
 # 좌표가 두 벌이 되면 앱과 `vlmt view` 가 같은 그래프를 다르게 그린다.
 from .layout import (  # noqa: F401  (다시 내보낸다 — 기존 호출부를 그대로 둔다)
-    BODY_PAD,
-    CARD_H,
-    CARD_W,
     CHIP_H,
-    COL_GAP,
     GRID,
     HEAD_H,
-    LANE_GAP,
     PAD,
-    Placed,
     ROW_H,
     Shown,
-    _card_rows,
     _chips,
-    _elapsed,
-    _first_port,
     _layout,
-    _ms,
     _port_doc,
-    _proc_of,
-    _summary,
     _type_label,
-    card_size,
     fold,
-    state_of,
     state_of_many,
 )
 
@@ -88,18 +73,6 @@ def _pio_rows(s: "Shown") -> str:
         out.append('<div class="pio none"><span class="pdot"></span>'
                    '<span class="pk">출력</span><span class="pv">없음</span></div>')
     return "".join(out)
-
-
-def _sum_title(s: "Shown") -> str:
-    """카드 본문은 무슨 일을 하는지 한 줄이고, 설정값은 툴팁으로 내려간다.
-
-    처음 보는 사람에게 `columns=['part_name', ...]` 는 소음이다.
-    값을 고칠 사람은 어차피 우측 패널을 연다."""
-    parts = [s.hint or s.summary]
-    if s.summary and s.hint:
-        parts.append("설정 " + s.summary)
-    sep = chr(10) + chr(10)
-    return sep.join(p for p in parts if p)
 
 
 def render(
@@ -658,39 +631,3 @@ _VIEWER_TOOLS = '<span style="margin-left:auto">읽기 전용 뷰어</span>'
 def _profile_control(cg: CompiledGraph, editor: Any) -> str:
     """실행 프로파일. 읽기 전용이다 — 고치는 것은 편집기(앱)의 몫이다."""
     return html.escape(cg.runtime_profile)
-
-
-def _sample_space_panel(editor: Any) -> str:
-    '''Sample Space 패널.
-
-    그래프 밖의 선언이지만 그래프만큼 자주 틀린다. 그래서 값을 보여주는 데서 그치지 않고
-    **실제로 읽어 본 결과**(건수·열·split 분포)를 함께 적는다. key 하나가 어긋나면
-    컴파일은 통과하고 실행이 첫 샘플에서 죽는데, 그때는 이미 편집기를 닫은 뒤다.
-    '''
-    v = editor.sample_space_view()
-
-    def row(name, value, kind="text"):
-        val = json.dumps(value, ensure_ascii=False) if kind == "json" else str(value)
-        return (
-            f'<div class="prow"><label>{html.escape(name)}</label>'
-            f'<input type="text" value="{html.escape(val)}" '
-            f"onchange=\"vlmtSpace('{name}',this.value,'{kind}')\"></div>"
-        )
-
-    if v["error"]:
-        probe = f'<div class="ssbad">{html.escape(v["error"].splitlines()[0])}</div>'
-    else:
-        splits = " · ".join(f"{k or 'split없음'} {n}" for k, n in sorted(v["split_counts"].items()))
-        cols = ", ".join(v["columns"][:10]) + (" …" if len(v["columns"]) > 10 else "")
-        probe = (
-            f'<div class="ssok">샘플 {v["rows"]}건 · {html.escape(splits)}</div>'
-            f'<div class="sscols">열: {html.escape(cols)}</div>'
-        )
-
-    return (
-        '<h4>Sample Space</h4>' + probe
-        + row("index", v["index"]) + row("key", v["key"]) + row("filter", v["filter"])
-        + row("splits", v["splits"], "json")
-    )
-
-

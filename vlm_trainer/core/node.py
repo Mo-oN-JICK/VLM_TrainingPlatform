@@ -9,7 +9,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Dict, Optional, Type
 
 from .errors import VlmtError
 from .types import PortType

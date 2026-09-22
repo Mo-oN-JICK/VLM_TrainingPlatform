@@ -10,7 +10,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, List, Optional, Set
+from typing import Any, Dict, Iterator, List, Set
 
 RUN_START = "run_start"
 SHARD_COMMITTED = "shard_committed"

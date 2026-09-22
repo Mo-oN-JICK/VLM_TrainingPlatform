@@ -25,7 +25,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 API = "https://commons.wikimedia.org/w/api.php"
 UA = "VLM-Trainer-dataset-builder/0.1 (educational; https://github.com/Mo-oN-JICK/VLM_TrainingPlatform)"

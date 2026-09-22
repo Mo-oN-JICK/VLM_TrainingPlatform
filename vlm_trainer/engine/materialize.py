@@ -14,13 +14,12 @@ import json
 import os
 import shutil
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
 
 from ..core.compiler import CompiledGraph
-from ..core.errors import SpecError, StructureError
-from ..core.node import NodeKind
+from ..core.errors import StructureError
 from . import samples as samples_mod
 from . import worker
 from .journal import Journal, PHASE_DONE, RUN_START, SHARD_COMMITTED

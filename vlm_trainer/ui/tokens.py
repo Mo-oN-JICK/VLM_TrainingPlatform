@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-from typing import Dict
 
 # ── 표면 (전부 실측) ────────────────────────────────────────────────────
 SURFACE = {

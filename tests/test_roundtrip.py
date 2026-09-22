@@ -7,7 +7,7 @@ import os
 import pytest
 import yaml
 
-from vlm_trainer.core.compiler import CompileFailed, canonical_view, compile_project
+from vlm_trainer.core.compiler import canonical_view, compile_project
 from vlm_trainer.spec.canonical import hash_obj
 from vlm_trainer.spec.decompile import decompile, dump_yaml
 from vlm_trainer.spec.loader import load_project

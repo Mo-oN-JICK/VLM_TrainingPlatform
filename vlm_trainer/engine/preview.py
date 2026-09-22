@@ -10,8 +10,8 @@ Mech-Vision의 Debug Output 규약을 그대로 따른다.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any, Dict
 
 import numpy as np
 

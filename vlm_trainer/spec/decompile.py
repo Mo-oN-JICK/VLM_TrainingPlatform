@@ -11,7 +11,6 @@ from typing import Any, Dict, List
 import yaml
 
 from ..core.compiler import CompiledGraph
-from ..core.graph import Edge
 from .loader import SPEC_VERSION
 
 

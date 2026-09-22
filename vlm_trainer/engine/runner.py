@@ -15,10 +15,9 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
-from ..core.compiler import CompiledGraph, CompiledNode
-from ..core.errors import VlmtError
+from ..core.compiler import CompiledGraph
 from ..core.node import NodeError, NodeKind, RunCtx
 from ..core.registry import resolve as resolve_node
 from . import samples as samples_mod

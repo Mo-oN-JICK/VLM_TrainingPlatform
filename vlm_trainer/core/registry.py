@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import dataclasses
 import importlib
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Type
 
 from .errors import RegistrationError
 from .node import Node, NodeDef, NodeDoc, NodeKind, Port
-from .types import PortType
 
 _REGISTRY: Dict[Tuple[str, str], NodeDef] = {}
 

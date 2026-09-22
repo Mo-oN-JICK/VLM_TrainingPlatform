@@ -6,14 +6,11 @@ import pytest
 
 from vlm_trainer.core.types import (
     ANY,
-    BaseKind,
-    Color,
     DType,
     DimVar,
     Frame,
     Layout,
     Norm,
-    PortType,
     Range,
     image,
     text,

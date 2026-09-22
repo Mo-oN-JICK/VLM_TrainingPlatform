@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ..core.compiler import CompiledGraph
 from ..core.node import NodeKind
-from ..core.types import BaseKind, PortType, _Dyn
+from ..core.types import PortType
 from ..plugins.base import BackboneSpec, resolve_backbone
 from ..train.config import DTYPE_BYTES, OPTIMIZER_BYTES, Stage, TrainerConfig
 

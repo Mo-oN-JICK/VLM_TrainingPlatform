@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from PySide6 import QtCore, QtGui, QtWidgets
 

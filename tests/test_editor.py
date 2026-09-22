@@ -508,7 +508,7 @@ def test_progress_snapshot_round_trips(ed):
     assert back.states_of("n_stats") == {"success": 1}
     assert back.node_ms["n_stats"] == 12.5
     assert back.quarantine[0].node_id == "n_ev"
-    from vlm_trainer.ui.render import state_of
+    from vlm_trainer.ui.layout import state_of
 
     state, extra = state_of(back, "n_stats")
     assert state == "success" and "1건" in extra
@@ -985,12 +985,13 @@ def test_an_unknown_box_is_refused(ed):
 
 
 def test_a_moved_box_keeps_its_place_and_the_rest_flow_around_it(ed):
-    from vlm_trainer.ui.render import fold
+    from vlm_trainer.ui.layout import fold
+    from vlm_trainer.ui import layout as layout_mod
     from vlm_trainer.ui import render as render_mod
 
     ed.move_node("n_stats", 640, 720)
     shown, edges = fold(ed.compiled)
-    placed = render_mod._layout(shown, edges, {k: tuple(v) for k, v in ed.layout.items()})
+    placed = layout_mod._layout(shown, edges, {k: tuple(v) for k, v in ed.layout.items()})
 
     assert (placed["n_stats"].x, placed["n_stats"].y) == (640, 720)
     assert (placed["n_img"].x, placed["n_img"].y) != (640, 720), "나머지는 자동 배치 그대로다"
@@ -1007,7 +1008,7 @@ def test_snapshot_carries_the_node_being_run(ed):
     import time as _t
 
     from vlm_trainer.engine import runner as runner_mod
-    from vlm_trainer.ui.render import state_of
+    from vlm_trainer.ui.layout import state_of
 
     rep = runner_mod.RunReport(order=list(ed.compiled.order))
     rep.active, rep.active_since = "n_stats", _t.perf_counter() - 3.0
@@ -1039,7 +1040,7 @@ def test_a_finished_run_highlights_nothing(ed):
 def test_elapsed_time_shows_on_finished_nodes(ed):
     """실패한 노드도 5ms 만에 터진 것과 40초를 쓰고 터진 것은 원인이 다르다."""
     from vlm_trainer.engine import runner as runner_mod
-    from vlm_trainer.ui.render import state_of
+    from vlm_trainer.ui.layout import state_of
 
     rep = runner_mod.RunReport(order=list(ed.compiled.order))
     rep.count("n_stats", runner_mod.SUCCESS)
@@ -1059,7 +1060,7 @@ def test_run_state_answers_with_the_ids_the_canvas_draws(ed, tmp_path):
     import json as _json
 
     from vlm_trainer.engine import runner as runner_mod
-    from vlm_trainer.ui.render import fold
+    from vlm_trainer.ui.layout import fold
 
     shown, _ = fold(ed.compiled, ed.expanded)
 

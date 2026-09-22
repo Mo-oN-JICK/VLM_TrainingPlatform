@@ -10,8 +10,6 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional
 
 from .types import (
-    ANY,
-    DYN,
     SCALAR_FIELDS,
     DimVar,
     ListSpec,

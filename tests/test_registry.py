@@ -10,7 +10,7 @@ import pytest
 from vlm_trainer.core.errors import RegistrationError
 from vlm_trainer.core.node import Node, NodeKind, Port, RunCtx
 from vlm_trainer.core.registry import register, resolve
-from vlm_trainer.core.types import image, text
+from vlm_trainer.core.types import text
 
 
 # 등록 실패를 검증하려면 클래스가 모듈 최상위에 있어야 한다(spawn 요구와 같은 이유).

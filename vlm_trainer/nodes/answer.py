@@ -11,7 +11,7 @@ import yaml
 from ..answer.schema import AnswerSchema, _safe_eval
 from ..core.node import Node, NodeDoc, NodeError, NodeKind, Port, RunCtx
 from ..core.registry import register
-from ..core.types import ANY, BaseKind, PortType, regions, simple, text
+from ..core.types import ANY, BaseKind, regions, simple, text
 
 
 @dataclass

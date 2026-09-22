@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ..core.types import DType, Frame, Layout, Range, image, regions, timeseries
+from ..core.types import Frame, image, regions, timeseries
 from .base import ExpertManifest, ExpertPlugin, ResourceCost, register_expert
 
 

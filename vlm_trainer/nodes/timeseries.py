@@ -8,7 +8,7 @@ ts.plot이 시계열을 VLM에 넣기 위한 표준 경로다 — 렌더 결과�
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 import numpy as np
 
@@ -17,7 +17,6 @@ from ..core.registry import register
 from ..core.types import (
     ANY,
     BaseKind,
-    Frame,
     PortType,
     image,
     regions,

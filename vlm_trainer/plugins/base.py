@@ -6,8 +6,8 @@ ExpertPlugin / BackboneAdapter / StorageBackend가 같은 등록 메커니즘을
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from ..core.errors import RegistrationError
 from ..core.types import PortType

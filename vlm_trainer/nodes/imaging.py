@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 
@@ -15,18 +15,10 @@ from ..core.registry import register
 from ..core.types import (
     ANY,
     DYN,
-    BaseKind,
-    Color,
-    DType,
     Frame,
-    Layout,
-    Norm,
     PortType,
-    Range,
-    Var,
     image,
     regions,
-    simple,
 )
 
 

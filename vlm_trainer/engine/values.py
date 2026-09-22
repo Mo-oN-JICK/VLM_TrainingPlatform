@@ -7,11 +7,11 @@
 from __future__ import annotations
 
 from hashlib import blake2b
-from typing import Any, Dict, List, Optional
+from typing import Any, List
 
 import numpy as np
 
-from ..core.types import DYN, BaseKind, DType, Layout, PortType, _Any, _Dyn
+from ..core.types import BaseKind, DType, PortType
 
 _NP_DTYPE = {
     DType.U8: np.uint8,

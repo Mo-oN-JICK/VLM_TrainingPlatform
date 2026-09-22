@@ -20,7 +20,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from ..core.compiler import CompiledGraph, compile_graph, current_value, override_target
 from ..core.errors import VlmtError
 from ..core.graph import Edge, GraphModel, NodeInstance, ProcedureInstance
-from ..core.node import NodeKind
 from ..core.registry import all_defs, resolve as resolve_node
 from ..core.unify import unify_ports
 from ..engine import runner as runner_mod

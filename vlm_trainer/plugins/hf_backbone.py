@@ -14,8 +14,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from ..core.errors import RegistrationError
 from .base import BackboneAdapter, BackboneSpec, register_backbone
