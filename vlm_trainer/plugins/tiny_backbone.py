@@ -190,6 +190,32 @@ class TinyVlmAdapter(BackboneAdapter):
         return encode(text, placeholder)
 
     @classmethod
+    def generate(cls, model: nn.Module, prompt: str, images: Any, max_new: int = 64) -> str:
+        """탐욕적 디코딩. 빔도 샘플링도 없다 — 답이 형식을 지키는지 보는 것이 목적이고,
+        그 판단에 무작위성이 끼면 두 번 돌릴 때마다 다른 결론이 난다."""
+        dev = next(model.parameters()).device
+        ids = encode(prompt) + [BOS]
+        img = torch.zeros(0)
+        if images is not None and len(images):
+            side = images[0].shape[0]
+            img = torch.zeros(1, len(images), 3, side, side, dtype=torch.float32)
+            for j, a in enumerate(images):
+                arr = np.array(a, dtype=np.uint8, copy=True)
+                img[0, j] = torch.from_numpy(arr).permute(2, 0, 1).float() / 255.0
+            img = img.to(dev)
+
+        model.eval()
+        out: List[int] = []
+        with torch.no_grad():
+            for _ in range(max_new):
+                x = torch.tensor([ids + out], dtype=torch.long, device=dev)[:, -MAX_CONTEXT:]
+                nxt = int(model(x, img if img.numel() else None)["logits"][0, -1].argmax())
+                if nxt == EOS:
+                    break
+                out.append(nxt)
+        return decode(out)
+
+    @classmethod
     def collate(cls, batch: List[Dict[str, Any]], max_len: int) -> Dict[str, torch.Tensor]:
         """프롬프트+정답을 이어 붙이고, 손실은 정답 토큰에만 건다."""
         ids_list, lab_list, imgs_list = [], [], []

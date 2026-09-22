@@ -238,12 +238,34 @@ def execute(
         # per_sample=False Output(학습)은 샘플 루프가 아니라 train 단계에서 한 번 돈다
         plan = [i for i in plan if resolve_node(cg.nodes[i].ref).per_sample]
 
+    # **`per_sample=False` 는 "이 노드의 출력은 모든 샘플에 같다"는 뜻이다.**
+    # 학습 노드가 그렇다 — 샘플마다 학습하지 않고, 산출물이 어디 있는지만 내놓는다.
+    # 그 값을 여기서 한 번 만들어 모든 샘플에 얹는다. 이것이 없으면 학습 뒤에 이어진
+    # 노드(`모델 추론`)가 입력을 못 받아 전부 건너뛴다.
+    shared: Dict[str, Any] = {}
+    if opts.run_outputs:
+        for nid in cg.order:
+            if targets is not None and nid not in targets:
+                continue
+            d = resolve_node(cg.nodes[nid].ref)
+            if d.per_sample or not d.outputs:
+                continue
+            ctx0 = RunCtx(run_id=opts.run_id, node_id=nid, sample_key="", seed=opts.seed,
+                          sample=rows[0] if rows else {}, root=space.root,
+                          spec_dir=opts.spec_dir)
+            try:
+                once = d.impl().run(ctx0, d.build_params(cg.nodes[nid].params))
+            except Exception:
+                continue  # 학습이 아직 안 돌았을 수 있다. 뒤 노드가 스스로 말한다
+            for port, v in (once or {}).items():
+                shared[f"{nid}:{port}"] = v
+
     last_write = 0.0
     write_progress(rep, opts, len(rows), "running")
 
     for row in rows:
         key = str(row[space.key])
-        values: Dict[str, Any] = {}
+        values: Dict[str, Any] = dict(shared)
         failed_nodes: Set[str] = set()
         sample_failed = False
 

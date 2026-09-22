@@ -36,6 +36,17 @@ def _pick(d: Dict[str, Any], keys: Tuple[str, ...], default: int = 0) -> int:
     return default
 
 
+def _as_pil(images: Any) -> List[Any]:
+    """넘파이 배열이든 PIL 이든 프로세서가 받는 형태로. 빈 것은 빈 목록."""
+    from PIL import Image
+
+    out = []
+    for a in images or []:
+        out.append(a if hasattr(a, "size") and not hasattr(a, "shape")
+                   else Image.fromarray(__import__("numpy").asarray(a, dtype="uint8")))
+    return out
+
+
 def fetch(ref: str) -> str:
     """가중치까지 내려받는다. 받은 자리를 돌려준다.
 
@@ -231,6 +242,21 @@ class HFBackbone(BackboneAdapter):
         from transformers import AutoProcessor
 
         return AutoProcessor.from_pretrained(os.path.dirname(cls.config_path))
+
+    @classmethod
+    def generate(cls, model: Any, prompt: str, images: Any, max_new: int = 64) -> str:
+        """탐욕적 디코딩. 답이 형식을 지키는지 보는 것이 목적이라 무작위성을 끈다."""
+        import torch
+
+        proc = cls.processor()
+        pil = _as_pil(images)
+        enc = proc(text=[prompt], images=[pil] if pil else None, return_tensors="pt")
+        enc = {k: (v.to(model.device) if hasattr(v, "to") else v) for k, v in enc.items()}
+        with torch.no_grad():
+            ids = model.generate(**enc, max_new_tokens=max_new, do_sample=False)
+        # 프롬프트 구간을 잘라내고 답만 돌려준다
+        start = enc["input_ids"].shape[1]
+        return proc.tokenizer.decode(ids[0][start:], skip_special_tokens=True)
 
     @classmethod
     def collate(cls, batch: List[Dict[str, Any]], max_len: int) -> Dict[str, Any]:

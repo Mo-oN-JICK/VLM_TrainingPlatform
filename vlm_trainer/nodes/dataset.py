@@ -331,15 +331,19 @@ class TrainerParams:
         "sample": Port(simple(BaseKind.SAMPLE), "학습 샘플"),
         "schema": Port(simple(BaseKind.SCHEMA), "정답 스키마"),
     },
+    # 학습은 체크포인트를 디스크에 쓴다 — 부작용이므로 Output 이 맞다. 그러면서
+    # **산출물이 어디 있는지**를 내보내 `모델 추론` 이 받는다. Output 이 그래프의 끝이어야
+    # 한다는 규칙을 푼 이유가 이것이다(설계 문서와 다른 지점. README 표 참고).
+    outputs={"model": Port(simple(BaseKind.MODEL), "학습된 모델")},
     params=TrainerParams,
     recipe_overridable=["config_path", "out_dir"],
     per_sample=False,  # 샘플마다가 아니라 물질화된 데이터셋 전체에 한 번
     preview="budget_table",
     doc=NodeDoc(
         label="모델 학습",
-            hint="물질화된 데이터셋으로 VLM을 파인튜닝합니다.",
-        summary="학습 실행. 그래프의 종결점이며 Output 분류에 속한다.",
-        scenario="Phase 5까지는 계획만 기록하는 스텁이다. 실제 학습 루프는 아직 없다.",
+        hint="준비된 학습 데이터로 모델을 파인튜닝합니다.",
+        summary="학습 실행. 산출물이 어디 있는지를 내보내 추론이 받는다.",
+        scenario="굽기가 끝난 뒤에 한 번 돈다. 샘플마다가 아니다.",
     ),
 )
 class VlmTrainer(Node):
@@ -353,9 +357,16 @@ class VlmTrainer(Node):
         from ..train.config import TrainerConfig
 
         cfg = TrainerConfig.load(ctx.asset(params.config_path))
-        s = inputs["sample"]
         out_dir = os.path.abspath(params.out_dir.replace("{run_id}", ctx.run_id))
         os.makedirs(out_dir, exist_ok=True)
+        handle = {"model": {"dir": out_dir, "backbone": cfg.backbone}}
+
+        # 산출물이 **어디 있는지**는 샘플과 무관하다. 그래서 입력이 없어도 답할 수 있고,
+        # 실행 엔진이 이 값을 한 번만 만들어 모든 샘플에 얹는다. 아래 통계는 덤이다.
+        s = inputs.get("sample")
+        if s is None:
+            return handle
+
         plan_path = os.path.join(out_dir, "train_plan.json")
         plan = {
             "backbone": cfg.backbone,
@@ -369,9 +380,11 @@ class VlmTrainer(Node):
                 plan = json.load(fh)
         plan["samples"] = int(plan.get("samples", 0)) + 1
         plan["chars"] = int(plan.get("chars", 0)) + len(s["prompt"]) + len(s["answer"])
-        plan["schema"] = inputs["schema"].id
+        if inputs.get("schema") is not None:
+            plan["schema"] = inputs["schema"].id
         tmp = plan_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(plan, fh, ensure_ascii=False, indent=2)
         os.replace(tmp, plan_path)  # Windows에서도 원자적
-        return {}
+        # 가중치를 값으로 흘려보내지 않는다 — 그러면 샘플마다 수 GB 가 캐시에 복사된다.
+        return handle

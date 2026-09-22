@@ -10,9 +10,11 @@ sample_space:
   key: sample_id
   filter: ""
   splits:
-    strategy: group_holdout
-    group_by: split_hint      # 수집 때 정한 train/val을 그대로 쓴다
-    ratios: {train: 0.91, val: 0.09}
+    # 수집할 때 이미 train 100 / val 10 으로 갈라 두었다. 그 열을 그대로 쓴다.
+    # `group_holdout` 을 쓰면 "train" 과 "val" 이 **그룹 이름**이 되고 비율로 다시
+    # 배분되어, 두 그룹이 모두 train 으로 가 검증 샘플이 0건이 된다(실제로 그랬다).
+    strategy: column
+    column: split_hint
     seed: 20260921
 
 nodes:
