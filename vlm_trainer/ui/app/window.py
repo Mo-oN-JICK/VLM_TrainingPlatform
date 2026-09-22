@@ -20,6 +20,7 @@ from .canvas import GraphCanvas
 from .history import HistoryDock, RecipeDock
 from .inspector import Inspector
 from .library import LibraryDock
+from .progress import RunDock, RunWatcher
 
 FONT = "Malgun Gothic"
 
@@ -77,8 +78,11 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.history)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.recipe)
         # 오른쪽은 탭으로 겹친다 — 셋을 세로로 쌓으면 어느 것도 제대로 안 보인다
+        self.run_dock = RunDock(self)
+        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.run_dock)
         self.tabifyDockWidget(self.inspector, self.history)
         self.tabifyDockWidget(self.history, self.recipe)
+        self.tabifyDockWidget(self.recipe, self.run_dock)
         self.inspector.raise_()
         self.resizeDocks([self.library, self.inspector], [250, 330], QtCore.Qt.Horizontal)
 
@@ -87,6 +91,9 @@ class EditorWindow(QtWidgets.QMainWindow):
         self._build_menu()
         self._build_toolbar()
         self._build_status()
+        self.run_dock.bind_preview_reader(self.editor.preview_file)
+        self.watcher = RunWatcher(self)
+        self.run_dock.hide()        # 실행 전에는 자리를 차지하지 않는다
         self.reload_graph()
         QtCore.QTimer.singleShot(0, self.canvas.fit)
 
@@ -200,12 +207,34 @@ class EditorWindow(QtWidgets.QMainWindow):
         tb = QtWidgets.QToolBar("실행")
         tb.setMovable(False)
         self.addToolBar(tb)
-        self.act_run = tb.addAction("Run")
-        self.act_mat = tb.addAction("Materialize")
-        self.act_train = tb.addAction("Train")
-        self.act_stop = tb.addAction("Stop")
-        for a in (self.act_run, self.act_mat, self.act_train, self.act_stop):
-            a.setEnabled(False)          # 실행은 5단계다
+
+        self.act_run = tb.addAction("Run", lambda: self._launch(
+            lambda: self.editor.run_start(self.spin_limit.value(), self.chk_debug.isChecked()),
+            "Run"))
+        self.act_mat = tb.addAction("Materialize", lambda: self._launch(
+            self.editor.materialize_start, "Materialize"))
+        self.act_train = tb.addAction("Train", lambda: self._launch(
+            self.editor.train_start, "Train"))
+        self.act_stop = tb.addAction("Stop", self._stop)
+        self.act_stop.setEnabled(False)
+
+        tb.addSeparator()
+        self.act_follow = tb.addAction("실행 따라가기")
+        self.act_follow.setCheckable(True)
+        self.act_follow.setChecked(True)
+        self.act_follow.setToolTip("실행 중인 상자가 화면 밖이면 그쪽으로 옮긴다")
+
+        self.chk_debug = QtWidgets.QCheckBox("Debug Output")
+        self.chk_debug.setToolTip("꺼져 있으면 미리보기를 생성조차 하지 않는다")
+        tb.addWidget(self.chk_debug)
+
+        tb.addWidget(QtWidgets.QLabel("  샘플 "))
+        self.spin_limit = QtWidgets.QSpinBox()
+        self.spin_limit.setRange(1, 99999)
+        self.spin_limit.setValue(8)
+        self.spin_limit.setFixedWidth(72)
+        tb.addWidget(self.spin_limit)
+
         tb.addSeparator()
         tb.addAction("전체 맞춤", self.canvas.fit)
         tb.addAction("저장", self.on_save)
@@ -310,6 +339,34 @@ class EditorWindow(QtWidgets.QMainWindow):
             self.setWindowTitle(self._title())
         else:
             self._refuse("저장", res)
+
+    # ── 실행 ────────────────────────────────────────────────────────────
+    def _launch(self, fn: Any, label: str) -> None:
+        """버튼 하나가 CLI 명령 하나다. 편집기가 여러 명령을 엮어 돌리기 시작하면
+        그것이 CLI 에 없는 경로다."""
+        res = fn()
+        if not res.get("ok"):
+            self._refuse(label, res)
+            return
+        self.run_dock.show()
+        self.run_dock.raise_()
+        self.watcher.start()
+        self.statusBar().showMessage(f"{label} 시작", 3000)
+
+    def _stop(self) -> None:
+        res = self.editor.run_stop()
+        if not res.get("ok"):
+            self.statusBar().showMessage(res.get("reason", ""), 4000)
+
+    def set_running(self, on: bool) -> None:
+        """돌고 있는 동안에는 그래프를 못 고치게 한다. 실행은 **디스크의 스펙**을
+        도는데 편집은 메모리를 바꾼다 — 둘이 갈라지면 화면과 다른 것이 돌아간다."""
+        for a in (self.act_run, self.act_mat, self.act_train):
+            a.setEnabled(not on)
+        self.act_stop.setEnabled(on)
+        self.library.setEnabled(not on)
+        self.inspector.setEnabled(not on)
+        self.canvas.setInteractive(not on)
 
     # ── 선택 ────────────────────────────────────────────────────────────
     def _on_pick(self, nid: str) -> None:
