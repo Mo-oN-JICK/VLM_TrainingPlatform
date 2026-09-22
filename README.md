@@ -5,7 +5,7 @@
 | 순서 | 파일 | 하는 일 |
 |---|---|---|
 | 1 | **`setup.bat`** | 가상환경·패키지·예시 데이터를 한 번에 만든다 |
-| 2 | **`editor.bat`** | 편집기를 연다 (브라우저가 자동으로 뜬다) |
+| 2 | **`editor.bat`** | 편집기를 연다 (창 하나로 뜨는 네이티브 앱) |
 | 3 | **`check.bat`** | 설치가 온전한지 확인한다 (테스트 + 네 게이트) |
 
 새 과제를 시작하려면 **`new-project.bat`** — 빈 껍데기를 만들고 편집기를 연다.
@@ -35,7 +35,7 @@ Mech-Vision의 규약을 모방한 노드 그래프 기반 파인튜닝 플랫�
 합성 더미 데이터로 전 경로가 GPU에서 돌고, 추론 그래프가 만든 프롬프트는 학습 때와 바이트 단위로 같으며,
 그래프 하나 위에서 레시피만 바꾼 실험 여러 개가 물질화를 공유하며 순차로 돈다.
 `vlmt view`가 컴파일된 그래프를 한 장의 HTML로 그리고, `vlmt run --view --debug-output`은
-거기에 실행 상태와 노드별 Debug Output을 함께 칠한다. `vlmt edit`는 로컬 편집기를 연다 —
+거기에 실행 상태와 노드별 Debug Output을 함께 칠한다. `vlmt edit`는 네이티브 편집기 창을 연다 —
 **타입이 맞지 않는 배선은 드롭 자체가 되지 않고**, 노드를 고르면 파라미터를 그 자리에서 고치며,
 Node Library에서 노드를 누르거나 캔버스로 끌어다 놓아 추가하고, Parameter Recipe를 골라
 값을 덮어 보고 새 조합을 레시피로 담으며, History 항목을 누르면 그 시점으로 되감는다.
@@ -128,7 +128,8 @@ python -m vlm_trainer.cli.main decompile solutions/dummy_ecg/projects/01_dummy/p
 | `vlm_trainer/train/` | 선언형 TrainerConfig, shard 리더, freeze 정책, 학습 루프, 추론 계약 |
 | `vlm_trainer/answer/` | 정답 Text 스키마 — 렌더러와 파서를 같은 정의에서 생성 |
 | `vlm_trainer/plugins/` | 플러그인 규약 + 더미 전문가 모델 2종(이미지 영역 / 시계열 구간) |
-| `vlm_trainer/ui/` | 디자인 토큰(문서 12의 실측값), 그래프 뷰어, 편집기 API·로컬 서버 |
+| `vlm_trainer/ui/` | 디자인 토큰(문서 12의 실측값), 배치 계산, `vlmt view` 정적 HTML, 편집기 API |
+| `vlm_trainer/ui/app/` | 네이티브 편집기(PySide6). 선택 의존성 `[app]` — 없어도 나머지는 전부 돈다 |
 | `vlm_trainer/cli/` | `vlmt` 커맨드 |
 | `solutions/dummy_ecg/` | 합성 더미 데이터로 도는 예제 Solution (Procedure 포함) |
 | `tools/` | 합성 더미 데이터 생성기 |

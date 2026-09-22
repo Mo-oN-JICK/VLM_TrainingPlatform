@@ -246,6 +246,12 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.lbl_run.setObjectName("runline")
         sb.addWidget(self.lbl_graph)
         sb.addPermanentWidget(self.lbl_run)
+        self.lbl_refuse = QtWidgets.QLabel()
+        self.lbl_refuse.setStyleSheet(f"color:{T.STATE['failed']}; font-size:11px;")
+        sb.addWidget(self.lbl_refuse, 1)
+        self._refuse_timer = QtCore.QTimer(self)
+        self._refuse_timer.setSingleShot(True)
+        self._refuse_timer.timeout.connect(lambda: self.lbl_refuse.setText(""))
         self._picked = ""
         self._state: Dict[str, Any] = {}
 
@@ -288,15 +294,19 @@ class EditorWindow(QtWidgets.QMainWindow):
         return True
 
     def _refuse(self, label: str, res: Dict[str, Any]) -> None:
-        box = QtWidgets.QMessageBox(self)
-        box.setWindowTitle("거부됨")
-        box.setIcon(QtWidgets.QMessageBox.Warning)
-        box.setText(f"{label} — 받아들이지 않았다")
-        box.setInformativeText(res.get("reason", ""))
+        """거부를 **창을 막지 않고** 알린다.
+
+        모달을 띄우면 배선을 끄는 중에 대화상자가 앞을 가로막는다. 웹판도 토스트였다.
+        전문은 실행 도크의 콘솔 칸에 남겨 두어, 읽고 싶을 때 읽는다.
+        """
+        reason = res.get("reason", "") or "이유 없음"
+        self.lbl_refuse.setText(f"거부: {label} — {reason}")
+        self.lbl_refuse.setToolTip(res.get("detail") or reason)
+        self._refuse_timer.start(9000)
         detail = res.get("detail") or ""
-        if detail and detail != res.get("reason"):
-            box.setDetailedText(detail)
-        box.exec()
+        if detail and detail != reason:
+            self.run_dock.console.setPlainText(detail)
+            self.run_dock.console.setVisible(True)
 
     # ── 편집 ────────────────────────────────────────────────────────────
     def _add_node(self, node_type: str, x: int, y: int) -> None:

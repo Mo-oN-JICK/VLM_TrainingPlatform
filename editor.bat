@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-rem This file is ASCII on purpose. Korean text is printed by Python, which
+rem Opens the native editor window (PySide6). ASCII on purpose: Korean text is printed by Python, which
 rem writes Unicode to the console no matter what the code page is (949 or 65001).
 rem Do NOT add `chcp` here: it shifts cmd's parse position in the middle of the file.
 rem Keep CRLF line endings; .gitattributes pins them.

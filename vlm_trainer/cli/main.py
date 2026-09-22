@@ -483,23 +483,18 @@ def cmd_new(a: argparse.Namespace) -> int:
     print(f"  편집기: vlmt edit {proj}")
     print(f"  샘플 인덱스: project.yaml의 sample_space.index가 가리키는 JSONL을 먼저 만들어라")
     if a.edit:
-        from ..ui import server as server_mod
+        from ..ui import app as app_mod
 
-        server_mod.serve(proj, port=a.port, open_browser=True, extra_modules=tuple(a.nodes))
+        return app_mod.launch(proj, extra_modules=tuple(a.nodes))
     return 0
 
 
 def cmd_edit(a: argparse.Namespace) -> int:
-    from ..ui import server as server_mod
+    """그래프 편집기를 연다. 창 하나로 뜨는 네이티브 앱이다.
 
-    _load_nodes(a.nodes)
-    server_mod.serve(a.spec, port=a.port, open_browser=a.open, extra_modules=tuple(a.nodes))
-    return 0
-
-
-def cmd_app(a: argparse.Namespace) -> int:
-    """네이티브 편집기 창. 웹판(`vlmt edit`)과 같은 api.py 를 쓴다 —
-    화면을 그리는 방식만 다르다."""
+    이름을 `edit` 그대로 둔 이유: `editor.bat`, `new-project.bat --edit`, 문서가 전부
+    이 이름을 쓴다. 안이 웹에서 Qt 로 바뀐 것은 부르는 쪽이 알 필요가 없다.
+    """
     from ..ui import app as app_mod
 
     _load_nodes(a.nodes)
@@ -782,15 +777,14 @@ def build_parser() -> argparse.ArgumentParser:
     nw.add_argument("--port", type=int, default=8770)
     nw.set_defaults(func=cmd_new)
 
-    ed = sub.add_parser("edit", help="그래프 편집기를 연다 (127.0.0.1 로컬 서버)")
+    ed = sub.add_parser("edit", help="그래프 편집기를 연다 (네이티브 창)")
     ed.add_argument("spec")
-    ed.add_argument("--port", type=int, default=8770)
-    ed.add_argument("--open", action="store_true")
     ed.set_defaults(func=cmd_edit)
 
-    ap = sub.add_parser("app", help="그래프 편집기를 네이티브 창으로 연다 (PySide6 필요)")
-    ap.add_argument("spec")
-    ap.set_defaults(func=cmd_app)
+    # `app` 은 이식하는 동안 쓰던 이름이다. 손가락이 기억하는 것을 끊지 않는다.
+    ap2 = sub.add_parser("app", help="`edit` 과 같다")
+    ap2.add_argument("spec")
+    ap2.set_defaults(func=cmd_edit)
 
     bb = sub.add_parser("backbones", help="등록된 백본과 그 형상을 보여준다 (가중치는 열지 않는다)")
     bb.add_argument("--add", default="", help="hf:<경로 또는 모델 id>를 config.json만 읽어 등록한다")

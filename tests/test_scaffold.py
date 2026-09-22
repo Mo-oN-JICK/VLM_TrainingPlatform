@@ -65,20 +65,6 @@ def test_the_editor_opens_the_empty_project_and_says_what_is_missing(tmp_path):
     assert not ed.save()["ok"], "미완성인 껍데기를 저장하지 않는다"
 
 
-def test_you_can_start_building_in_the_empty_project(tmp_path):
-    proj, _ = scaffold.new_project(str(tmp_path / "s"))
-    ed = Editor.open(proj)
-
-    assert ed.add_node("source.image@1.0.0")["ok"]
-    assert ed.add_node("ts.plot@1.0.0")["ok"]
-    assert len(ed.compiled.nodes) == 2
-
-    from vlm_trainer.ui import render as render_mod
-
-    page = render_mod.render_editor(ed)
-    assert page.count('class="libnode"') >= 25, "빈 그래프에서도 라이브러리는 온전하다"
-
-
 def test_the_cli_exposes_it():
     from vlm_trainer.cli.main import build_parser
 

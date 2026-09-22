@@ -53,10 +53,12 @@ def make_venv() -> bool:
 
 def install() -> bool:
     say("")
-    say("[2/4] 패키지를 설치합니다 (pyyaml, numpy, pillow, vlmt 명령)...")
+    say("[2/4] 패키지를 설치합니다 (pyyaml, numpy, pillow, 편집기, vlmt 명령)...")
     run([str(PY), "-m", "ensurepip", "--upgrade"], quiet=True)
     run([str(PY), "-m", "pip", "install", "-q", "--upgrade", "pip"])
-    if run([str(PY), "-m", "pip", "install", "-q", "-e", str(ROOT)]) != 0:
+    # `[app]` 은 편집기(PySide6)다. 없으면 editor.bat 이 안내만 하고 멈춘다.
+    # 헤드리스 서버라면 `pip install -e .` 로 이것만 빼면 된다 — 나머지는 전부 돈다.
+    if run([str(PY), "-m", "pip", "install", "-q", "-e", str(ROOT) + "[app]"]) != 0:
         say("  [오류] 패키지 설치에 실패했습니다.")
         return False
     return True

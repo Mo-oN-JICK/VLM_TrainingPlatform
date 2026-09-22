@@ -35,6 +35,7 @@
 ```
 
 편집기로 그래프를 보려면 `editor.bat solutions\vlm_open\projects\01_open\project.yaml`.
+창 하나로 뜨는 네이티브 앱이다. 처음이라면 `pip install -e .[app]` 로 PySide6 를 깐다.
 
 `trainer.yaml`의 백본은 `tiny-vlm`이다 — 저장소에 들어 있어 **가중치를 내려받지 않고도**
 데이터 적재부터 손실·저장까지 전부 돈다. 실물 2B 백본은 `trainer_qwen2vl.yaml` 쪽이고,

@@ -9,7 +9,6 @@ import pytest
 
 from vlm_trainer.core.compiler import compile_project
 from vlm_trainer.spec import recipe as recipe_mod
-from vlm_trainer.ui import server as server_mod
 from vlm_trainer.ui import tokens as T
 from vlm_trainer.ui.api import Editor, compat_matrix
 
@@ -161,36 +160,25 @@ def test_editing_does_not_touch_disk_until_save(ed):
 # ── HTTP 껍데기 ─────────────────────────────────────────────────────────
 
 
-def test_router_returns_state_and_errors(ed):
-    code, payload = server_mod.handle(ed, "/api/state", {})
-    assert code == 200 and payload["ok"] and len(payload["nodes"]) == 25
+def test_api_answers_with_state_and_refusals(ed):
+    """편집기가 웹에서 앱으로 옮겨가며 HTTP 라우팅이 사라졌다. 그 계층이 검사하던 것은
+    라우팅이 아니라 **api 의 대답**이었으므로, 이제 직접 묻는다."""
+    st = ed.state()
+    assert st["ok"] and len(st["nodes"]) == 25
 
-    code, payload = server_mod.handle(ed, "/api/connect", {"from": "n_ts:series", "to": "n_plot_rs:image"})
-    assert code == 409 and not payload["ok"] and payload["reason"]
+    res = ed.connect("n_ts:series", "n_plot_rs:image")
+    assert not res["ok"] and res["reason"]
 
-    code, payload = server_mod.handle(ed, "/api/nope", {})
-    assert code == 404
-
-    code, payload = server_mod.handle(ed, "/api/library", {})
-    assert code == 200 and len(payload["nodes"]) >= 25
+    assert len(ed.library()) >= 25
 
 
 def test_successful_mutation_returns_fresh_state(ed):
-    code, payload = server_mod.handle(ed, "/api/param", {"node": "n_stats", "param": "z_thresh", "value": 2.0})
-    assert code == 200 and payload["ok"]
-    assert payload["state"]["dirty"] is True
-    node = next(n for n in payload["state"]["nodes"] if n["id"] == "n_stats")
+    res = ed.set_param("n_stats", "z_thresh", 2.0)
+    assert res["ok"]
+    state = ed.state()
+    assert state["dirty"] is True
+    node = next(n for n in state["nodes"] if n["id"] == "n_stats")
     assert node["params"]["z_thresh"] == 2.0
-
-
-def test_editor_page_carries_the_compat_table(ed):
-    from vlm_trainer.ui import render as render_mod
-
-    page = render_mod.render_editor(ed)
-    assert "window.COMPAT" in page and "window.EDITABLE" in page
-    assert 'data-ref="n_ts:series"' in page
-    assert "okdrop" in page and "nodrop" in page
-    assert "vlmtSave" in page
 
 
 # ── 파라미터 편집 패널 ──────────────────────────────────────────────────
@@ -214,21 +202,6 @@ def test_state_carries_param_meta(ed):
     node = next(n for n in st["nodes"] if n["id"] == "n_stats")
     names = {m["name"] for m in node["param_meta"]}
     assert names == {"z_thresh", "channel"}
-
-
-def test_editor_page_has_a_params_panel_per_node(ed):
-    from vlm_trainer.ui import render as render_mod
-
-    page = render_mod.render_editor(ed)
-    # 접힌 Procedure는 상자 하나로 센다 — 안쪽 노드는 패널에도 나오지 않는다
-    from vlm_trainer.ui.render import fold
-
-    shown, _ = fold(ed.compiled)
-    assert page.count('class="params"') == len(shown)
-    assert 'data-node="n_stats"' in page
-    assert "vlmtParam(" in page and "vlmtSelect(" in page
-    # 선택된 카드는 실측한 선택 색을 쓴다
-    assert T.NODE["bg_selected"] in page and T.NODE["border_selected"] in page
 
 
 def test_type_affecting_change_is_rechecked_by_the_gates(ed):
@@ -322,28 +295,16 @@ def test_journal_is_written_next_to_the_spec(ed):
     assert any("z_thresh" in d for d in lines[-1]["diff"])
 
 
-def test_router_exposes_history(ed):
-    code, payload = server_mod.handle(ed, "/api/param", {"node": "n_stats", "param": "z_thresh", "value": 4.5})
-    assert code == 200 and len(payload["state"]["history"]) == 2
+def test_history_records_and_rewinds(ed):
+    assert ed.set_param("n_stats", "z_thresh", 4.5)["ok"]
+    assert len(ed.state()["history"]) == 2
 
-    code, payload = server_mod.handle(ed, "/api/undo", {})
-    assert code == 200 and payload["state"]["cursor"] == 0
+    assert ed.undo()["ok"] and ed.state()["cursor"] == 0
 
-    code, payload = server_mod.handle(ed, "/api/undo", {})
-    assert code == 409 and "되돌릴 편집이 없다" in payload["reason"]
+    again = ed.undo()
+    assert not again["ok"] and "되돌릴 편집이 없다" in again["reason"]
 
-    code, payload = server_mod.handle(ed, "/api/rewind", {"index": 1})
-    assert code == 200 and payload["state"]["cursor"] == 1
-
-
-def test_history_panel_renders_points_and_diffs(ed):
-    from vlm_trainer.ui import render as render_mod
-
-    ed.set_param("n_stats", "z_thresh", 4.5)
-    page = render_mod.render_editor(ed)
-    assert page.count('class="hrow') == 2
-    assert "vlmtRewind(" in page and "vlmtUndo()" in page
-    assert "z_thresh: 4.5" in page
+    assert ed.rewind(1)["ok"] and ed.state()["cursor"] == 1
 
 
 # ── 노드 추가·삭제와 미완성 상태 ────────────────────────────────────────
@@ -396,27 +357,13 @@ def test_removing_a_node_leaves_the_rest_wired(ed):
     assert ed.valid and "n_stats" in ed.compiled.nodes
 
 
-def test_library_panel_offers_click_and_drag(ed):
-    from vlm_trainer.ui import render as render_mod
+def test_add_and_remove(ed):
+    res = ed.add_node("ts.stats@1.0.0")
+    assert res["ok"] and res["id"] == "n_stats_2"
+    assert ed.state()["valid"] is False      # 아직 아무것도 안 물린 노드가 있다
 
-    page = render_mod.render_editor(ed)
-    assert page.count('class="libnode"') >= 25
-    assert "vlmtAdd(" in page and "vlmtRemove(" in page
-    # 끌어다 놓기는 배선 드래그와 같은 마우스 이벤트를 쓴다
-    assert "libdrag" in page and "candrop" in page
-    assert "dataTransfer" not in page, "손잡이는 한 벌만 둔다"
-
-    viewer = render_mod.render(ed.compiled)
-    assert "vlmtAdd(" not in viewer, "뷰어에는 편집 손잡이가 없어야 한다"
-
-
-def test_router_add_and_remove(ed):
-    code, payload = server_mod.handle(ed, "/api/add", {"type": "ts.stats@1.0.0"})
-    assert code == 200 and payload["id"] == "n_stats_2"
-    assert payload["state"]["valid"] is False
-
-    code, payload = server_mod.handle(ed, "/api/remove", {"node": "n_stats_2"})
-    assert code == 200 and payload["state"]["valid"] is True
+    assert ed.remove_node("n_stats_2")["ok"]
+    assert ed.state()["valid"] is True
 
 
 def test_unwired_external_call_node_waits_for_wiring(ed):
@@ -424,21 +371,6 @@ def test_unwired_external_call_node_waits_for_wiring(ed):
     res = ed.add_node("expert.propose@1.0.0")
     assert res["ok"], res.get("reason")
     assert not ed.valid and not ed.save()["ok"]
-
-
-def test_every_handler_the_page_calls_is_defined(ed):
-    """인라인 onclick이 부르는 함수가 실제로 선언되어 있어야 한다."""
-    import re
-
-    from vlm_trainer.ui import render as render_mod
-
-    page = render_mod.render_editor(ed)
-    assert "async async" not in page, "패치가 키워드를 겹쳐 스크립트 전체가 죽는다"
-
-    called = set(re.findall(r'onclick="(vlmt\w+)\(', page))
-    declared = set(re.findall(r"(?:async )?function (vlmt\w+)\(", page))
-    assert called, "편집기인데 손잡이가 하나도 없다"
-    assert called <= declared, f"선언되지 않은 핸들러: {sorted(called - declared)}"
 
 
 # ── Parameter Recipe ────────────────────────────────────────────────────
@@ -516,40 +448,15 @@ def test_deleting_the_applied_recipe_takes_the_overlay_off(ed):
     assert ed.compiled.nodes["n_stats"].params["z_thresh"] == 3.0
 
 
-def test_recipe_panel_says_the_values_are_not_saved(ed):
-    from vlm_trainer.ui import render as render_mod
+def test_recipe_roundtrip(ed):
+    assert ed.recipe_select(3)["ok"] and ed.state()["recipe"]["applied"] == 3
 
-    ed.recipe_select(2)
-    page = render_mod.render_editor(ed)
-    assert "적용 중" in page and "프로젝트에는 저장되지 않는다" in page
-    assert page.count('class="rrow') >= 4
-    assert "레시피</span>" in page, "덮인 파라미터에 표식이 없다"
+    assert ed.recipe_drop_path("p_crop.max_n")["ok"]
 
+    # 화이트리스트 밖의 파라미터는 레시피 축이 될 수 없다
+    assert not ed.recipe_add_path("n_img.color_space")["ok"]
 
-def test_router_recipe_roundtrip(ed):
-    code, payload = server_mod.handle(ed, "/api/recipe/select", {"id": 3})
-    assert code == 200 and payload["state"]["recipe"]["applied"] == 3
-
-    code, payload = server_mod.handle(ed, "/api/recipe/drop-path", {"path": "p_crop.max_n"})
-    assert code == 200
-
-    code, payload = server_mod.handle(ed, "/api/recipe/add-path", {"path": "n_img.color_space"})
-    assert code == 409 and not payload["ok"]
-
-    code, payload = server_mod.handle(ed, "/api/recipe/select", {"id": None})
-    assert code == 200 and payload["state"]["recipe"]["applied"] is None
-
-
-def test_click_targets_are_big_enough_to_hit(ed):
-    """8px짜리 손잡이는 사람도 못 누른다. 그리드 칸과 줄 높이로 영역을 확보한다."""
-    from vlm_trainer.ui import render as render_mod
-
-    ed.recipe_select(2)
-    css = render_mod.render_editor(ed)
-    for handle in (".odrop{", ".rrow .rdel{", ".padd{"):
-        block = css.split(handle, 1)[1].split("}", 1)[0]
-        assert "line-height:20px" in block or "line-height:16px" in block, handle
-        assert "min-width:20px" in block or "min-width:16px" in block, handle
+    assert ed.recipe_select(None)["ok"] and ed.state()["recipe"]["applied"] is None
 
 
 # ── 실행 ────────────────────────────────────────────────────────────────
@@ -678,17 +585,6 @@ def test_a_stopped_run_is_not_reported_as_a_failure(ed_with_data, tmp_path, monk
 
     assert st["stopped"] is True
     assert "console" not in st, "중지는 실패가 아니므로 콘솔 꼬리를 들이밀지 않는다"
-
-
-def test_run_handlers_are_declared_like_the_rest(ed):
-    import re
-
-    from vlm_trainer.ui import render as render_mod
-
-    page = render_mod.render_editor(ed)
-    called = set(re.findall(r'onclick="(vlmt\w+)\(', page))
-    declared = set(re.findall(r"(?:async )?function (vlmt\w+)\(", page))
-    assert {"vlmtRun", "vlmtRunStop"} <= called <= declared
 
 
 # ── 세션을 넘는 History ─────────────────────────────────────────────────
@@ -894,16 +790,6 @@ def test_the_sample_space_edit_survives_a_save(ed_with_data):
     assert again.graph.sample_space.filter == ""
 
 
-def test_the_panel_is_rendered_for_the_editor_only(ed_with_data):
-    ed = ed_with_data
-    from vlm_trainer.ui import render as render_mod
-
-    page = render_mod.render_editor(ed)
-    assert "Sample Space" in page and "vlmtSpace(" in page
-    assert "샘플 22건" in page
-    assert "vlmtSpace(" not in render_mod.render(ed.compiled)
-
-
 # ── 물질화와 학습 ───────────────────────────────────────────────────────
 
 
@@ -1030,24 +916,6 @@ def test_the_profile_can_be_switched_from_the_editor(ed):
     assert Editor.open(ed.path).graph.runtime_profile == "linux_multi_gpu"
 
 
-def test_the_page_shows_the_boundary_and_offers_the_profile(ed):
-    from vlm_trainer.ui import render as render_mod
-
-    page = render_mod.render_editor(ed)
-    assert page.count('class="mat"') == 1, "경계에 있는 노드가 카드에 표시된다"
-    # 보이는 노드마다 하나씩, 거기에 함수 정의 하나.
-    # 접힌 Procedure 상자에는 경계 토글이 없다 — 경계는 실제 노드 이름을 가리킨다
-    from vlm_trainer.ui.render import fold
-
-    shown, _ = fold(ed.compiled)
-    plain = [k for k in shown if not shown[k].inner]
-    assert page.count("vlmtBoundary(") == len(plain) + 1
-    assert 'class="prof"' in page and "linux_multi_gpu" in page
-
-    viewer = render_mod.render(ed.compiled)
-    assert "vlmtBoundary(" not in viewer and 'class="prof"' not in viewer
-
-
 def test_expanding_a_box_does_not_touch_the_spec(ed):
     """접기는 보는 방식일 뿐이다. 스펙도 History도 건드리지 않는다."""
     before_hash = ed.compiled.spec_hash
@@ -1066,22 +934,6 @@ def test_expanding_a_box_does_not_touch_the_spec(ed):
 def test_an_unknown_procedure_says_what_exists(ed):
     res = ed.toggle_expand("p_없음")
     assert not res["ok"] and "p_crop" in res["reason"]
-
-
-def test_the_page_folds_by_default_and_offers_a_handle(ed):
-    from vlm_trainer.ui import render as render_mod
-
-    page = render_mod.render_editor(ed)
-    # 카드 하나 + 우측 설정 블록 하나. 안쪽 노드는 어느 쪽에도 없다
-    assert page.count('data-node="p_crop"') == 2
-    assert 'data-node="p_crop/n_crop"' not in page, "기본은 접혀 있어야 한다"
-    assert "vlmtExpand(" in page
-    assert "topk" in page, "노출 파라미터는 접힌 채로도 보인다"
-
-    ed.toggle_expand("p_crop")
-    page = render_mod.render_editor(ed)
-    assert 'data-node="p_crop/n_crop"' in page
-    assert page.count('data-node="p_crop"') == 0
 
 
 def test_the_gates_see_the_expanded_graph_either_way(ed):

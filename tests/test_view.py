@@ -331,34 +331,11 @@ def test_the_card_shows_the_korean_name_and_keeps_the_id(cg, page):
     assert resolve_node("source.image@1.0.0").doc.label == "이미지 업로드"
 
 
-def test_the_right_panel_is_tabbed_like_the_reference(cg):
-    """설계 문서 12.1의 파티션: Debug Output(위) + 탭으로 나뉜 Configuration Panel(아래).
-    한 줄로 흘려 두면 스크롤로만 찾게 된다."""
-    from vlm_trainer.ui.render import render
-
-    page = render(cg, editable=True, editor=None)
-    # 탭 이름은 한국어 짧은 말이다 — 영어 이름은 길어 두 줄로 접혔다
-    for tab in ("노드 설정", "프로젝트", "노드 정보", "이력"):
-        assert f">{tab}</span>" in page, tab
-    assert page.count('class="tabbody"') == 4
-    # 미리보기가 없으면 이 칸은 안내 한 줄뿐이다 — 48vh를 잡고 있을 이유가 없다
-    assert 'class="dbgpane slim"' in page
-
-
 def test_the_viewer_has_no_dead_tabs(cg, page):
     """뷰어는 스크립트를 싣지 않는다. 눌러도 안 바뀌는 탭은 없느니만 못하다."""
     assert '<script' not in page
     assert 'class="tabs"' not in page
     assert "Node Quick Info" in page, "내용은 여전히 보여야 한다"
-
-
-def test_the_library_is_searchable_in_korean(cg):
-    from vlm_trainer.ui.render import render
-
-    page = render(cg, editable=True, editor=None)
-    assert "vlmtLibFilter(" in page and 'class="libsearch"' in page
-    assert "이미지 리사이즈" in page, "라이브러리가 한국어 이름을 보여야 검색이 걸린다"
-    assert "adapt.image_resize" in page, "타입은 툴팁과 data-type 에 남아 있어야 한다"
 
 
 def test_a_gate_violation_does_not_push_the_canvas_around(cg):
@@ -401,15 +378,6 @@ def test_cards_say_what_they_do_not_what_they_are_set_to(cg, page):
 
     missing = [d.type for d in all_defs() if not d.doc.hint and not d.type.startswith("test.")]
     assert not missing, missing
-
-
-def test_the_parameter_panel_carries_the_expert_controls(cg):
-    """값만 고치는 패널이면 전문가는 결국 캔버스와 Quick Info를 오간다."""
-    page = render_mod.render(cg, editable=True, editor=None)
-    for section in ("하는 일", "연결", "포트 타입", "이 노드 다루기"):
-        assert f"<summary>{section}</summary>" in page, section
-    assert "vlmtDisconnect(" in page, "패널에서 배선을 끊을 수 있어야 한다"
-    assert "노드 삭제" in page
 
 
 def test_library_rows_line_up_on_the_left(cg):
