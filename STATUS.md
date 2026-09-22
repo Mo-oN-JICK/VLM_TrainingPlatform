@@ -4,9 +4,9 @@
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
 - 최종 갱신: 2026-09-22
-- 마지막 커밋: `94323b8` 앱에서 실행까지 — Run · Materialize · Train
-- **지금 하는 일: 편집기를 Qt 네이티브 앱으로 옮기는 중. 5/6단계까지 끝났다 → §8**
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **313 passed, 1 skipped**
+- 마지막 커밋: `3fe36d2` 웹 편집기를 걷어낸다 — 편집기는 네이티브 앱 하나다
+- **편집기가 Qt 네이티브 앱이다. 웹 편집기는 걷어냈다 → §8**
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **312 passed, 1 skipped**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -531,7 +531,7 @@ Project Tabs·Log 패널·Toolbar 버튼 구성까지 맞출 수 있다.
 
 ---
 
-\\ 8. 편집기 Qt 이식 — 진행 중 (2026-09-22)
+## 8. 편집기 Qt 이식 — 완료 (2026-09-22)
 
 웹 편집기를 PySide6 네이티브 앱으로 옮기고 있다. 사용자 결정: **3단계(네이티브 위젯
 재작성) + 앱으로 일원화**(웹 편집기는 걷어낸다). 계획서는
@@ -540,7 +540,7 @@ Project Tabs·Log 패널·Toolbar 버튼 구성까지 맞출 수 있다.
 동기는 둘. 창이 두 개(콘솔 + 브라우저) 뜨는 것, 그리고 **팬/줌이 없는 것**.
 DOM 상자라 휠 줌이 안 됐다.
 
-\\\ 끝난 단계
+### 끝난 단계
 
 | | 내용 | 커밋 |
 |---|---|---|
@@ -549,23 +549,29 @@ DOM 상자라 휠 줌이 안 됐다.
 | 2~4 | 창 · 캔버스 · 편집 · 패널 넷 | `6f9b87c` |
 | 5 | 실행 (Run/Materialize/Train · 진행 · 따라가기) | `94323b8` |
 
-`vlmt app <project.yaml>` 로 연다. **웹판 `vlmt edit` 은 아직 그대로 살아 있다.**
+`vlmt edit <project.yaml>` 또는 `editor.bat` 로 연다.
 
-\\\ 남은 것 — 6단계
+### 6단계 — 끝났다
 
-- [ ] `ui/server.py` 삭제, `ui/render.py` 에서 `render_editor`·`_EDITOR_JS`(564줄)·
-      편집기 패널 제거 — 합 **896줄**
-- [ ] `vlmt edit` → Qt 앱을 연다. **명령 이름은 그대로 둔다**
-      (`editor.bat`, `new-project.bat --edit`, 문서가 전부 이 이름을 쓴다)
-- [ ] **`vlmt view` 는 손대지 않는다** — CLI 기능이라 편집기와 무관하게 살아남는다
-- [ ] 테스트: HTML 을 보던 11개를 다시 쓴다. 대부분 `layout.fold()` 같은 로직
-      테스트로 내려보낼 수 있다. 위젯이 필요한 것만 offscreen
-- [ ] 스트레스 테스트 편입 — 실제 마우스 이벤트로 무작위 조작.
-      세그폴트를 이것으로 잡았다
-- [ ] PySide6 **없이** 코어가 도는지 별도 venv 로 검증 — 규약을 지키는 유일한 장치
-- [ ] `STATUS.md` · `README.md` · 배치 파일 · solution README 갱신
+- [x] `ui/server.py` 삭제, `ui/render.py` 에서 편집기 전용 코드 제거.
+      **1641 → 690줄**. `render()` 의 `editable` 경로가 통째로 사라졌다
+- [x] `vlmt edit` → Qt 앱. 이름은 그대로 뒀다(`app` 은 별칭). `new-project.bat --edit` 도 같은 곳
+- [x] **`vlmt view` 는 그대로다.** 왼쪽 레일만 "라이브러리 전체" 에서
+      "이 그래프가 쓴 카테고리" 로 바꿨다 — 고를 수 없는 목록은 뷰어에 둘 이유가 없다
+- [x] `tests/test_app.py` 신규. 위젯이 필요 없는 것은 `layout` 에 직접 묻고,
+      필요한 것만 QApplication 을 띄운다. 스트레스 테스트(무작위 60회) 포함
+- [x] `test_the_core_runs_without_the_editor` — PySide6 임포트를 막고 코어가 도는지
+- [x] 문서 · `setup.py`(이제 `[app]` 까지 설치) · README 갱신
 
-\\\ 이식하며 알게 된 것 (함정)
+**거부는 비모달이다.** 모달을 띄우면 배선을 끄는 중에 대화상자가 앞을 가로막고
+자동화도 거기서 멈춘다. 상태표시줄에 붉게 띄우고 전문은 실행 도크 콘솔에 남긴다.
+
+### 남은 것
+
+- [ ] 4090 PC 에서 실물 확인 — `git pull` → `setup.bat` → `editor.bat`
+- [ ] 캔버스 성능은 노드 수십 개까지만 봤다. 수백 개는 아직
+
+### 이식하며 알게 된 것 (함정)
 
 - **이벤트 핸들러 안에서 `scene.clear()` 를 부르면 죽는다(세그폴트).** Qt 가 지금
   처리 중인 아이템을 지워 버린다. 컨텍스트 메뉴는 더 나쁘다 — `menu.exec()` 의 중첩
@@ -580,7 +586,7 @@ DOM 상자라 휠 줌이 안 됐다.
   `solutions` 전체를 임시 폴더에 복사해서 돌린다(프로시저가 위쪽에 있어 일부만
   복사하면 컴파일되지 않는다)
 
-\\\ 이식 범위 밖에서 본 것
+### 이식 범위 밖에서 본 것
 
 `source.image` 의 `color_space` 가 출력 PortType 에 반영되지 않는다. RGB 로 읽든
 GRAY 로 읽든 선언 타입이 같아서 나중에 `adapt.*` 색공간 변환과 대조할 수 없다.
