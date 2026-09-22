@@ -497,6 +497,15 @@ def cmd_edit(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_app(a: argparse.Namespace) -> int:
+    """네이티브 편집기 창. 웹판(`vlmt edit`)과 같은 api.py 를 쓴다 —
+    화면을 그리는 방식만 다르다."""
+    from ..ui import app as app_mod
+
+    _load_nodes(a.nodes)
+    return app_mod.launch(a.spec, extra_modules=tuple(a.nodes))
+
+
 def cmd_backbones(a: argparse.Namespace) -> int:
     from ..plugins.base import all_backbones, resolve_backbone
 
@@ -778,6 +787,10 @@ def build_parser() -> argparse.ArgumentParser:
     ed.add_argument("--port", type=int, default=8770)
     ed.add_argument("--open", action="store_true")
     ed.set_defaults(func=cmd_edit)
+
+    ap = sub.add_parser("app", help="그래프 편집기를 네이티브 창으로 연다 (PySide6 필요)")
+    ap.add_argument("spec")
+    ap.set_defaults(func=cmd_app)
 
     bb = sub.add_parser("backbones", help="등록된 백본과 그 형상을 보여준다 (가중치는 열지 않는다)")
     bb.add_argument("--add", default="", help="hf:<경로 또는 모델 id>를 config.json만 읽어 등록한다")
