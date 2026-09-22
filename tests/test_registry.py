@@ -55,14 +55,19 @@ def test_processing_node_needs_both_sides():
         )(_Dummy)
 
 
-def test_output_node_may_not_have_output_ports():
+def test_output_node_must_have_an_input():
+    """Output 은 **부작용을 일으키는 자리**이지 반드시 그래프의 끝은 아니다.
+
+    출력 포트를 갖는 것은 이제 허용된다 — `모델 학습` 이 체크포인트를 쓰고(부작용)
+    그 산출물을 `모델 추론` 에 넘긴다. 입력이 없는 Output 은 여전히 말이 안 된다.
+    """
     with pytest.raises(RegistrationError, match="Output 노드는"):
         register(
-            type="bad.output_with_outputs",
+            type="bad.output_without_input",
             version="1.0.0",
             category="X",
             kind=NodeKind.OUTPUT,
-            inputs={"x": Port(text())},
+            inputs={},
             outputs={"y": Port(text())},
         )(_Dummy)
 

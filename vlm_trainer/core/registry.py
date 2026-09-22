@@ -29,9 +29,13 @@ def _check_shape(d: NodeDef) -> None:
             f"{d.ref}: Processing 노드는 입력과 출력이 각각 1개 이상이어야 한다 "
             f"(현재 입력 {n_in}, 출력 {n_out})"
         )
-    if d.kind is NodeKind.OUTPUT and (n_in < 1 or n_out != 0):
+    # Output 은 **부작용을 일으키는 자리**이지 반드시 그래프의 끝은 아니다.
+    # `모델 학습` 은 체크포인트를 디스크에 쓰고(부작용), 그 산출물을 가리키는 값을 내보내
+    # `모델 추론` 이 받는다. 그 선이 없으면 "학습한 모델로 추론한다" 가 화면에서 사라진다.
+    # 금지는 그대로 남는다 — 출력만 있고 입력이 없는 Output 은 여전히 말이 안 된다.
+    if d.kind is NodeKind.OUTPUT and n_in < 1:
         raise RegistrationError(
-            f"{d.ref}: Output 노드는 입력이 1개 이상이고 출력 포트가 없어야 한다 "
+            f"{d.ref}: Output 노드는 입력이 1개 이상이어야 한다 "
             f"(현재 입력 {n_in}, 출력 {n_out})"
         )
 

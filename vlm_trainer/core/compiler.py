@@ -199,16 +199,23 @@ def _topo(node_ids: List[str], edges: List[Edge]) -> Tuple[List[str], List[str]]
 
 
 def _lanes(order: List[str], edges: List[Edge], kinds: Dict[str, NodeKind]) -> Dict[str, int]:
+    """수직 흐름의 단. Input 은 맨 위, 종결되는 Output 은 맨 아래.
+
+    **뒤로 이어지는 Output 은 맨 아래로 밀지 않는다.** `모델 학습` 처럼 산출물을 내보내
+    다음 상자(`모델 추론`)가 받는 경우가 있다. 그것까지 맨 아래로 밀면 받는 쪽이
+    "맨 아래보다 더 아래" 를 요구하게 되어 흐름이 거꾸로 보인다.
+    """
     depth = {i: 0 for i in order}
     for i in order:
         for e in edges:
             if e.dst_node == i and e.src_node in depth:
                 depth[i] = max(depth[i], depth[e.src_node] + 1)
     max_d = max(depth.values(), default=0)
+    feeds_on = {e.src_node for e in edges}
     for i, k in kinds.items():
         if k is NodeKind.INPUT:
             depth[i] = 0
-        elif k is NodeKind.OUTPUT:
+        elif k is NodeKind.OUTPUT and i not in feeds_on:
             depth[i] = max_d + 1
     return depth
 
@@ -437,7 +444,26 @@ def compile_graph(
     # **인라인된** 배선을 본다. 바깥 그래프의 edges만 보면 Procedure 안에서
     # 외부 모델을 부르는 노드가 통째로 빠진다.
     wired_all = {e.src_node for e in edges} | {e.dst_node for e in edges}
-    externals = [i for i in order if defs[i].external_call and i in wired_all]
+
+    # 이 검사가 막는 위험은 딱 하나다 — **학습 루프 안에서** 외부 모델이 VRAM 을 뺏는 것.
+    # 학습보다 **뒤에** 있는 노드는 루프 안에 있을 수가 없다. `모델 추론` 이 그렇다:
+    # 학습이 끝나고 그 산출물을 받아 도는 것이라 학습과 GPU 를 나눠 쓰지 않는다.
+    # 없는 위험을 게이트가 말하기 시작하면 사람이 게이트를 믿지 않게 된다.
+    trainers = {i for i in order if not defs[i].per_sample}
+    after_train: Set[str] = set()
+    if trainers:
+        stack = list(trainers)
+        while stack:
+            cur = stack.pop()
+            for e in edges:
+                if e.src_node == cur and e.dst_node not in after_train:
+                    after_train.add(e.dst_node)
+                    stack.append(e.dst_node)
+
+    externals = [
+        i for i in order
+        if defs[i].external_call and i in wired_all and i not in after_train
+    ]
     # 학습 루프가 있는 그래프에서만 묻는다. 루프가 없으면 "루프 안에서 돈다"는 위험 자체가 없고,
     # 게이트가 실제로 없는 위험을 말하기 시작하면 게이트를 믿지 않게 된다.
     trains = any(not defs[i].per_sample for i in order)
@@ -468,6 +494,8 @@ def compile_graph(
         for nid in order:
             if draft and nid not in wired_all:
                 continue
+            if nid in after_train:
+                continue  # 학습 뒤에 있는 것은 루프 안에 있을 수 없다
             if defs[nid].external_call and nid not in pre:
                 errors.append(
                     PolicyError(
