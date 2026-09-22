@@ -11,3 +11,7 @@ solutions/vlm_parts/data/
 *.egg-info/
 layout.yaml
 set
+
+
+# Personal agent settings live in ~/.claude now, not in the project.
+.claude/

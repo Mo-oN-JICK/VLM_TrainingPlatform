@@ -144,6 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     bb = sub.add_parser("backbones", help="등록된 백본과 그 형상을 보여준다 (가중치는 열지 않는다)")
     bb.add_argument("--add", default="", help="hf:<경로 또는 모델 id>를 config.json만 읽어 등록한다")
+    bb.add_argument("--fetch", default="", help="가중치까지 내려받는다 (수 GB). 받은 뒤 등록한다")
     bb.set_defaults(func=cmd_backbones)
 
     vw = sub.add_parser("view", help="컴파일된 그래프를 한 장의 HTML로 그린다 (읽기 전용)")

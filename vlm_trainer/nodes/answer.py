@@ -93,8 +93,8 @@ class StepwiseParams:
     recipe_overridable=["render"],
     preview="answer_render",
     doc=NodeDoc(
-        label="정답 텍스트 생성",
-            hint="스키마 항목 순서대로 학습 정답 문장을 만듭니다.",
+        label="학습용 정답 답변 생성",
+            hint="정한 형식대로 학습에 쓸 정답 문장을 만듭니다.",
         summary="스키마가 선언한 단계 순서대로 정답 Text를 만든다.",
         scenario="렌더러와 파서가 같은 스키마에서 생성되므로 학습과 추론이 어긋날 수 없다.",
     ),
@@ -154,8 +154,8 @@ class ValidateParams:
     recipe_overridable=["on_violation", "max_tokens"],
     preview="answer_validated",
     doc=NodeDoc(
-        label="정답 스키마 검증",
-        hint="생성된 정답이 스키마를 지키는지 검사합니다.",
+        label="답변 형식 검사",
+        hint="만들어진 답변이 정한 형식을 지키는지 검사합니다.",
         summary="정답 Text가 스키마를 지키는지 검사한다.",
         scenario="위반 샘플은 격리된다. 위반율이 임계를 넘으면 dry-run이 학습 전에 멈춘다.",
     ),
@@ -206,8 +206,8 @@ class GuardParams:
     clears_taint=["label", "answer"],
     preview="leak_report",
     doc=NodeDoc(
-        label="정답 누설 검사",
-        hint="정답 어휘가 프롬프트에 섞여 들어갔는지 검사합니다.",
+        label="문제에 답이 섞였는지 검사",
+        hint="답이 질문에 섞여 들어갔는지 봅니다. 섞이면 모델이 보고 베낍니다.",
         summary="정답 어휘가 프롬프트에 섞였는지 검사한다. taint를 제거하는 유일한 노드.",
         scenario="정적 taint 검사(G2)가 경로를 막고, 이 노드가 실제 문자열을 본다.",
     ),

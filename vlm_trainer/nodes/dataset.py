@@ -198,8 +198,8 @@ class AssembleParams:
     recipe_overridable=["require_validated"],
     preview="sample_card",
     doc=NodeDoc(
-        label="학습 샘플 조립",
-        hint="이미지·프롬프트·정답을 학습 샘플 한 건으로 묶습니다.",
+        label="학습 데이터 맵핑",
+        hint="이미지·질문·정답을 학습 데이터 한 건으로 묶습니다.",
         summary="이미지·프롬프트·정답을 학습 샘플 한 건으로 묶는다.",
         scenario="자리표시자 개수와 실제 이미지 개수를 실측으로 대조한다 — "
         "어긋나면 이미지가 조용히 무시된 채 텍스트만 학습된다.",

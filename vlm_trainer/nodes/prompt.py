@@ -113,8 +113,8 @@ class ImageSlotParams:
     recipe_overridable=["placeholder", "policy"],
     preview="prompt_render",
     doc=NodeDoc(
-        label="이미지 슬롯 삽입",
-            hint="이미지 개수만큼 자리표시자를 프롬프트에 넣습니다.",
+        label="학습 이미지 맵핑",
+            hint="질문 안에 이미지가 들어갈 자리를 만듭니다.",
         summary="이미지 개수만큼 자리표시자를 프롬프트에 넣는다.",
         scenario="자리표시자 개수와 실제 이미지 개수가 어긋나면 이미지가 조용히 무시된다. "
         "sample.assemble이 그 개수를 실측으로 대조한다.",

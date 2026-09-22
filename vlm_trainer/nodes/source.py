@@ -232,8 +232,8 @@ class SchemaParams:
     params=SchemaParams,
     preview="schema",
     doc=NodeDoc(
-        label="정답 스키마 정의",
-            hint="정답이 따라야 할 항목과 허용값을 선언합니다.",
+        label="답변 형식 정하기",
+            hint="모델이 어떤 형식으로 답해야 하는지 항목과 허용값을 정합니다.",
         summary="정답 Text 스키마를 읽는다. 렌더러와 파서가 모두 이 정의에서 생성된다.",
         scenario="학습에 쓴 스키마가 추론 계약에도 그대로 실린다.",
     ),

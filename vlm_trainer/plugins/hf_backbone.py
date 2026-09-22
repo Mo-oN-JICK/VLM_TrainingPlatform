@@ -36,6 +36,21 @@ def _pick(d: Dict[str, Any], keys: Tuple[str, ...], default: int = 0) -> int:
     return default
 
 
+def fetch(ref: str) -> str:
+    """가중치까지 내려받는다. 받은 자리를 돌려준다.
+
+    `find_config`은 캐시를 뒤지기만 하고 **받지는 않는다** — 예산 게이트가 부르는 길이라
+    그 자리에서 몇 GB가 떨어지면 안 된다. 받는 것은 사람이 시킬 때만 하는 별도의 일이고,
+    그래서 이 함수가 따로 있다.
+    """
+    from huggingface_hub import snapshot_download
+
+    model_id = ref[len(PREFIX) :] if ref.startswith(PREFIX) else ref
+    if os.path.isdir(model_id):
+        return model_id
+    return snapshot_download(model_id)
+
+
 def find_config(ref: str) -> str:
     """모델 참조를 config.json 경로로 해소한다. 없으면 무엇을 해야 하는지 말한다."""
     ref = ref[len(PREFIX) :] if ref.startswith(PREFIX) else ref

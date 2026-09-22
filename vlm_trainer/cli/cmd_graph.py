@@ -143,6 +143,16 @@ def cmd_backbones(a: argparse.Namespace) -> int:
     from ..plugins.base import all_backbones, resolve_backbone
 
     _load_nodes(a.nodes)
+    if a.fetch:
+        # 가중치는 시켜야 받는다. `--add`는 config.json만 읽어 형상을 답하고(예산 게이트가
+        # 쓰는 길), 실제 GB가 디스크에 떨어지는 것은 이 한 줄뿐이다.
+        from ..plugins.hf_backbone import fetch as fetch_weights
+
+        ref = a.fetch if a.fetch.startswith("hf:") else "hf:" + a.fetch
+        print(f"내려받는 중: {ref}  (수 GB. 한 번 받으면 캐시에 남는다)")
+        where = fetch_weights(ref)
+        print(f"  받음: {where}")
+        a.add = a.add or a.fetch
     if a.add:
         s = resolve_backbone(a.add if a.add.startswith("hf:") else "hf:" + a.add).spec()
         print(f"등록: {s.id}")
