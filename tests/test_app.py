@@ -171,7 +171,7 @@ def test_running_locks_editing(win):
 
 def test_the_run_clock_reads_like_the_cli():
     """같은 값이 창과 터미널에서 다르게 보이면 둘 중 하나가 틀린 것처럼 읽힌다."""
-    from vlm_trainer.cli.main import _took
+    from vlm_trainer.cli.common import _took
     from vlm_trainer.ui.app.progress import fmt_ms
 
     for ms in (0, 440, 1234, 42_000, 95_000, 3_700_000):

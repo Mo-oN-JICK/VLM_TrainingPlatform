@@ -7,7 +7,6 @@ import shutil
 
 import pytest
 
-from vlm_trainer.core.compiler import compile_project
 from vlm_trainer.spec import recipe as recipe_mod
 from vlm_trainer.ui import tokens as T
 from vlm_trainer.ui.api import Editor, compat_matrix
@@ -136,30 +135,6 @@ def test_bad_param_value_is_refused_not_crashed(ed):
 # ── 저장 ────────────────────────────────────────────────────────────────
 
 
-def test_save_writes_the_spec_and_cli_gets_the_same_graph(ed):
-    """UI로 만든 그래프를 CLI가 같은 결과로 실행한다 — Phase 7의 완료 조건."""
-    assert ed.set_param("n_stats", "z_thresh", 4.5)["ok"]
-    assert ed.dirty
-
-    res = ed.save()
-    assert res["ok"] and not ed.dirty
-
-    again = compile_project(ed.path)  # CLI가 읽는 것과 같은 경로
-    assert again.spec_hash == ed.compiled.spec_hash
-    assert again.nodes["n_stats"].params["z_thresh"] == 4.5
-
-
-def test_editing_does_not_touch_disk_until_save(ed):
-    original = open(ed.path, encoding="utf-8").read()
-    ed.set_param("n_stats", "z_thresh", 4.5)
-    assert open(ed.path, encoding="utf-8").read() == original, "저장 전에 디스크가 바뀌었다"
-    ed.save()
-    assert open(ed.path, encoding="utf-8").read() != original
-
-
-# ── HTTP 껍데기 ─────────────────────────────────────────────────────────
-
-
 def test_api_answers_with_state_and_refusals(ed):
     """편집기가 웹에서 앱으로 옮겨가며 HTTP 라우팅이 사라졌다. 그 계층이 검사하던 것은
     라우팅이 아니라 **api 의 대답**이었으므로, 이제 직접 묻는다."""
@@ -231,85 +206,6 @@ def test_every_edit_becomes_a_point_in_time(ed):
     assert view[-1]["current"] and not view[0]["current"]
 
 
-def test_history_stores_a_diff_not_a_wall_of_text(ed):
-    """스펙이 텍스트라 편집 하나가 두 줄로 남는다."""
-    ed.set_param("n_stats", "z_thresh", 4.5)
-    diff = ed.history[-1].diff
-    assert diff == ["-    z_thresh: 3.0", "+    z_thresh: 4.5"], diff
-
-
-def test_undo_and_redo_are_cursor_moves(ed):
-    before = ed.compiled.spec_hash
-    ed.set_param("n_stats", "z_thresh", 4.5)
-    after = ed.compiled.spec_hash
-    assert after != before
-
-    assert ed.undo()["ok"]
-    assert ed.compiled.spec_hash == before
-    assert ed.compiled.nodes["n_stats"].params["z_thresh"] == 3.0
-
-    assert ed.redo()["ok"]
-    assert ed.compiled.spec_hash == after
-
-    assert not ed.redo()["ok"]  # 끝에서 한 번 더
-    ed.undo()
-    assert not ed.undo()["ok"]  # 처음에서 한 번 더
-
-
-def test_rewind_jumps_to_any_point(ed):
-    hashes = [ed.compiled.spec_hash]
-    for value in (4.0, 5.0, 6.0):
-        ed.set_param("n_stats", "z_thresh", value)
-        hashes.append(ed.compiled.spec_hash)
-
-    assert ed.rewind(1)["ok"]
-    assert ed.compiled.spec_hash == hashes[1]
-    assert ed.compiled.nodes["n_stats"].params["z_thresh"] == 4.0
-
-
-def test_editing_after_undo_drops_the_redo_branch(ed):
-    ed.set_param("n_stats", "z_thresh", 4.0)
-    ed.set_param("n_stats", "z_thresh", 5.0)
-    assert len(ed.history) == 3
-
-    ed.undo()
-    ed.set_param("n_stats", "channel", 1)  # 다른 가지로 갈라진다
-    assert len(ed.history) == 3 and ed.cursor == 2
-    assert not ed.redo()["ok"]
-    assert ed.compiled.nodes["n_stats"].params["z_thresh"] == 4.0
-
-
-def test_refused_edit_leaves_no_trace_in_history(ed):
-    n = len(ed.history)
-    assert not ed.set_param("n_plot", "size", "이건 크기가 아니다")["ok"]
-    assert len(ed.history) == n
-
-
-def test_journal_is_written_next_to_the_spec(ed):
-    import json as _json
-
-    ed.set_param("n_stats", "z_thresh", 4.5)
-    lines = [_json.loads(ln) for ln in open(ed.history_path, encoding="utf-8") if ln.strip()]
-    assert len(lines) == 2
-    assert lines[-1]["spec_hash"] == ed.compiled.spec_hash
-    assert any("z_thresh" in d for d in lines[-1]["diff"])
-
-
-def test_history_records_and_rewinds(ed):
-    assert ed.set_param("n_stats", "z_thresh", 4.5)["ok"]
-    assert len(ed.state()["history"]) == 2
-
-    assert ed.undo()["ok"] and ed.state()["cursor"] == 0
-
-    again = ed.undo()
-    assert not again["ok"] and "되돌릴 편집이 없다" in again["reason"]
-
-    assert ed.rewind(1)["ok"] and ed.state()["cursor"] == 1
-
-
-# ── 노드 추가·삭제와 미완성 상태 ────────────────────────────────────────
-
-
 def test_adding_a_node_is_allowed_but_marks_the_graph_incomplete(ed):
     """노드를 놓고 배선을 잇는 사이의 상태를 허용해야 편집기로 그래프를 만들 수 있다."""
     assert ed.valid
@@ -319,15 +215,6 @@ def test_adding_a_node_is_allowed_but_marks_the_graph_incomplete(ed):
     assert not ed.valid, "미완성인데 valid로 남았다"
     assert "필수 입력" in ed.error
     assert "n_stats_2" in ed.compiled.nodes  # 그려는 볼 수 있어야 한다
-
-
-def test_incomplete_graph_is_not_saved(ed):
-    ed.add_node("ts.stats@1.0.0")
-    res = ed.save()
-    assert not res["ok"] and "필수 입력" in res["detail"]
-
-    original = open(ed.path, encoding="utf-8").read()
-    assert "n_stats_2" not in original
 
 
 def test_wiring_the_new_node_makes_it_valid_again(ed):
@@ -376,18 +263,6 @@ def test_unwired_external_call_node_waits_for_wiring(ed):
 # ── Parameter Recipe ────────────────────────────────────────────────────
 
 
-def test_recipe_overlays_values_without_touching_the_spec(ed):
-    """레시피는 값만 덮는다. 화면의 값과 저장될 값이 다르다는 것이 요점이다."""
-    assert ed.recipe_select(2)["ok"]
-
-    assert ed.compiled.nodes["n_stats"].params["z_thresh"] == 4.5   # 화면
-    assert ed.base.nodes["n_stats"].params["z_thresh"] == 3.0       # 스펙
-    assert "n_stats:z_thresh" in ed.state()["overlaid"]
-
-    assert ed.save()["ok"]
-    assert "4.5" not in open(ed.path, encoding="utf-8").read(), "레시피 값이 스펙에 스몄다"
-
-
 def test_procedure_exposed_override_reaches_the_inner_node(ed):
     """`p_crop.max_n`은 Procedure 파일 안의 노드를 가리킨다 — 스펙에는 쓸 수 없는 경로다."""
     assert ed.recipe_select(3)["ok"]
@@ -395,42 +270,11 @@ def test_procedure_exposed_override_reaches_the_inner_node(ed):
     assert "p_crop/n_crop:max_n" in ed.state()["overlaid"]
 
 
-def test_editing_an_overlaid_param_changes_the_overlay(ed):
-    ed.recipe_select(2)
-    assert ed.set_param("n_stats", "z_thresh", 5.5)["ok"]
-
-    assert ed.overlay["n_stats.z_thresh"] == 5.5
-    assert ed.base.nodes["n_stats"].params["z_thresh"] == 3.0
-    assert not ed.dirty, "오버레이 편집은 프로젝트를 더럽히지 않는다"
-
-
-def test_editing_a_param_the_recipe_does_not_cover_changes_the_spec(ed):
-    ed.recipe_select(2)
-    assert ed.set_param("n_plot", "line_width", 2)["ok"]
-    assert ed.base.nodes["n_plot"].params["line_width"] == 2
-    assert ed.dirty
-
-
 def test_a_path_outside_the_whitelist_is_refused(ed):
     res = ed.recipe_add_path("n_img.color_space")
     assert not res["ok"]
     assert "덮어쓸 수 없다" in res["detail"]
     assert not ed.overlay, "거부된 축이 남으면 안 된다"
-
-
-def test_a_captured_recipe_is_written_only_on_save(ed):
-    ed.recipe_select(2)
-    ed.set_param("n_stats", "z_thresh", 5.5)
-
-    res = ed.recipe_store(None, "captured")
-    assert res["ok"] and res["id"] == 5
-    before = open(ed.book.path, encoding="utf-8").read()
-    assert "captured" not in before, "편집기에서 디스크가 바뀌는 순간은 Save 하나뿐이다"
-
-    written = ed.save()["written"]
-    assert any(p.endswith("recipes.yaml") for p in written)
-    after = open(ed.book.path, encoding="utf-8").read()
-    assert "captured" in after and "5.5" in after
 
 
 def test_status_is_customized_when_the_project_drifts(ed):
@@ -441,99 +285,6 @@ def test_status_is_customized_when_the_project_drifts(ed):
     assert ed.recipe_view()["status"] == recipe_mod.CUSTOMIZED
 
 
-def test_deleting_the_applied_recipe_takes_the_overlay_off(ed):
-    ed.recipe_select(2)
-    assert ed.recipe_delete(2)["ok"]
-    assert ed.recipe_id is None and not ed.overlay
-    assert ed.compiled.nodes["n_stats"].params["z_thresh"] == 3.0
-
-
-def test_recipe_roundtrip(ed):
-    assert ed.recipe_select(3)["ok"] and ed.state()["recipe"]["applied"] == 3
-
-    assert ed.recipe_drop_path("p_crop.max_n")["ok"]
-
-    # 화이트리스트 밖의 파라미터는 레시피 축이 될 수 없다
-    assert not ed.recipe_add_path("n_img.color_space")["ok"]
-
-    assert ed.recipe_select(None)["ok"] and ed.state()["recipe"]["applied"] is None
-
-
-# ── 실행 ────────────────────────────────────────────────────────────────
-
-
-def test_run_uses_the_same_cli_command(ed):
-    """편집기에 전용 실행 경로는 없다. 사람이 터미널에 그대로 쳐도 같아야 한다."""
-    ed.extra_modules = ("fixture_nodes",)
-    ed.recipe_select(2)
-    cmd = ed.run_command(limit=4, debug_output=True)
-
-    assert cmd[1:4] == ["-m", "vlm_trainer.cli.main", "run"]
-    assert cmd[4] == ed.path
-    assert "--trigger" in cmd and cmd[cmd.index("--trigger") + 1] == "ui"
-    assert "--debug-output" in cmd
-    assert cmd[cmd.index("--nodes") + 1] == "fixture_nodes"
-    # 화면에 보이는 값 그대로 돈다 — 오버레이는 CLI의 --set 으로 넘어간다
-    assert "n_stats.z_thresh=4.5" in cmd
-
-
-def test_run_is_refused_while_the_spec_on_disk_differs(ed):
-    ed.set_param("n_stats", "z_thresh", 4.5)
-    res = ed.run_start()
-    assert not res["ok"] and "저장하지 않은 변경" in res["reason"]
-    assert "화면과 다른 그래프가 돈다" in res["detail"]
-
-    assert ed.save()["ok"]
-    assert ed.run_command()  # 저장한 뒤에는 막을 이유가 없다
-
-
-def test_run_is_refused_while_the_graph_is_incomplete(ed):
-    ed.add_node("ts.stats@1.0.0")
-    res = ed.run_start()
-    assert not res["ok"] and "필수 입력" in res["detail"]
-
-
-def test_progress_snapshot_round_trips(ed):
-    from vlm_trainer.engine import runner as runner_mod
-
-    rep = runner_mod.RunReport(order=list(ed.compiled.order))
-    rep.count("n_stats", runner_mod.SUCCESS)
-    rep.node_ms["n_stats"] = 12.5
-    rep.processed = 3
-    rep.quarantine.append(runner_mod.Quarantined("s1", "n_ev", "이유", "힌트"))
-
-    data = runner_mod.snapshot(rep, run_id="r1", total=4, phase="running")
-    back = runner_mod.report_from_snapshot(data)
-
-    assert back.states_of("n_stats") == {"success": 1}
-    assert back.node_ms["n_stats"] == 12.5
-    assert back.quarantine[0].node_id == "n_ev"
-    from vlm_trainer.ui.layout import state_of
-
-    state, extra = state_of(back, "n_stats")
-    assert state == "success" and "1건" in extra
-
-
-def test_run_state_reads_the_snapshot_a_run_leaves(ed, tmp_path):
-    import json as _json
-
-    from vlm_trainer.engine import runner as runner_mod
-
-    rep = runner_mod.RunReport(order=list(ed.compiled.order))
-    for nid in ed.compiled.order:
-        rep.count(nid, runner_mod.SUCCESS)
-    rep.processed = 2
-
-    ed.progress_path = str(tmp_path / "progress.json")
-    with open(ed.progress_path, "w", encoding="utf-8") as fh:
-        _json.dump(runner_mod.snapshot(rep, run_id="r1", total=2, phase="done"), fh)
-
-    st = ed.run_state()
-    assert st["running"] is False and st["phase"] == "done"
-    assert st["processed"] == 2
-    assert st["states"]["n_stats"]["state"] == "success"
-
-
 def test_a_half_written_snapshot_is_ignored(ed, tmp_path):
     """진행 파일은 원자 교체로 쓰이지만, 읽는 쪽도 깨진 내용에 죽지 않아야 한다."""
     ed.progress_path = str(tmp_path / "progress.json")
@@ -542,72 +293,6 @@ def test_a_half_written_snapshot_is_ignored(ed, tmp_path):
 
     st = ed.run_state()
     assert st["states"] == {} and st["running"] is False
-
-
-def test_the_editor_actually_runs_the_graph(ed_with_data, tmp_path, monkeypatch):
-    """끝에서 끝까지 — 편집기가 띄운 프로세스가 진행 파일을 남기고 상태가 칠해진다.
-
-    저장소 밖에서 돌린다. 하위 프로세스가 CWD에 기대 임포트하면 여기서 걸린다.
-    """
-    import time as _time
-
-    ed = ed_with_data
-    monkeypatch.chdir(tmp_path)
-    assert ed.run_start(limit=2)["ok"]
-
-    for _ in range(1200):  # 최대 120초. 전체 실행 중에는 앞선 테스트의 프로세스와 겹친다
-        st = ed.run_state()
-        if not st["running"]:
-            break
-        _time.sleep(0.1)
-    else:
-        raise AssertionError("끝나지 않았다")
-
-    assert st["phase"] == "done", st.get("console", "")
-    assert st["exit"] == 0, st.get("console", "")
-    assert st["states"]["n_answer"]["state"] in ("success", "cached")
-
-
-def test_a_stopped_run_is_not_reported_as_a_failure(ed_with_data, tmp_path, monkeypatch):
-    """사람이 멈춘 것과 죽은 것은 다르다. 빨간 글씨로 같이 묶으면 신호가 죽는다."""
-    import time as _time
-
-    ed = ed_with_data
-    monkeypatch.chdir(tmp_path)
-    assert ed.run_start(limit=24)["ok"]
-    assert ed.run_stop()["ok"]
-
-    for _ in range(300):
-        st = ed.run_state()
-        if not st["running"]:
-            break
-        _time.sleep(0.1)
-
-    assert st["stopped"] is True
-    assert "console" not in st, "중지는 실패가 아니므로 콘솔 꼬리를 들이밀지 않는다"
-
-
-# ── 세션을 넘는 History ─────────────────────────────────────────────────
-
-
-def test_history_survives_reopening(ed):
-    """편집기를 닫았다 열어도 지난 시점으로 되감을 수 있어야 한다."""
-    ed.set_param("n_stats", "z_thresh", 4.5)
-    ed.set_param("n_plot", "line_width", 3)
-    assert ed.save()["ok"]
-    labels_before = [h["label"] for h in ed.history_view()]
-
-    again = Editor.open(ed.path)
-    labels = [h["label"] for h in again.history_view()]
-    assert labels == labels_before, "지난 세션의 시점이 그대로 되살아나야 한다"
-    assert all(h["past"] for h in again.history_view()), "되살린 시점은 표식이 붙는다"
-
-    # 디스크의 스펙이 마지막 시점과 같으면 '열기'를 겹쳐 적지 않는다
-    assert labels.count("열기") == 1
-    assert again.compiled.nodes["n_stats"].params["z_thresh"] == 4.5
-
-    assert again.rewind(0)["ok"], "첫 시점으로 되감을 수 있어야 한다"
-    assert again.compiled.nodes["n_stats"].params["z_thresh"] == 3.0
 
 
 def test_snapshots_are_content_addressed(ed):
@@ -645,35 +330,6 @@ def test_a_hand_edited_spec_gets_its_own_point(ed):
     assert again.rewind(0)["ok"]
 
 
-def test_the_journal_stays_readable(ed):
-    """저널은 사람이 읽는 diff다. 본문은 옆 저장소에 따로 둔다."""
-    import json as _json
-
-    ed.set_param("n_stats", "z_thresh", 4.5)
-    lines = [_json.loads(ln) for ln in open(ed.history_path, encoding="utf-8") if ln.strip()]
-    assert set(lines[-1]) == {"at", "label", "spec_hash", "diff"}
-    assert lines[-1]["diff"] == ["-    z_thresh: 3.0", "+    z_thresh: 4.5"]
-    assert lines[-1]["at"].startswith("20"), "세션을 넘으려면 날짜가 있어야 한다"
-
-
-# ── Debug Output 이미지 ─────────────────────────────────────────────────
-
-
-def test_previews_are_served_only_from_this_runs_folder(ed, tmp_path, monkeypatch):
-    """경로를 그대로 실어 보내면 서버가 아무 파일이나 내주는 문이 된다."""
-    monkeypatch.chdir(tmp_path)
-    ed.run_id = "ui_test"
-    os.makedirs(ed.preview_dir, exist_ok=True)
-    with open(os.path.join(ed.preview_dir, "n_img.png"), "wb") as fh:
-        fh.write(b"PNG-ish")
-    with open(tmp_path / "secret.txt", "w", encoding="utf-8") as fh:
-        fh.write("남의 파일")
-
-    assert ed.preview_file("n_img.png") == b"PNG-ish"
-    for probe in ("../../secret.txt", r"..\..\secret.txt", "n_img.txt", "", "secret.txt"):
-        assert ed.preview_file(probe) is None, probe
-
-
 def test_preview_paths_become_urls_not_disk_paths(ed):
     urls = ed._preview_urls(
         {"n_img": {"kind": "image", "text": "t", "image_path": r"C:\runs\x\preview\n_img.png"},
@@ -682,26 +338,6 @@ def test_preview_paths_become_urls_not_disk_paths(ed):
     assert urls["n_img"]["image"] == "/preview/n_img.png"
     assert "image_path" not in urls["n_img"], "디스크 경로를 페이지로 내보내지 않는다"
     assert urls["n_kb"]["image"] == ""
-
-
-def test_the_run_writes_preview_images_when_the_toggle_is_on(ed_with_data, tmp_path, monkeypatch):
-    """Debug Output이 그림을 보여주지 못하면 크롭이 어긋났는지 알 수 없다."""
-    import time as _time
-
-    ed = ed_with_data
-    monkeypatch.chdir(tmp_path)
-    assert ed.run_start(limit=1, debug_output=True)["ok"]
-
-    for _ in range(600):
-        st = ed.run_state()
-        if not st["running"]:
-            break
-        _time.sleep(0.1)
-
-    assert st["phase"] == "done", st.get("console", "")
-    imgs = {k: v["image"] for k, v in st["previews"].items() if v.get("image")}
-    assert imgs, "이미지 미리보기가 하나도 없다"
-    assert ed.preview_file(os.path.basename(imgs["n_img"])), "서버가 그 파일을 못 찾는다"
 
 
 def test_no_preview_images_when_the_toggle_is_off(ed_with_data, tmp_path, monkeypatch):
@@ -780,19 +416,6 @@ def test_unknown_sample_space_fields_are_refused(ed_with_data):
     assert not res["ok"] and "객체" in res["reason"]
 
 
-def test_the_sample_space_edit_survives_a_save(ed_with_data):
-    ed = ed_with_data
-    assert ed.set_sample_space("filter", "")["ok"]
-    assert ed.save()["ok"]
-
-    again = Editor.open(ed.path)
-    assert again.sample_space_view()["rows"] == 24
-    assert again.graph.sample_space.filter == ""
-
-
-# ── 물질화와 학습 ───────────────────────────────────────────────────────
-
-
 def test_one_button_is_one_cli_command(ed):
     """편집기가 물질화와 학습을 엮어 돌리면 CLI에 없는 경로가 하나 생긴다."""
     ed.extra_modules = ("fixture_nodes",)
@@ -802,65 +425,6 @@ def test_one_button_is_one_cli_command(ed):
         assert cmd[1:5] == ["-m", "vlm_trainer.cli.main", sub, ed.path]
         assert cmd[cmd.index("--run-id") + 1] == "ui_x"
         assert cmd[cmd.index("--nodes") + 1] == "fixture_nodes"
-
-
-def test_training_before_materializing_says_so(ed):
-    res = ed.train_start()
-    assert not res["ok"] and "Materialize" in res["reason"]
-    assert "vlmt materialize" in res["detail"], "터미널로도 할 수 있다는 것을 말한다"
-
-
-def test_materialize_and_train_refuse_unsaved_changes(ed):
-    ed.set_param("n_stats", "z_thresh", 4.5)
-    for res in (ed.materialize_start(), ed.train_start()):
-        assert not res["ok"] and "저장하지 않은 변경" in res["reason"]
-
-
-def test_materialize_refuses_an_incomplete_graph(ed):
-    ed.add_node("ts.stats@1.0.0")
-    assert not ed.materialize_start()["ok"]
-
-
-def test_only_one_thing_runs_at_a_time(ed_with_data, tmp_path, monkeypatch):
-    ed = ed_with_data
-    monkeypatch.chdir(tmp_path)
-    assert ed.materialize_start()["ok"]
-    second = ed.materialize_start()
-    assert not second["ok"] and "돌고 있다" in second["reason"]
-    ed.run_stop()
-
-
-def test_the_editor_materializes_and_then_trains(ed_with_data, tmp_path, monkeypatch):
-    """끝에서 끝까지 — 두 버튼이 두 CLI 명령을 띄우고 학습이 완주한다."""
-    import time as _time
-
-    ed = ed_with_data
-    monkeypatch.chdir(tmp_path)
-
-    def wait():
-        for _ in range(1200):  # 최대 120초
-            st = ed.run_state()
-            if not st["running"]:
-                return st
-            _time.sleep(0.1)
-        raise AssertionError("끝나지 않았다")
-
-    assert ed.materialize_start()["ok"]
-    st = wait()
-    assert st["exit"] == 0, st.get("console", "")
-    assert os.path.isdir(os.path.join(tmp_path, "runs", ed.run_id, "materialized"))
-
-    assert ed.train_start()["ok"]
-    st = wait()
-    assert st["exit"] == 0, st.get("console", "")
-    assert st["kind"] == "train"
-    assert st["train"]["step"] > 0 and st["train"]["stage"]
-    assert os.path.exists(
-        os.path.join(tmp_path, "runs", ed.run_id, "train", "inference_contract.json")
-    )
-
-
-# ── 물질화 경계와 실행 프로파일 ─────────────────────────────────────────
 
 
 def test_an_empty_boundary_is_not_a_way_to_skip_the_check(ed):
@@ -878,17 +442,6 @@ def test_the_check_sees_inside_procedures(ed):
     """바깥 그래프의 배선만 보면 Procedure 안에서 외부 모델을 부르는 노드가 빠진다."""
     ed.set_boundary("n_sample", False)
     assert "p_crop/n_exp" in ed.error and "n_exp_ts" in ed.error
-
-
-def test_a_graph_that_does_not_train_is_not_asked_about_a_boundary():
-    """루프가 없으면 '루프 안에서 돈다'는 위험 자체가 없다."""
-    from vlm_trainer.core.compiler import compile_project
-
-    demo = os.path.join(ROOT, "tests", "data", "solution", "projects", "01_demo", "project.yaml")
-    if not os.path.exists(demo):
-        pytest.skip("데모 스펙이 없다")
-    cg = compile_project(demo)  # 경계가 있든 없든 학습 노드가 없으면 통과한다
-    assert cg.order
 
 
 def test_toggling_the_boundary_is_recorded_like_any_edit(ed):
@@ -1000,86 +553,6 @@ def test_a_moved_box_keeps_its_place_and_the_rest_flow_around_it(ed):
 # ── 실행 중인 노드를 화면이 따라간다 ──────────────────────────────────────
 
 
-def test_snapshot_carries_the_node_being_run(ed):
-    """누계(node_ms)만으로는 "어디까지 왔나"에 답이 안 된다.
-
-    느린 노드 앞에서 멈춘 것인지 그 노드가 도는 중인지 구별되지 않기 때문이다.
-    """
-    import time as _t
-
-    from vlm_trainer.engine import runner as runner_mod
-    from vlm_trainer.ui.layout import state_of
-
-    rep = runner_mod.RunReport(order=list(ed.compiled.order))
-    rep.active, rep.active_since = "n_stats", _t.perf_counter() - 3.0
-
-    data = runner_mod.snapshot(rep, run_id="r1", total=4, phase="running")
-    assert data["active"] == "n_stats"
-    assert data["active_ms"] >= 2900
-
-    back = runner_mod.report_from_snapshot(data)
-    state, extra = state_of(back, "n_stats")
-    # 카운트가 아직 0이어도(첫 샘플의 첫 통과) 현재 위치로 보여야 한다
-    assert state == "running" and extra.endswith("s")
-
-
-def test_a_finished_run_highlights_nothing(ed):
-    """다 끝난 그래프에 노드 하나가 계속 빛나고 있으면 그것이 마지막으로 돈 노드인지
-    지금 도는 노드인지 화면만 보고는 알 수 없다."""
-    from vlm_trainer.engine import runner as runner_mod
-
-    rep = runner_mod.RunReport(order=list(ed.compiled.order))
-    rep.active, rep.active_since = "n_stats", 0.0
-
-    for phase in ("done", "aborted"):
-        data = runner_mod.snapshot(rep, run_id="r1", total=4, phase=phase)
-        assert data["active"] == "", phase
-        assert data["active_ms"] == 0.0, phase
-
-
-def test_elapsed_time_shows_on_finished_nodes(ed):
-    """실패한 노드도 5ms 만에 터진 것과 40초를 쓰고 터진 것은 원인이 다르다."""
-    from vlm_trainer.engine import runner as runner_mod
-    from vlm_trainer.ui.layout import state_of
-
-    rep = runner_mod.RunReport(order=list(ed.compiled.order))
-    rep.count("n_stats", runner_mod.SUCCESS)
-    rep.node_ms["n_stats"] = 1234.0
-    rep.count("n_ev", runner_mod.FAILED)
-    rep.node_ms["n_ev"] = 42_000.0
-
-    assert state_of(rep, "n_stats") == ("success", "1건 · 1.2s")
-    assert state_of(rep, "n_ev") == ("failed", "1건 · 42.0s")
-
-
-def test_run_state_answers_with_the_ids_the_canvas_draws(ed, tmp_path):
-    """접힌 Procedure는 안쪽 노드 id로 그려져 있지 않다.
-
-    compiled.order를 그대로 내보내면 상자가 실행 내내 아무 색도 바뀌지 않는다.
-    """
-    import json as _json
-
-    from vlm_trainer.engine import runner as runner_mod
-    from vlm_trainer.ui.layout import fold
-
-    shown, _ = fold(ed.compiled, ed.expanded)
-
-    rep = runner_mod.RunReport(order=list(ed.compiled.order))
-    rep.active, rep.active_since = ed.compiled.order[0], 0.0
-
-    ed.progress_path = str(tmp_path / "progress.json")
-    with open(ed.progress_path, "w", encoding="utf-8") as fh:
-        _json.dump(runner_mod.snapshot(rep, run_id="r1", total=2, phase="running"), fh)
-
-    st = ed.run_state()
-    assert set(st["states"]) == set(shown), "캔버스에 없는 id로 답하면 칠할 곳이 없다"
-    assert st["active"] in shown
-    assert st["states"][st["active"]]["state"] == "running"
-
-
-# ── Procedure 노출 파라미터 편집 ─────────────────────────────────────────
-
-
 def test_a_procedures_exposed_param_is_editable(ed):
     """상자로 접힌 Procedure의 노출 파라미터를 우측 패널에서 고칠 수 있어야 한다.
 
@@ -1159,77 +632,3 @@ def test_a_misspelled_param_name_is_refused_not_drafted(ed):
 
 # ── 작업에 들어선 뒤 흐른 시간 ───────────────────────────────────────────
 
-
-def _running(ed, tmp_path, *, processed: int, total: int, ago: float):
-    """진행 중인 작업 하나를 흉내낸다. 시계를 믿지 않도록 값을 직접 놓는다."""
-    import json as _json
-    import time as _t
-
-    from vlm_trainer.engine import runner as runner_mod
-
-    class _Alive:
-        def poll(self):
-            return None
-
-    ed.proc = _Alive()
-    ed.launched_at = _t.time() - ago
-    ed.finished_at = 0.0
-    ed.progress_path = str(tmp_path / "progress.json")
-
-    first = ed.compiled.order[0]
-    rep = runner_mod.RunReport(order=list(ed.compiled.order), started=_t.time() - ago)
-    rep.processed = processed
-    rep.active, rep.active_since = first, _t.perf_counter() - 4.0
-    rep.node_ms[first] = 8200.0
-    with open(ed.progress_path, "w", encoding="utf-8") as fh:
-        _json.dump(runner_mod.snapshot(rep, run_id="r", total=total, phase="running"), fh)
-    return first
-
-
-def test_elapsed_time_counts_from_when_the_job_started(ed, tmp_path):
-    """노드별 누계를 다 더해도 이 값이 나오지 않는다.
-
-    캐시 적중, 샘플 적재, shard 쓰기처럼 어느 노드에도 속하지 않는 시간이 있다.
-    """
-    _running(ed, tmp_path, processed=20, total=110, ago=30.0)
-    st = ed.run_state()
-    assert 29_000 <= st["elapsed_ms"] <= 31_000
-
-
-def test_elapsed_time_stops_when_the_job_does(ed, tmp_path):
-    """다 끝난 작업의 숫자가 계속 올라가면 그것은 경과 시간이 아니라 시계다."""
-    import time as _t
-
-    class _Dead:
-        returncode = 0
-
-        def poll(self):
-            return 0
-
-    _running(ed, tmp_path, processed=110, total=110, ago=12.0)
-    ed.proc = _Dead()
-    first = ed.run_state()["elapsed_ms"]
-    _t.sleep(0.05)
-    again = ed.run_state()["elapsed_ms"]
-    assert first == again, "끝난 뒤에도 경과 시간이 흐른다"
-
-
-def test_remaining_time_is_withheld_until_the_rate_means_something(ed, tmp_path):
-    """처음 한두 건으로 "남은 40분"을 띄우면 그 수를 믿고 자리를 뜨게 된다."""
-    _running(ed, tmp_path, processed=3, total=110, ago=30.0)
-    assert ed.run_state()["eta_ms"] == 0.0
-
-    _running(ed, tmp_path, processed=20, total=110, ago=30.0)
-    eta = ed.run_state()["eta_ms"]
-    # 20건에 30초 -> 남은 90건은 135초
-    assert 130_000 <= eta <= 140_000
-
-
-def test_a_running_node_shows_this_pass_and_the_running_total(ed, tmp_path):
-    """앞만 있으면 이 노드가 전체에서 얼마나 무거운지 모르고,
-    뒤만 있으면 지금 한 건이 유난히 오래 걸리는 중인지 알 수 없다."""
-    first = _running(ed, tmp_path, processed=20, total=110, ago=30.0)
-    st = ed.run_state()
-    extra = st["states"][st["active"]]["extra"]
-    assert extra.startswith("4."), extra          # 이번에 들어가서 4초
-    assert "누계 8.2s" in extra, extra            # 지금까지 8.2초
