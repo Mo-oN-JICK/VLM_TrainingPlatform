@@ -661,10 +661,74 @@ shard 를 전부 읽으므로 검증 10장이 학습에 들어갔다. 그러면 
 실측(tiny-vlm): 준비 2.3s · 굽기 train 100건 2.0s · 학습 1.3s · 추론 val 10건 3.2s.
 답은 `runs/<id>/infer/answers.jsonl` 에 정답과 나란히.
 
+### 6단계 ✅ — Qwen2-VL 로 한 바퀴 (2026-09-23)
+
+**돌았다.** RTX 3060 12GB 에서 `Qwen/Qwen2-VL-2B-Instruct` 로 준비 → 굽기 → 학습 →
+추론이 끝까지 간다. 바꾼 것은 한 줄이다:
+
+```
+... pipeline solutions/vlm_open/projects/01_open/project.yaml       --set n_train.config_path=trainer_qwen2vl.yaml
+```
+
+검증 10장의 답(20 step, 학습 2m 33s · 추론 15s):
+
+```
+O o0101  <part_type>기어</part_type> / <orientation>가로</orientation>
+. o0102  <part_type>나사</part_type> / <orientation>정사각</orientation>   정답 세로
+. o0103  <part_type>나사</part_type> / <orientation>가로</orientation>     정답 너트
+O o0104  <part_type>베어링</part_type> / <orientation>정사각</orientation>
+O o0105  <part_type>체인</part_type> / <orientation>세로</orientation>
+. o0106  <part_type>풀리</part_type> / <orientation>세로</orientation>     정답 가로
+O o0107  <part_type>기어</part_type> / <orientation>가로</orientation>
+O o0108  <part_type>나사</part_type> / <orientation>가로</orientation>
+- o0100  (빈 답)      - o0109  (빈 답)
+```
+
+완전 일치 5 · 부분 3 · 빈 답 2. **형식은 열 건 모두 스키마 그대로다.** 100장·20 step
+치고는 충분한 결과이고, 목적은 정확도가 아니라 한 바퀴가 도는지였다.
+
+#### "새 코드가 없어야 한다" 는 지키지 못했다
+
+다섯 곳이 깨졌다. **전부 `tiny-vlm` 으로는 드러날 수 없는 자리**였고, 네 개는
+조용히 틀리는 쪽이었다.
+
+| 깨진 곳 | 실물 모델에서만 드러나는 이유 |
+|---|---|
+| `module_groups` 가 최상위 이름만 본다 | Qwen2-VL 은 `model.visual` / `model.language_model` 로 한 겹 안쪽이고, 프로젝터(`merger`)는 **비전 타워 안에** 있다. tiny 는 평평하다 |
+| 학습 루프가 `model(input_ids, images, labels=)` 로 부른다 | 그 줄이 **tiny-vlm 의 서명**이었다. 어댑터 경계가 `collate` 에서 끊겨 있었다 |
+| LoRA 어댑터가 float32 로 태어난다 | tiny 는 float32 라 맞았다. bf16 모델에서는 첫 행렬곱에서 죽는다 |
+| 추론이 `build(None, None)` 을 부른다 | tiny 는 `cfg` 를 무시한다. HF 는 `cfg.dtype` 을 읽는다 |
+| 체크포인트를 `strict=False` 로 얹는다 | LoRA 가 모듈 트리를 바꾼다(`q_proj` → `q_proj.base`). **LoRA 가 통째로 버려지는데 답은 나온다** |
+
+마지막 것이 제일 나쁘다 — 학습 안 된 모델이 답을 내놓고, 그것을 보고 "파인튜닝이
+소용없다" 고 판단하게 된다. 이제 체크포인트에 LoRA 설정을 함께 적고, 읽을 때 같은
+트리를 다시 만든 뒤 **`unexpected_keys` 가 남으면 멈춘다.**
+
+덤으로 둘 더: `infer.py` 의 `NodeError` 네 곳이 **`node_id` 를 안 넘겨** 전부
+`TypeError` 로 바뀌고 있었다(힌트가 통째로 사라진다). 그리고 `io.answer_report` 가
+빈 답을 버려서 `n_infer 10건 성공` 인데 파일에는 8줄만 남았다 — 모델이 아무 말도 안
+한 두 건이 사라진다. 빈 답도 적는다.
+
+**얻은 결론**: 백본 교체가 한 줄인 것은 맞다. 다만 그 한 줄이 통하려면 **어댑터 경계가
+`collate` 보다 넓어야 했다.** 모델을 어떻게 부르는지, 어떤 자료형인지, 무엇을 끼웠는지가
+전부 어댑터의 일이다. 그래프·스펙·엔진·노드 쪽은 정말로 한 줄도 안 고쳤다.
+
+#### G4 예산이 실측보다 낮다 ⚠
+
+| 단계 | 예산이 말한 값 | 실측 peak |
+|---|---|---|
+| projector_align | 6.7 GB | 6.98 GB |
+| lora_ft | 6.2 GB | **11.58 GB** |
+
+`lora_ft` 가 거의 두 배다. 12GB 카드에서 아슬아슬하게 들어갔다 — 예산을 믿고 조금 더
+키웠으면 OOM 이었다. **OOM 을 막는 것이 G4 의 존재 이유이므로 이것은 실패다.**
+비전 타워의 활성화(이미지당 패치 1024개 × 32층)가 모형에 안 들어간 것으로 보인다.
+아직 안 고쳤다.
+
 ### 남은 단계
 
-- [ ] 6단계 — `backbone:` 한 줄로 Qwen2-VL 교체. **새 코드가 없어야 한다**
 - [ ] 7단계 — `모델 Export`(합친 모델 + contract) · 문서
+- [ ] G4 예산 모형에 비전 타워 활성화를 넣는다 (위 표)
 
 ### 확정된 결정
 

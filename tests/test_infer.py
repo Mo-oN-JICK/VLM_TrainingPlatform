@@ -13,7 +13,7 @@ import pytest
 
 from vlm_trainer.core import registry
 from vlm_trainer.core.compiler import compile_project
-from vlm_trainer.core.node import NodeKind
+from vlm_trainer.core.node import NodeError, NodeKind
 from vlm_trainer.core.registry import resolve
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -83,3 +83,62 @@ def test_the_report_does_not_score():
     assert d.kind is NodeKind.OUTPUT
     assert set(d.inputs) == {"answer", "expected"}
     assert not d.outputs, "채점 결과를 내놓기 시작하면 그 숫자를 믿게 된다"
+
+
+# ── 학습한 것을 정말로 다시 올리는가 ────────────────────────────────────
+def test_the_checkpoint_records_what_lora_did_to_the_module_tree():
+    """LoRA 를 끼우면 `q_proj` 가 `q_proj.base` 가 된다. 나중에 이 체크포인트를 읽는 쪽이
+    같은 트리를 먼저 만들지 못하면 `strict=False` 가 그 가중치를 **통째로 버리고**,
+    학습 안 된 모델이 답을 내놓는데 아무도 모른다."""
+    import inspect
+
+    from vlm_trainer.train import loop as loop_mod
+
+    src = inspect.getsource(loop_mod.train)
+    assert '"lora": (' in src, "체크포인트에 LoRA 설정이 남지 않는다"
+
+
+def test_loading_a_checkpoint_that_does_not_fit_is_loud(tmp_path, monkeypatch):
+    """조용히 절반만 올라가는 것이 이 경로에서 제일 나쁜 결말이다 — 답은 나오고,
+    그 답을 보고 "파인튜닝이 소용없다" 고 판단하게 된다."""
+    torch = pytest.importorskip("torch")
+    from torch import nn
+
+    from vlm_trainer.nodes import infer as infer_mod
+    from vlm_trainer.plugins.base import BackboneAdapter
+
+    stage = tmp_path / "s1"
+    stage.mkdir()
+    torch.save({"model": {"없는이름.weight": torch.zeros(2)}, "lora": {}}, stage / "c.pt")
+
+    class _Adapter(BackboneAdapter):
+        @classmethod
+        def build(cls, cfg, st):
+            return nn.Linear(2, 2)
+
+        @classmethod
+        def generate(cls, *a, **k):
+            return ""
+
+    monkeypatch.setattr("vlm_trainer.plugins.base.resolve_backbone", lambda ref: _Adapter)
+    infer_mod._LOADED.clear()
+    with pytest.raises(NodeError, match="들어갈 자리가 없다"):
+        infer_mod._load("n_infer", str(tmp_path), "아무백본")
+
+
+def test_an_empty_answer_is_still_written(tmp_path):
+    """빈 답도 결과다. 버리면 `n_infer 10건 성공` 인데 파일에는 8줄이 남고,
+    모델이 아무 말도 안 한 두 건이 세상에서 사라진다(실측)."""
+    import json
+
+    from vlm_trainer.core.node import RunCtx
+
+    d = resolve("io.answer_report@1.0.0")
+    out = str(tmp_path / "infer")
+    ctx = RunCtx(run_id="r1", node_id="n_answers", sample_key="o0100",
+                 sample={"_split": "val"}, spec_dir=str(tmp_path))
+    d.impl().run(ctx, d.build_params({"out_dir": out}), answer="", expected="기어")
+
+    rows = [json.loads(l) for l in open(os.path.join(out, "answers.jsonl"), encoding="utf-8")]
+    assert len(rows) == 1, "모델이 아무 말도 안 한 건이 사라졌다"
+    assert rows[0]["answer"] == "" and rows[0]["split"] == "val"

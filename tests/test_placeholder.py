@@ -129,3 +129,89 @@ def test_a_backbone_without_an_image_token_still_masks_the_prompt():
     labels = cls._answer_only_labels(
         [{"prompt": prompt, "answer": "기어"}], {"input_ids": ids, "attention_mask": mask})
     assert labels[0][labels[0] != -100].tolist() == [21, 22]
+
+
+# ── 실물 모델이 드러낸 것들 ─────────────────────────────────────────────
+class _Lin:
+    """`named_children` 만 흉내 내는 자리표시. 덩이 가르기는 이름만 본다."""
+
+    def __init__(self, kids=()):
+        self._kids = list(kids)
+
+    def named_children(self):
+        return list(self._kids)
+
+
+def test_module_groups_reach_into_the_wrapper_that_holds_the_tower():
+    """Qwen2-VL 은 최상위가 `model` 과 `lm_head` 뿐이고 비전 타워는 그 안에 있다.
+    최상위만 훑으면 `projector` 가 **빈 목록**이 되고, `projector: true` 단계가
+    "학습할 파라미터가 없다" 로 죽는다 — 가중치를 다 올린 뒤에."""
+    merger, blocks, lm, head = _Lin(), _Lin(), _Lin(), _Lin()
+    visual = _Lin([("blocks", blocks), ("merger", merger)])
+    model = _Lin([("model", _Lin([("visual", visual), ("language_model", lm)])),
+                  ("lm_head", head)])
+
+    g = hfb.HFBackbone.module_groups(model)
+    assert g["projector"] == [merger], "비전 타워 안의 프로젝터를 못 찾았다"
+    assert blocks in g["vision_tower"] and merger not in g["vision_tower"]
+    assert g["llm"] == [lm, head]
+
+
+def test_the_projector_is_not_left_inside_the_frozen_tower():
+    """`vision_tower: false` 와 `projector: true` 가 서로를 부정하면 freeze 검증이
+    "false 로 선언했는데 학습 대상이 있다" 를 낸다."""
+    merger = _Lin()
+    visual = _Lin([("merger", merger)])
+    g = hfb.HFBackbone.module_groups(_Lin([("visual", visual)]))
+    assert merger in g["projector"] and merger not in g["vision_tower"]
+
+
+def test_a_flat_model_is_left_flat():
+    """껍데기가 없는 모델까지 파고들면 LLM 레이어 스물여덟 개가 최상위 덩이로 쏟아진다."""
+    v, p, l = _Lin(), _Lin(), _Lin()
+    g = hfb.HFBackbone.module_groups(
+        _Lin([("visual", v), ("multi_modal_projector", p), ("language_model", l)]))
+    assert g["vision_tower"] == [v] and g["projector"] == [p] and g["llm"] == [l]
+
+
+def test_lora_adapters_are_born_in_the_base_layers_dtype():
+    """기본값(float32)으로 만들면 bf16 모델의 첫 행렬곱에서
+    `expected mat1 and mat2 to have the same dtype` 로 죽는다.
+    `tiny-vlm` 은 float32 라 이 자리가 한 번도 드러나지 않았다."""
+    torch = pytest.importorskip("torch")
+    from torch import nn
+
+    from vlm_trainer.train.freeze import LoRALinear
+
+    base = nn.Linear(8, 8, dtype=torch.bfloat16)
+    lora = LoRALinear(base, r=2, alpha=4)
+    assert lora.a.weight.dtype is torch.bfloat16 and lora.b.weight.dtype is torch.bfloat16
+    lora(torch.zeros(1, 8, dtype=torch.bfloat16))     # 죽지 않아야 한다
+
+
+def test_the_loop_asks_the_adapter_how_to_call_the_model():
+    """학습 루프에 `model(input_ids, images, ...)` 라고 적으면 그 줄은 특정 백본 하나의
+    서명이고, 다른 백본을 끼우면 거기서 KeyError 로 죽는다 — 굽기가 다 끝난 뒤에."""
+    import inspect
+
+    from vlm_trainer.train import loop as loop_mod
+
+    src = inspect.getsource(loop_mod.train)
+    assert "adapter.forward(" in src
+    assert 'batch["images"]' not in src, "루프가 다시 배치의 모양을 알기 시작했다"
+
+
+def test_the_default_forward_spreads_whatever_collate_made():
+    """HuggingFace 모델은 키워드로 받는다. 서명이 다른 백본만 이것을 덮어쓴다."""
+    seen = {}
+
+    class _Model:
+        def parameters(self):
+            return iter(())
+
+        def __call__(self, **kw):
+            seen.update(kw)
+            return {"loss": 0.0}
+
+    BackboneAdapter.forward(_Model(), {"input_ids": 1, "pixel_values": 2}, "cpu")
+    assert seen == {"input_ids": 1, "pixel_values": 2}

@@ -175,11 +175,9 @@ def train(
             for i, batch in enumerate(loader):
                 if seen and i * stage.per_device < seen:
                     continue  # 재개: 이미 소비한 샘플은 건너뛴다
-                out = model(
-                    batch["input_ids"].to(dev),
-                    batch["images"].to(dev) if batch["images"].numel() else None,
-                    labels=batch["labels"].to(dev),
-                )
+                # 어떻게 부르는지는 **어댑터가 안다**. 여기에 서명을 적으면
+                # 그 줄이 특정 백본 하나의 모양이 된다.
+                out = adapter.forward(model, batch, dev)
                 loss = out["loss"] / max(1, stage.grad_accum)
                 loss.backward()
                 micro += 1
@@ -217,6 +215,13 @@ def train(
                 "stage": stage.name,
                 "backbone": cfg.backbone,
                 "config": cfg.digest(),
+                # LoRA 를 끼우면 **모듈 트리가 바뀐다**(`q_proj` -> `q_proj.base`).
+                # 나중에 이 체크포인트를 읽는 쪽이 같은 트리를 먼저 만들지 못하면
+                # `strict=False` 가 LoRA 가중치를 통째로 버리고, 학습 안 된 모델이
+                # 답을 내놓는데 아무도 모른다. 무엇을 끼웠는지 함께 적는다.
+                "lora": ({"targets": list(stage.lora.targets), "r": stage.lora.r,
+                          "alpha": stage.lora.alpha, "dropout": stage.lora.dropout}
+                         if "lora" in stage.trainable.values() else {}),
             },
         )
         res.ckpt = ckpt_path

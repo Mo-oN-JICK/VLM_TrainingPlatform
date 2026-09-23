@@ -1,11 +1,18 @@
 kind: TrainerConfig
 version: 1
 
-# 실물 백본. 가중치 4.4GB를 내려받아야 하고, Qwen2-VL 전용 collate(프로세서·image_grid_thw)가
-# 아직 없다. 지금은 compile / dryrun / budget 까지는 이 설정으로 답이 나오고,
-# train 은 tiny-vlm 쪽(trainer.yaml)을 쓴다. STATUS.md 3a 항목을 보라.
+# 실물 백본. 가중치 4.4GB 를 먼저 받아야 한다:
 #
-#   .venv\Scripts\python.exe -m vlm_trainer.cli.main backbones --add hf:Qwen/Qwen2-VL-2B-Instruct
+#   python -m vlm_trainer.cli.main backbones --fetch hf:Qwen/Qwen2-VL-2B-Instruct
+#
+# 이 설정으로 준비 -> 굽기 -> 학습 -> 추론이 끝까지 돈다(2026-09-23, RTX 3060 12GB 실측).
+# 프로젝트는 `trainer.yaml`(tiny-vlm)을 가리키고 있다. 바꿔 끼우는 것은 한 줄이다:
+#
+#   ... pipeline <project.yaml> --set n_train.config_path=trainer_qwen2vl.yaml
+#
+# 실측 VRAM 은 projector_align 6.98 GB / lora_ft 11.58 GB 였다. **예산(G4)이 각각
+# 6.7 / 6.2 GB 로 잡은 것보다 크다** — 특히 lora_ft 는 두 배 가깝다. 12GB 카드에서는
+# 아슬아슬하게 들어간다. STATUS.md 의 "함정" 항목을 보라.
 backbone: hf:Qwen/Qwen2-VL-2B-Instruct
 dtype: bf16
 quantization:

@@ -125,6 +125,20 @@ class BackboneAdapter:
         return cls.spec_data
 
     @classmethod
+    def forward(cls, model: Any, batch: Any, device: Any) -> Any:
+        """배치 하나를 모델에 넣고 `["loss"]` 를 꺼낼 수 있는 것을 돌려준다.
+
+        **학습 루프가 모델의 서명을 알면 안 된다.** 루프에 `model(input_ids, images, ...)`
+        라고 적는 순간 그 줄은 특정 모델 하나의 모양이고, 다른 백본을 끼우면 거기서
+        `KeyError` 로 죽는다 — 굽기가 다 끝나고 가중치를 다 올린 뒤에.
+
+        기본은 `collate` 가 만든 것을 그대로 펼쳐 넣는 것이다. HuggingFace 모델이
+        그렇게 받는다. 서명이 다른 백본은 이것을 덮어쓴다.
+        """
+        moved = {k: (v.to(device) if hasattr(v, "to") else v) for k, v in batch.items()}
+        return model(**moved)
+
+    @classmethod
     def image_placeholder(cls) -> str:
         """이 백본이 "여기에 이미지가 들어간다" 를 적는 방식.
 

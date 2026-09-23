@@ -186,6 +186,17 @@ class TinyVlmAdapter(BackboneAdapter):
         return model.llm
 
     @classmethod
+    def forward(cls, model: nn.Module, batch: Dict[str, Any], device: Any) -> Any:
+        """이 모델은 `(input_ids, images, labels=)` 로 받는다. HF 규약이 아니므로
+        기본 구현(`model(**batch)`)이 맞지 않는다."""
+        images = batch["images"]
+        return model(
+            batch["input_ids"].to(device),
+            images.to(device) if images.numel() else None,
+            labels=batch["labels"].to(device),
+        )
+
+    @classmethod
     def image_placeholder(cls) -> str:
         """이 백본은 그래프의 표기를 그대로 쓴다. `encode` 가 그것을 토큰 하나로 바꾼다.
 

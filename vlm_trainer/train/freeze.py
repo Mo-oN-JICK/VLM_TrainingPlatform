@@ -24,8 +24,12 @@ class LoRALinear(nn.Module):
         self.base.weight.requires_grad_(False)
         if self.base.bias is not None:
             self.base.bias.requires_grad_(False)
-        self.a = nn.Linear(base.in_features, r, bias=False)
-        self.b = nn.Linear(r, base.out_features, bias=False)
+        # **베이스와 같은 자료형·장치로 만든다.** 기본값(float32/cpu)으로 두면
+        # bf16 모델에서 첫 행렬곱이 `expected mat1 and mat2 to have the same dtype` 으로
+        # 죽는다. tiny-vlm 은 float32 라 이 자리가 한 번도 드러나지 않았다.
+        kw = {"device": base.weight.device, "dtype": base.weight.dtype}
+        self.a = nn.Linear(base.in_features, r, bias=False, **kw)
+        self.b = nn.Linear(r, base.out_features, bias=False, **kw)
         nn.init.kaiming_uniform_(self.a.weight, a=5**0.5)
         nn.init.zeros_(self.b.weight)  # 학습 시작 시 항등이 되도록
         self.scale = alpha / r

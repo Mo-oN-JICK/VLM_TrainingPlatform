@@ -21,6 +21,10 @@ from .base import GRAPH_PLACEHOLDER, BackboneAdapter, BackboneSpec, register_bac
 
 PREFIX = "hf:"
 
+# 모델 계열마다 이름이 다르다. 덩이를 가를 때 쓰는 낱말들.
+_VISION_WORDS = ("vision", "visual", "image_encoder", "image_tower")
+_PROJ_WORDS = ("proj", "connector", "merger", "mm_", "multi_modal", "adapter")
+
 # config.json의 키 이름은 모델 계열마다 다르다. 흔한 것부터 찾는다.
 _HIDDEN = ("hidden_size", "d_model", "n_embd")
 _LAYERS = ("num_hidden_layers", "n_layer", "num_layers")
@@ -226,17 +230,55 @@ class HFBackbone(BackboneAdapter):
 
     @classmethod
     def module_groups(cls, model: Any) -> Dict[str, List[Any]]:
-        """모델 계열마다 이름이 다르다. 흔한 이름을 훑어 그룹을 만든다."""
+        """모델을 학습 정책이 말하는 세 덩이로 가른다.
+
+        **실물 모델은 이름이 평평하지 않다.** Qwen2-VL 은 최상위가 `model` 과 `lm_head`
+        뿐이고, 비전 타워와 LLM 은 `model` 안에 있다. 최상위만 훑으면 `vision_tower` 와
+        `projector` 가 **빈 목록**이 되고, `projector: true` 라고 선언한 단계가
+        "학습할 파라미터가 없다" 로 죽는다. 그나마 죽어 주는 쪽이 다행이다.
+
+        프로젝터가 비전 타워 **안에** 있는 모델도 있다(Qwen2-VL 의 `visual.merger`).
+        그것을 비전 타워에 함께 담으면 `vision_tower: false` 와 `projector: true` 가
+        서로를 부정하고, freeze 검증이 "false 로 선언했는데 학습 대상이 있다" 를 낸다.
+        그래서 갈라 담는다.
+        """
         groups: Dict[str, List[Any]] = {"vision_tower": [], "projector": [], "llm": []}
-        for name, mod in model.named_children():
-            low = name.lower()
-            if "vision" in low or "visual" in low or "image_encoder" in low:
-                groups["vision_tower"].append(mod)
-            elif "proj" in low or "connector" in low or "merger" in low or "mm_" in low:
+        for name, mod in cls._parts(model):
+            low = name.lower().rsplit(".", 1)[-1]
+            if any(w in low for w in _VISION_WORDS):
+                proj, rest = cls._split_projector(mod)
+                groups["projector"] += proj
+                groups["vision_tower"] += rest
+            elif any(w in low for w in _PROJ_WORDS):
                 groups["projector"].append(mod)
             else:
                 groups["llm"].append(mod)
         return groups
+
+    @classmethod
+    def _parts(cls, model: Any) -> List[Any]:
+        """훑을 단위. 비전 타워를 품고만 있는 껍데기는 한 겹 열고 들어간다.
+
+        무턱대고 깊이 내려가지 않는다 — 열어서 비전 타워가 보일 때만 연다. 아니면
+        LLM 의 레이어 스물여덟 개가 통째로 최상위 덩이가 되어 쏟아진다.
+        """
+        out: List[Any] = []
+        for name, mod in model.named_children():
+            inner = list(getattr(mod, "named_children", list)())
+            if inner and any(any(w in n.lower() for w in _VISION_WORDS) for n, _ in inner):
+                out += [(f"{name}.{n}", m) for n, m in inner]
+            else:
+                out.append((name, mod))
+        return out
+
+    @classmethod
+    def _split_projector(cls, tower: Any) -> Any:
+        """비전 타워에서 프로젝터를 떼어 낸다. 없으면 타워가 통째로 남는다."""
+        kids = list(getattr(tower, "named_children", list)())
+        proj = [m for n, m in kids if any(w in n.lower() for w in _PROJ_WORDS)]
+        if not proj:
+            return [], [tower]
+        return proj, [m for n, m in kids if not any(w in n.lower() for w in _PROJ_WORDS)]
 
     @classmethod
     def lora_root(cls, model: Any) -> Any:
@@ -253,6 +295,30 @@ class HFBackbone(BackboneAdapter):
             proc = AutoProcessor.from_pretrained(os.path.dirname(cls.config_path))
             cls._proc = proc
         return proc
+
+    @classmethod
+    def _to_model(cls, model: Any, enc: Any) -> Dict[str, Any]:
+        """배치를 모델이 있는 장치와 **자료형**으로 옮긴다.
+
+        프로세서는 픽셀을 float32 로 낸다. 모델이 bf16 이면 비전 타워의 첫 행렬곱에서
+        `expected mat1 and mat2 to have the same dtype` 로 죽는다. 정수 텐서
+        (input_ids · labels · attention_mask)는 건드리지 않는다 — 실수로 바꾸면
+        토큰 id 가 반올림된다.
+        """
+        device = next(model.parameters()).device
+        dtype = next(model.parameters()).dtype
+        out: Dict[str, Any] = {}
+        for k, v in enc.items():
+            if hasattr(v, "to"):
+                v = v.to(device)
+                if getattr(v, "is_floating_point", bool)():
+                    v = v.to(dtype)
+            out[k] = v
+        return out
+
+    @classmethod
+    def forward(cls, model: Any, batch: Any, device: Any) -> Any:
+        return model(**cls._to_model(model, batch))
 
     @classmethod
     def image_placeholder(cls) -> str:
@@ -298,7 +364,7 @@ class HFBackbone(BackboneAdapter):
         pil = _as_pil(images)
         enc = proc(text=[cls._retarget(prompt)], images=[pil] if pil else None,
                    return_tensors="pt")
-        enc = {k: (v.to(model.device) if hasattr(v, "to") else v) for k, v in enc.items()}
+        enc = cls._to_model(model, enc)
         with torch.no_grad():
             ids = model.generate(**enc, max_new_tokens=max_new, do_sample=False)
         # 프롬프트 구간을 잘라내고 답만 돌려준다

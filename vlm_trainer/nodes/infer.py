@@ -24,7 +24,7 @@ from ..core.types import ANY, BaseKind, image, simple, text
 _LOADED: Dict[Tuple[str, str], Any] = {}
 
 
-def _load(model_dir: str, backbone: str) -> Any:
+def _load(node_id: str, model_dir: str, backbone: str) -> Any:
     key = (os.path.abspath(model_dir), backbone)
     if key in _LOADED:
         return _LOADED[key]
@@ -36,6 +36,7 @@ def _load(model_dir: str, backbone: str) -> Any:
     adapter = resolve_backbone(backbone)
     if not hasattr(adapter, "generate"):
         raise NodeError(
+            node_id,
             cause=f"백본 {backbone!r} 은 답을 생성할 줄 모른다",
             hint=(
                 "  안 잡혔다면: 학습은 끝났는데 추론에서 빈 답이 나온다.\n"
@@ -54,6 +55,7 @@ def _load(model_dir: str, backbone: str) -> Any:
              if f.endswith(".pt")]
     if not ckpts:
         raise NodeError(
+            node_id,
             cause=f"{model_dir} 에 체크포인트가 없다",
             hint=(
                 "  안 잡혔다면: 학습되지 않은 모델이 답을 내고, 그 답을 보고 판단하게 된다.\n"
@@ -62,15 +64,84 @@ def _load(model_dir: str, backbone: str) -> Any:
             ),
         )
     latest = max(ckpts, key=os.path.getmtime)
-
-    model = adapter.build(None, None)
     payload = torch.load(latest, map_location="cpu", weights_only=False)
-    state = payload.get("model", payload) if isinstance(payload, dict) else payload
-    model.load_state_dict(state, strict=False)
+    if not isinstance(payload, dict):
+        payload = {"model": payload}
+    state = payload.get("model", payload)
+
+    model = adapter.build(_build_cfg(model_dir), None)
+    _reinject_lora(adapter, model, payload.get("lora") or {})
+
+    res = model.load_state_dict(state, strict=False)
+    unexpected = list(getattr(res, "unexpected_keys", []))
+    if unexpected:
+        raise NodeError(
+            node_id,
+            cause=f"체크포인트에 있는 가중치 {len(unexpected)}개가 모델에 들어갈 자리가 없다",
+            hint=(
+                f"  첫 몇 개: {', '.join(unexpected[:3])}\n"
+                "  안 잡혔다면: 학습이 안 된 모델이 답을 내놓고, 그 답을 보고 "
+                "'파인튜닝이 소용없다' 고 판단하게 된다.\n"
+                "  추정 낭비: 학습 시간 전부 + 그 뒤의 모든 판단.\n"
+                "  학습 때와 같은 모듈 구조를 먼저 만들어야 한다 — 보통 LoRA 설정이 "
+                "체크포인트와 어긋난 경우다."
+            ),
+        )
     if torch.cuda.is_available():
         model = model.cuda()
     _LOADED[key] = (adapter, model)
     return _LOADED[key]
+
+
+@dataclass
+class _BuildCfg:
+    """`build` 가 읽는 만큼만. 학습 때 쓴 설정을 추론이 그대로 따라가게 한다."""
+
+    dtype: str = "bf16"
+    attn_impl: str = "sdpa"
+    quantization: Any = None
+
+
+@dataclass
+class _Quant:
+    mode: str = "none"
+    double_quant: bool = True
+    compute_dtype: str = "bfloat16"
+
+
+def _build_cfg(model_dir: str) -> _BuildCfg:
+    """`inference_contract.json` 에서 학습 때의 자료형과 양자화를 읽는다.
+
+    추측하지 않는다. bf16 으로 학습한 가중치를 fp16 모델에 얹으면 답이 조용히 나빠지고,
+    그것을 모델 탓으로 돌리게 된다. 계약 파일이 바로 이런 자리를 위해 있다.
+    """
+    import json
+
+    path = os.path.join(model_dir, "inference_contract.json")
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            bb = (json.load(fh).get("backbone") or {})
+    except (OSError, ValueError):
+        return _BuildCfg(quantization=_Quant())
+    return _BuildCfg(
+        dtype=str(bb.get("dtype") or "bf16"),
+        quantization=_Quant(mode=str(bb.get("quantization") or "none")),
+    )
+
+
+def _reinject_lora(adapter: Any, model: Any, spec: Dict[str, Any]) -> None:
+    """학습 때 끼운 LoRA 를 같은 자리에 다시 끼운다.
+
+    이것을 빠뜨리면 `q_proj.base.weight` 와 `q_proj.a.weight` 가 갈 곳이 없어
+    조용히 버려진다. 아래의 `unexpected_keys` 검사가 그때 소리를 낸다.
+    """
+    if not spec:
+        return
+    from ..train.freeze import inject_lora
+
+    root = adapter.lora_root(model) if hasattr(adapter, "lora_root") else model
+    inject_lora(root, tuple(spec.get("targets") or ()), int(spec.get("r") or 8),
+                int(spec.get("alpha") or 16), float(spec.get("dropout") or 0.0))
 
 
 @dataclass
@@ -104,14 +175,14 @@ class AnswerReport(Node):
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
         import json
 
-        answer = str(inputs["answer"] or "")
-        if not answer:
-            return {}      # 추론이 건너뛴 샘플(학습 split)은 남기지 않는다
+        # **빈 답도 적는다.** 버리면 `n_infer 10건 성공` 인데 파일에는 8줄이 남고,
+        # 모델이 아무 말도 안 한 두 건이 세상에서 사라진다. 그 침묵이 결과다.
         out_dir = os.path.abspath(params.out_dir.replace("{run_id}", ctx.run_id))
         os.makedirs(out_dir, exist_ok=True)
         rec = {
             "id": ctx.sample_key,
-            "answer": answer,
+            "split": str(ctx.sample.get("_split", "")),
+            "answer": str(inputs["answer"] or ""),
             "expected": str(inputs.get("expected") or ""),
         }
         with open(os.path.join(out_dir, "answers.jsonl"), "a", encoding="utf-8") as fh:
@@ -155,6 +226,7 @@ class VlmInfer(Node):
         handle = inputs["model"]
         if not isinstance(handle, dict) or not handle.get("dir"):
             raise NodeError(
+                ctx.node_id,
                 cause=f"학습된 모델을 가리키는 값이 아니다: {handle!r}",
                 hint="  `모델 학습` 상자의 출력을 이 상자의 `model` 에 이어라.",
             )
@@ -164,7 +236,7 @@ class VlmInfer(Node):
         if want and str(ctx.sample.get("_split", "")) != want:
             return {"answer": ""}
 
-        adapter, model = _load(handle["dir"], handle["backbone"])
+        adapter, model = _load(ctx.node_id, handle["dir"], handle["backbone"])
         images = inputs.get("images") or []
         return {
             "answer": adapter.generate(
