@@ -296,6 +296,16 @@ class HFBackbone(BackboneAdapter):
             cls._proc = proc
         return proc
 
+    export_format = "huggingface"      # from_pretrained 로 그냥 열린다
+
+    @classmethod
+    def save(cls, model: Any, out_dir: str) -> Any:
+        """HuggingFace 형식으로 쓴다. 프로세서도 함께 — 토크나이저와 이미지 전처리를
+        모르면 가중치만 있어도 첫 입력조차 못 만든다."""
+        model.save_pretrained(out_dir)
+        cls.processor().save_pretrained(out_dir)
+        return sorted(f for f in os.listdir(out_dir) if not f.startswith("."))
+
     @classmethod
     def _to_model(cls, model: Any, enc: Any) -> Dict[str, Any]:
         """배치를 모델이 있는 장치와 **자료형**으로 옮긴다.

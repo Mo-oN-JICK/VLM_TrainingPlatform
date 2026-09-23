@@ -57,9 +57,41 @@
 창 하나로 뜨는 네이티브 앱이고, 툴바의 **`실행`** 이 위의 `pipeline` 과 같은
 명령을 부른다. 처음이라면 `pip install -e .[app]` 로 PySide6 를 깐다.
 
+## 실물 모델로 바꾸기
+
+`trainer_qwen2vl.yaml` 이 옆에 있다. 바꿔 끼우는 것은 한 줄이다.
+
+```
+.venv\Scripts\python.exe -m vlm_trainer.cli.main backbones --fetch hf:Qwen/Qwen2-VL-2B-Instruct
+.venv\Scripts\python.exe -m vlm_trainer.cli.main pipeline solutions\vlm_open\projects\01_open\project.yaml --run-id t2 \
+      --set n_train.config_path=trainer_qwen2vl.yaml
+```
+
+RTX 3060 12GB · 20 step 실측: 학습 2m 33s · 추론 15s. 검증 10장 중 완전 일치 5 · 부분 3 ·
+빈 답 2 — **형식은 열 건 모두 스키마 그대로다.** 100장 20 step 치고는 충분하고, 목적은
+정확도가 아니라 한 바퀴가 도는지였다.
+
+예산(G4)은 통과하지만 **실측 peak 이 예산보다 크다**(`lora_ft` 6.2 GB 예산 vs 11.58 GB 실측).
+12GB 카드에서는 아슬아슬하다. 저장소 루트의 `STATUS.md` 를 보라.
+
+## 내보내기
+
+```
+.venv\Scripts\python.exe -m vlm_trainer.cli.main export solutions\vlm_open\projects\01_open\project.yaml --run-id t2
+```
+
+`runs\t2\export\` 에 LoRA 를 합친 모델과 `inference_contract.json` 이 함께 나온다.
+Qwen2-VL 로 내보낸 폴더는 이 저장소 없이 `transformers` 만으로 열린다 — 프롬프트 형식과
+이미지 자리표시자, 답이 끝나는 태그가 전부 계약에 적혀 있다.
+
+편집기에서는 `모델 학습` 상자를 고르면 패널에 **`모델 Export`** 버튼이 생긴다.
+
+## 백본
+
 `trainer.yaml`의 백본은 `tiny-vlm`이다 — 저장소에 들어 있어 **가중치를 내려받지 않고도**
-데이터 적재부터 손실·저장까지 전부 돈다. 실물 2B 백본은 `trainer_qwen2vl.yaml` 쪽이고,
-그것은 가중치 4.4GB와 Qwen2-VL 전용 collate가 아직 필요하다(`STATUS.md` 3a).
+데이터 적재부터 손실·저장까지 전부 돈다. 답은 쓸 만하지 않지만(0.00B 모델이다) 경로가
+서는지는 이것으로 본다. 실물 2B 백본은 위의 `trainer_qwen2vl.yaml` 쪽이고, 가중치 4.4GB 를
+먼저 받아야 한다.
 
 ## 이 데이터의 한계
 

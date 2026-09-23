@@ -7,6 +7,7 @@ ExpertPlugin / BackboneAdapter / StorageBackend가 같은 등록 메커니즘을
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 from ..core.errors import RegistrationError
@@ -123,6 +124,22 @@ class BackboneAdapter:
     @classmethod
     def spec(cls) -> BackboneSpec:
         return cls.spec_data
+
+    # 내보낸 폴더를 무엇으로 열어야 하는지. 받은 사람이 알아야 하고, 계약에 실린다.
+    export_format: str = "state_dict"
+
+    @classmethod
+    def save(cls, model: Any, out_dir: str) -> Any:
+        """내보낼 모델을 디스크에 쓴다. 쓴 파일들을 돌려준다.
+
+        **이 도구 없이도 열리는 형태여야 한다.** 받은 사람이 우리 저장소를 임포트해야
+        가중치를 읽을 수 있다면 그것은 모델이 아니라 우리에게 묶인 물건이다.
+        """
+        import torch
+
+        path = os.path.join(out_dir, "model.pt")
+        torch.save(model.state_dict(), path)
+        return [path]
 
     @classmethod
     def forward(cls, model: Any, batch: Any, device: Any) -> Any:

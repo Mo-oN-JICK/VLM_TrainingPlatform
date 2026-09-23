@@ -36,7 +36,7 @@ from ..train import contract as contract_mod
 
 # 명령 본문은 주제별 모듈에 있다. 파서는 그것을 가리키기만 한다.
 from .cmd_graph import cmd_backbones, cmd_compile, cmd_decompile, cmd_infer_graph, cmd_nodes, cmd_show, cmd_view
-from .cmd_execute import cmd_budget, cmd_dryrun, cmd_materialize, cmd_pipeline, cmd_preview, cmd_run, cmd_sweep, cmd_train
+from .cmd_execute import cmd_budget, cmd_dryrun, cmd_export, cmd_materialize, cmd_pipeline, cmd_preview, cmd_run, cmd_sweep, cmd_train
 from .cmd_project import cmd_edit, cmd_new, cmd_recipe
 
 
@@ -227,6 +227,16 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--trigger", default="cli", choices=("cli", "ui", "external"))
     pl.add_argument("--progress", default="")
     pl.set_defaults(func=cmd_pipeline)
+
+    ex = sub.add_parser(
+        "export", help="학습한 모델을 LoRA 까지 합쳐 한 덩어리로 내보낸다 (계약 포함)")
+    ex.add_argument("spec")
+    ex.add_argument("--run-id", default="")
+    ex.add_argument("--model-dir", default="", help="기본값 runs/<run_id>/train")
+    ex.add_argument("--out", default="", help="기본값 runs/<run_id>/export")
+    ex.add_argument("--set", action="append", default=[])
+    ex.add_argument("--cache-dir", default=".cache")
+    ex.set_defaults(func=cmd_export)
 
     pv = sub.add_parser("preview", help="노드 하나만 실행해 시각화 출력을 본다")
     pv.add_argument("spec")

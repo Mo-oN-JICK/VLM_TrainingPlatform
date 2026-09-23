@@ -139,6 +139,7 @@ class EditorWindow(QtWidgets.QMainWindow):
                 lambda: self._mutate(lambda: self.editor.toggle_expand(n), "펼치기")))
         i.removeRequested.connect(lambda n: self._later(lambda: self._remove_node(n)))
         i.focusRequested.connect(self.canvas.center_on_node)
+        i.exportRequested.connect(lambda n: self._later(self._export_model))
 
         self.history.rewindRequested.connect(
             lambda idx: self._later(
@@ -414,6 +415,17 @@ class EditorWindow(QtWidgets.QMainWindow):
             self._later(lambda: self._run_pipeline(True))
         elif picked is fresh:
             self._later(lambda: self._run_pipeline(False))
+
+    def _export_model(self) -> None:
+        """`모델 Export`. 버튼 하나가 CLI 명령 하나다 — `vlmt export` 를 그대로 띄운다."""
+        res = self.editor.export_start()
+        if not res.get("ok"):
+            self._refuse("모델 Export", res)
+            return
+        self.run_dock.show()
+        self.run_dock.raise_()
+        self.watcher.start()
+        self.statusBar().showMessage("Export 시작", 3000)
 
     def _stop(self) -> None:
         res = self.editor.run_stop()

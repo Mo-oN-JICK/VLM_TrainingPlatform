@@ -175,6 +175,7 @@ def build_contract(
     schema_path = (
         os.path.normpath(os.path.join(spec_dir, schema_node.get("path", ""))) if schema_node else ""
     )
+    schema = _read_schema(schema_path) if schema_path else {}
 
     return {
         "spec_hash": cg.spec_hash,
@@ -191,14 +192,39 @@ def build_contract(
         },
         "prompt_template": template.get("template", ""),
         "knowledge_block": {"source": knowledge.get("path", ""), "sha": _sha(kb_path) if kb_path else ""},
-        "answer_schema": {"id": schema_id, "path": schema_node.get("path", ""), "sha": _sha(schema_path) if schema_path else ""},
+        "answer_schema": {"id": schema_id or schema.get("id", ""),
+                          "render": schema.get("render", ""),
+                          "steps": [st.get("id", "") for st in schema.get("steps") or ()],
+                          "path": schema_node.get("path", ""),
+                          "sha": _sha(schema_path) if schema_path else ""},
         "sequence": {
             "max_len": getattr(getattr(cfg, "sequence", None), "max_len", 0),
             "truncation": getattr(getattr(cfg, "sequence", None), "truncation", "forbid"),
         },
         "expected_vision_tokens_per_sample": vision_tokens,
-        "parser": {"kind": "generated_from_schema", "stop": ["</verdict>"]},
+        # **멈출 태그는 스키마에서 나온다.** 여기에 글자를 적어 두면 도메인이 바뀐
+        # 날에도 그 글자가 남고, 받은 사람은 답이 잘리거나 끝나지 않는 이유를 모른다.
+        "parser": {"kind": "generated_from_schema", "stop": _stop_tags(schema)},
     }
+
+
+def _read_schema(path: str) -> Dict[str, Any]:
+    """정답 스키마를 읽는다. 없으면 빈 것 — 계약이 거짓말을 하느니 비어 있는 편이 낫다."""
+    import yaml
+
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return dict(yaml.safe_load(fh) or {})
+    except (OSError, ValueError):
+        return {}
+
+
+def _stop_tags(schema: Dict[str, Any]) -> list:
+    """마지막 항목의 닫는 태그. `render: tagged` 일 때만 뜻이 있다."""
+    steps = [st.get("id", "") for st in (schema.get("steps") or ()) if st.get("id")]
+    if not steps or schema.get("render") != "tagged":
+        return []
+    return [f"</{steps[-1]}>"]
 
 
 def write(

@@ -131,6 +131,24 @@ class RunsMixin:
         cmd += ["--resume"] if resume else ["--fresh"]
         return self._spawn(cmd, "pipeline")
 
+    def export_start(self) -> Dict[str, Any]:
+        """`vlmt export` — 학습한 모델을 한 덩어리로 내보낸다.
+
+        학습을 대신 돌려 주지 않는다. 내보낼 것이 없으면 그렇게 말한다 —
+        빈 폴더를 만들어 놓고 성공했다고 하는 것이 제일 나쁘다.
+        """
+        ready = self._ready_to_launch()
+        if not ready["ok"]:
+            return ready
+        if not self.run_id:
+            return {"ok": False, "reason": "먼저 실행해서 모델을 만들어야 한다",
+                    "detail": "이 세션에서 학습한 것이 없다. 툴바의 `실행` 을 먼저 누른다."}
+        train_dir = os.path.join(os.getcwd(), "runs", self.run_id, "train")
+        if not os.path.isdir(train_dir):
+            return {"ok": False, "reason": "학습 산출물이 없다",
+                    "detail": f"{train_dir} 가 없다. `실행` 이 학습까지 갔는지 확인한다."}
+        return self._spawn(self._base_command("export"), "export")
+
     def pipeline_state(self) -> Dict[str, Any]:
         """단계 진행. 파이프라인이 남긴 파일을 읽을 뿐이다 — 다시 셈하지 않는다."""
         if not self.run_id:

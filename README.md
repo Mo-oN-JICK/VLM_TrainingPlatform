@@ -22,7 +22,9 @@
 위에서 아래로 흐르고, **타입이 맞지 않는 배선은 놓이지 않는다.**
 `▸2` 가 붙은 상자는 노드 여러 개를 품고 있다 — 눌러서 펼친다.
 
-`Run`(그래프 실행) → `Materialize`(학습용 데이터 굽기) → `Train`(학습) 순서다.
+툴바에는 버튼이 둘이다. **`실행`** 이 이 그래프가 할 수 있는 데까지 끝까지 가고,
+`미리보기` 는 샘플 몇 건만 돌려 중간값을 본다. 누르는 순서를 외울 일이 없다 —
+그 순서는 그래프가 이미 안다.
 
 ---
 
@@ -31,7 +33,7 @@ Mech-Vision의 규약을 모방한 노드 그래프 기반 파인튜닝 플랫�
 현재 상태: **Phase 0–8 완료** (Phase 8은 인터페이스 수준). 편집기로 한 바퀴가 돈다 — 타입 시스템 · 레지스트리 · 컴파일러(G1/G2) · decompile 왕복 ·
 노드 카탈로그 26개 · 실행 엔진(캐시 · spawn 워커 · 격리) · dry-run(G3) · **자원 예산 게이트(G4)** ·
 노드 단위 미리보기 · 물질화와 재개 · **다단계 학습(LoRA·freeze·체크포인트·재개)** ·
-추론 계약 · **Parameter Recipe와 스윕** · CLI 13개 명령. **4중 게이트가 전부 동작한다.**
+추론 계약 · **Parameter Recipe와 스윕** · CLI 20개 명령. **4중 게이트가 전부 동작한다.**
 합성 더미 데이터로 전 경로가 GPU에서 돌고, 추론 그래프가 만든 프롬프트는 학습 때와 바이트 단위로 같으며,
 그래프 하나 위에서 레시피만 바꾼 실험 여러 개가 물질화를 공유하며 순차로 돈다.
 `vlmt view`가 컴파일된 그래프를 한 장의 HTML로 그리고, `vlmt run --view --debug-output`은
@@ -39,15 +41,81 @@ Mech-Vision의 규약을 모방한 노드 그래프 기반 파인튜닝 플랫�
 **타입이 맞지 않는 배선은 드롭 자체가 되지 않고**, 노드를 고르면 파라미터를 그 자리에서 고치며,
 Node Library에서 노드를 누르거나 캔버스로 끌어다 놓아 추가하고, Parameter Recipe를 골라
 값을 덮어 보고 새 조합을 레시피로 담으며, History 항목을 누르면 그 시점으로 되감는다.
-Run·Materialize·Train은 각각 같은 이름의 CLI 명령을 그대로 하위 프로세스로 띄우고,
-그 진행 파일을 폴링해 카드 상태와 loss를 칠한다 — UI 전용 실행 경로는 없다.
+툴바의 `실행`은 `vlmt pipeline`을 그대로 하위 프로세스로 띄우고, 그 진행 파일을 폴링해
+카드 상태와 loss를 칠한다 — UI 전용 실행 경로는 없다.
 `vlmt new`가 빈 껍데기를 만들고, Sample Space도 패널에서 고친다
 (프레임워크 없이 표준 라이브러리만 쓴다).
 실물 백본은 `backbone: hf:<모델 경로>` 한 줄로 들어온다 — 어댑터가 `config.json`만 읽어
-예산을 답하므로 가중치 없이도 G4가 돈다. 남은 것은 모델 id 결정과 다운로드,
-그리고 실제 다중 GPU 실행과 원격 실행.
+예산을 답하므로 가중치 없이도 G4가 돈다. **`Qwen/Qwen2-VL-2B-Instruct`로 한 바퀴가 돌았다**
+(2026-09-23, RTX 3060 12GB): 굽기 → 학습 → 추론 → Export 까지 가고, 내보낸 폴더는
+이 저장소 없이 `transformers`만으로 열린다. 아래 "처음부터 끝까지"를 보라.
+남은 것은 실제 다중 GPU 실행과 원격 실행, 그리고 **G4 예산이 실측보다 낮은 것**
+(`lora_ft` 예산 6.2 GB vs 실측 11.58 GB — `STATUS.md` 참고).
 
 실행 환경은 `.venv`(Python 3.12 + torch 2.14.0+cu130)다. `python` 대신 `.venv\\Scripts\\python.exe`를 쓴다.
+
+---
+
+## 처음부터 끝까지 — 실물 모델 한 바퀴
+
+`solutions/vlm_open` 이 그대로 따라 할 수 있는 예제다. 공개 데이터 110장(학습 100 / 검증 10),
+부품 종류와 화면 방향 두 항목을 맞히는 과제다.
+
+**1. 데이터.** 저장소에 들어 있다. 다시 만들려면
+`.venv\Scripts\python.exe tools\fetch_open_dataset.py --train 100 --val 10`.
+
+**2. 한 줄로 끝까지.**
+
+```
+.venv\Scripts\python.exe -m vlm_trainer.cli.main pipeline solutions\vlm_open\projects\01_open\project.yaml --run-id t1
+```
+
+준비(G4) → 굽기 → 학습 → 추론을 차례로 돈다. **단계는 그래프가 정한다** — Trainer 가 없으면
+학습 단계가 아예 생기지 않고, 추론 노드가 없으면 학습에서 끝난다. 앱에서는 툴바의 `실행`
+하나가 같은 명령을 부른다.
+
+**3. 답을 읽는다.** `runs\t1\infer\answers.jsonl` 에 검증 10장의 답이 정답과 나란히 적힌다.
+**채점하지 않는다** — 라벨에 잡음이 있는 데이터에서 자동 채점 숫자가 나오면 그 숫자를 믿게
+되는 편이 더 나쁘다. 사람이 읽고 판단할 일이다.
+
+**4. 실물 백본으로 바꾼다.** 한 줄이다.
+
+```
+.venv\Scripts\python.exe -m vlm_trainer.cli.main backbones --fetch hf:Qwen/Qwen2-VL-2B-Instruct
+.venv\Scripts\python.exe -m vlm_trainer.cli.main pipeline solutions\vlm_open\projects\01_open\project.yaml --run-id t2 \
+      --set n_train.config_path=trainer_qwen2vl.yaml
+```
+
+**5. 내보낸다.** LoRA 를 원본에 합쳐 한 덩어리로.
+
+```
+.venv\Scripts\python.exe -m vlm_trainer.cli.main export solutions\vlm_open\projects\01_open\project.yaml --run-id t2
+```
+
+앱에서는 `모델 학습` 상자를 고르면 패널에 **`모델 Export`** 버튼이 생긴다.
+
+산출물은 `runs\t2\export\` 다. **가중치와 `inference_contract.json` 이 함께 들어간다** —
+프롬프트를 어떤 형식으로 넣어야 하는지, 이미지 자리표시자가 어떤 토큰인지, 답이 어떤 태그로
+끝나는지가 전부 계약에 있다. 그것을 모르면 가중치만으로는 아무 답도 못 얻고, 받은 사람은
+모델이 나쁘다고 결론 내린다. 그래서 **계약 없이는 내보내지 않는다.**
+
+Qwen2-VL 로 내보낸 폴더는 이 저장소 없이 `transformers` 만으로 열린다:
+
+```python
+import json, torch
+from transformers import AutoModelForImageTextToText, AutoProcessor
+
+c = json.load(open("runs/t2/export/inference_contract.json", encoding="utf-8"))
+proc = AutoProcessor.from_pretrained("runs/t2/export")
+m = AutoModelForImageTextToText.from_pretrained("runs/t2/export", dtype=torch.bfloat16)
+
+text = c["prompt_template"].format(question="이 부품은?") + " " + c["backbone"]["image_placeholder"]
+# 생성은 c["parser"]["stop"] 의 태그에서 멈춘다
+```
+
+실측(RTX 3060 12GB · 20 step): 학습 2m 33s · 추론 15s · 검증 10장 중 완전 일치 5 · 부분 3 ·
+빈 답 2. **형식은 열 건 모두 스키마 그대로다.** 100장 20 step 치고는 충분하고, 애초에
+목적은 정확도가 아니라 한 바퀴가 도는지였다.
 
 ## 실행
 
@@ -82,6 +150,12 @@ python -m vlm_trainer.cli.main run solutions/dummy_ecg/projects/01_dummy/project
 
 # 7) 학습 - 물질화된 shard로 다단계 학습 (G4를 먼저 통과해야 시작한다)
 python -m vlm_trainer.cli.main train solutions/dummy_ecg/projects/01_dummy/project.yaml --run-id demo --set n_train.config_path=trainer_tiny.yaml
+
+# 7b) 파이프라인 - 준비 -> 굽기 -> 학습 -> 추론. 위 5~7을 그래프가 정한 순서대로 한 번에
+python -m vlm_trainer.cli.main pipeline solutions/vlm_open/projects/01_open/project.yaml --run-id t1
+
+# 7c) Export - LoRA를 합쳐 한 덩어리로. 계약(inference_contract.json)을 함께 넣는다
+python -m vlm_trainer.cli.main export solutions/vlm_open/projects/01_open/project.yaml --run-id t1
 
 # 8) 추론 그래프 - 학습 그래프에서 정답 경로를 잘라낸 서브그래프
 python -m vlm_trainer.cli.main infer-graph solutions/dummy_ecg/projects/01_dummy/project.yaml --out infer.yaml

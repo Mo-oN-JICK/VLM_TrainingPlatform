@@ -40,6 +40,7 @@ class Inspector(QtWidgets.QDockWidget):
     expandToggled = QtCore.Signal(str)
     removeRequested = QtCore.Signal(str)
     focusRequested = QtCore.Signal(str)
+    exportRequested = QtCore.Signal(str)
 
     def __init__(self, parent: Any = None) -> None:
         super().__init__("노드 설정", parent)
@@ -230,7 +231,28 @@ class Inspector(QtWidgets.QDockWidget):
         rm.clicked.connect(lambda: self.removeRequested.emit(nid))
         row.addWidget(rm)
         lay.addLayout(row)
+
+        # 학습 상자에만 붙는다. 다른 상자에서는 내보낼 것이 없고, 빈 버튼을 눌러
+        # "아무 일도 안 일어나는" 경험을 만드느니 없는 편이 낫다.
+        if self._trains(nid):
+            ex = QtWidgets.QPushButton("모델 Export")
+            ex.setToolTip("LoRA 를 합쳐 한 덩어리로 내보낸다. 프롬프트 형식(계약)도 함께 넣는다")
+            ex.clicked.connect(lambda: self.exportRequested.emit(nid))
+            lay.addWidget(ex)
         return box
+
+    def _trains(self, nid: str) -> bool:
+        """이 상자가 학습하는가. 타입 이름이 아니라 `per_sample=False` 로 본다 —
+        남이 만든 학습 노드에도 같은 버튼이 붙어야 한다."""
+        cg = getattr(self._editor, "compiled", None)
+        if cg is None or nid not in cg.nodes:
+            return False
+        try:
+            from ...core.registry import resolve as resolve_node
+
+            return not resolve_node(cg.nodes[nid].ref).per_sample
+        except Exception:
+            return False
 
 
 def _kind_of(value: Any) -> str:

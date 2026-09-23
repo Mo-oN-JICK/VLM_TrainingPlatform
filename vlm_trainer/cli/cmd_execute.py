@@ -409,3 +409,29 @@ _STAGE_FUNCS = {
     "train": cmd_train,
     "run": cmd_run,
 }
+
+
+def cmd_export(a: argparse.Namespace) -> int:
+    """`모델 Export` — LoRA 를 합친 한 덩어리 + 계약.
+
+    **계약을 반드시 함께 넣는다.** 프롬프트를 어떤 형식으로 넣어야 하는지 모르면
+    가중치만 있어도 쓸 수 없고, 받은 사람은 답이 안 나오는 이유를 모델 탓으로 돌린다.
+    """
+    from ..train import checkpoint as ckpt_mod
+
+    _load_nodes(a.nodes)
+    cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
+    got = _trainer_cfg(a, cg)
+    if got is None:
+        raise SystemExit("이 그래프에는 Trainer 노드가 없다. 내보낼 모델이 없다.")
+    cfg, _ = got
+
+    run_id = _run_id(a)
+    model_dir = a.model_dir or os.path.join("runs", run_id, "train")
+    out_dir = a.out or os.path.join("runs", run_id, "export")
+
+    t0 = time.time()
+    rep = ckpt_mod.export(os.path.abspath(model_dir), cfg.backbone, out_dir)
+    print(ckpt_mod.render(rep))
+    print(f"  {_took((time.time() - t0) * 1000)}")
+    return 0 if rep.ok else 9
