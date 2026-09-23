@@ -18,7 +18,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from ..core.node import Node, NodeDoc, NodeError, NodeKind, Port, RunCtx
 from ..core.registry import register
-from ..core.types import BaseKind, simple, text
+from ..core.types import ANY, BaseKind, image, simple, text
 
 # (모델 디렉터리, 백본 id) -> 올려 둔 모델. 프로세스가 사는 동안 유지된다.
 _LOADED: Dict[Tuple[str, str], Any] = {}
@@ -135,6 +135,9 @@ class InferParams:
     inputs={
         "model": Port(simple(BaseKind.MODEL), "학습된 모델"),
         "prompt": Port(text(), "질문"),
+        # 학습 때와 **같은 전처리를 거친** 이미지여야 한다. 원본을 바로 물리면
+        # 모델이 한 번도 본 적 없는 크기가 들어가고, 답이 나빠진 이유를 모델 탓으로 돌린다.
+        "images": Port(image(frame=ANY).as_list(1, 16).as_optional(), "질문에 딸린 이미지"),
     },
     outputs={"answer": Port(text(), "모델이 내놓은 답")},
     params=InferParams,

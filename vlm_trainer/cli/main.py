@@ -36,7 +36,7 @@ from ..train import contract as contract_mod
 
 # 명령 본문은 주제별 모듈에 있다. 파서는 그것을 가리키기만 한다.
 from .cmd_graph import cmd_backbones, cmd_compile, cmd_decompile, cmd_infer_graph, cmd_nodes, cmd_show, cmd_view
-from .cmd_execute import cmd_budget, cmd_dryrun, cmd_materialize, cmd_preview, cmd_run, cmd_sweep, cmd_train
+from .cmd_execute import cmd_budget, cmd_dryrun, cmd_materialize, cmd_pipeline, cmd_preview, cmd_run, cmd_sweep, cmd_train
 from .cmd_project import cmd_edit, cmd_new, cmd_recipe
 
 
@@ -197,6 +197,36 @@ def build_parser() -> argparse.ArgumentParser:
     tr.add_argument("--cache-dir", default=".cache")
     tr.add_argument("--run-id", default="")
     tr.set_defaults(func=cmd_train)
+
+    pl = sub.add_parser(
+        "pipeline",
+        help="준비 -> 굽기 -> 학습 -> 추론을 한 번에 돈다 (그래프에 있는 단계까지만)")
+    pl.add_argument("spec")
+    pl.add_argument("--run-id", default="", help="같은 id 로 다시 부르면 이어 받을 수 있다")
+    pl.add_argument("--resume", action="store_true", help="굽다 만 shard 를 인정하고 이어 받는다")
+    pl.add_argument("--fresh", action="store_true", help="굽다 만 것을 버리고 처음부터 굽는다")
+    pl.add_argument("--bake-split", default="auto",
+                    help="굽기가 돌 split. auto=train 이 있으면 train 만, all=전부, "
+                         "또는 split 이름. 추론 split 은 추론 노드가 선언한 것을 쓴다")
+    pl.add_argument("--set", action="append", default=[])
+    pl.add_argument("--device", default="", help="예산 프로파일 (rtx3060_12gb | rtx4090_24gb)")
+    pl.add_argument("--device-torch", default="auto", help="cuda | cpu | auto")
+    pl.add_argument("--skip-budget", action="store_true", help="준비 단계(G4)를 건너뛴다")
+    pl.add_argument("--what-if", action="append", default=[])
+    pl.add_argument("--no-measure", action="store_true")
+    pl.add_argument("--limit", type=int, default=0)
+    pl.add_argument("--shard-size", type=int, default=64)
+    pl.add_argument("--out-dir", default="", help="기본값 runs/<run_id>/materialized")
+    pl.add_argument("--materialized", default="", help="기본값 runs/<run_id>/materialized")
+    pl.add_argument("--max-steps", type=int, default=0)
+    pl.add_argument("--cache-dir", default=".cache")
+    pl.add_argument("--cache-backend", default="local")
+    pl.add_argument("--no-cache", action="store_true")
+    pl.add_argument("--view", default="")
+    pl.add_argument("--debug-output", action="store_true")
+    pl.add_argument("--trigger", default="cli", choices=("cli", "ui", "external"))
+    pl.add_argument("--progress", default="")
+    pl.set_defaults(func=cmd_pipeline)
 
     pv = sub.add_parser("preview", help="노드 하나만 실행해 시각화 출력을 본다")
     pv.add_argument("spec")

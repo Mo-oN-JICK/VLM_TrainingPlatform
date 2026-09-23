@@ -25,17 +25,37 @@
 
 ## 바로 돌려 보기
 
+한 줄이면 끝까지 간다 — 준비 → 굽기 → 학습 → 추론.
+
+```
+.venv\Scripts\python.exe -m vlm_trainer.cli.main pipeline solutions\vlm_open\projects\01_open\project.yaml --run-id t1
+```
+
+단계는 그래프가 정한다. 이 그래프에는 학습과 추론이 둘 다 있으므로 네 단계를 돈다.
+검증 10장의 답은 `runs\t1\infer\answers.jsonl` 에 정답과 나란히 적힌다 —
+**채점하지 않는다.** 사람이 읽고 판단할 일이다.
+
+굽기는 `train` split 만 굽는다. 검증 샘플까지 구우면 학습이 그것도 읽어서, 나중에 검증
+답을 봐도 이미 외운 것을 다시 물어보는 셈이 된다. 전부 구우려면 `--bake-split all`.
+
+중간에 멈췄다가 같은 `--run-id` 로 다시 부르면 굽다 만 것이 있다고 **물어본다**.
+이어 받으려면 `--resume`, 처음부터 구우려면 `--fresh`.
+
+단계를 따로 보고 싶으면 원래 명령이 그대로 있다. `pipeline` 이 부르는 것도 이것들이다.
+
 ```
 .venv\Scripts\python.exe -m vlm_trainer.cli.main compile solutions\vlm_open\projects\01_open\project.yaml
 .venv\Scripts\python.exe -m vlm_trainer.cli.main dryrun  solutions\vlm_open\projects\01_open\project.yaml
 .venv\Scripts\python.exe -m vlm_trainer.cli.main budget  solutions\vlm_open\projects\01_open\project.yaml
 
-.venv\Scripts\python.exe -m vlm_trainer.cli.main materialize solutions\vlm_open\projects\01_open\project.yaml --run-id t1
+.venv\Scripts\python.exe -m vlm_trainer.cli.main materialize solutions\vlm_open\projects\01_open\project.yaml --run-id t1 --split train
 .venv\Scripts\python.exe -m vlm_trainer.cli.main train       solutions\vlm_open\projects\01_open\project.yaml --run-id t1
+.venv\Scripts\python.exe -m vlm_trainer.cli.main run         solutions\vlm_open\projects\01_open\project.yaml --run-id t1 --split val
 ```
 
 편집기로 그래프를 보려면 `editor.bat solutions\vlm_open\projects\01_open\project.yaml`.
-창 하나로 뜨는 네이티브 앱이다. 처음이라면 `pip install -e .[app]` 로 PySide6 를 깐다.
+창 하나로 뜨는 네이티브 앱이고, 툴바의 **`실행`** 이 위의 `pipeline` 과 같은
+명령을 부른다. 처음이라면 `pip install -e .[app]` 로 PySide6 를 깐다.
 
 `trainer.yaml`의 백본은 `tiny-vlm`이다 — 저장소에 들어 있어 **가중치를 내려받지 않고도**
 데이터 적재부터 손실·저장까지 전부 돈다. 실물 2B 백본은 `trainer_qwen2vl.yaml` 쪽이고,

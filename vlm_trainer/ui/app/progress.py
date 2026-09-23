@@ -194,6 +194,17 @@ class RunWatcher(QtCore.QObject):
     def _headline(self, st: Dict[str, Any]) -> str:
         kind, run_id = st.get("kind") or "", st.get("run_id") or ""
         train = st.get("train") or {}
+        # 파이프라인은 어느 구간에 있는지가 먼저다. 숫자만 흐르면 굽는 중인지
+        # 학습 중인지 알 수 없고, 둘은 걸리는 시간이 자릿수로 다르다.
+        line = str((st.get("pipeline") or {}).get("headline") or "")
+        if kind == "pipeline" and line:
+            head = f"{run_id} {line}"
+            if train.get("step"):
+                head += f" · step {train['step']} loss {float(train.get('loss') or 0):.4f}"
+            elif st.get("total"):
+                head += f" · {st.get('processed', 0)}/{st['total']}"
+            q = st.get("quarantine_total") or 0
+            return head + (f" · 격리 {q}" if q else "")
         if kind == "train" and train.get("step"):
             body = (f"train {train.get('stage', '')} step {train['step']} "
                     f"loss {float(train.get('loss') or 0):.4f}")

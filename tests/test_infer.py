@@ -46,24 +46,25 @@ def test_inference_after_training_is_not_asked_for_a_boundary():
     """`external_call` 은 물질화 경계 앞에 있어야 한다. 그 규칙이 막는 위험은
     **학습 루프 안에서** VRAM 을 뺏는 것인데, 학습 뒤에 있는 노드는 루프 안에 있을 수 없다.
     없는 위험을 게이트가 말하기 시작하면 사람이 게이트를 믿지 않게 된다.
+
+    `vlm_open` 이 실물 증거다 — 추론이 경계 뒤에 배선된 채로 컴파일을 통과한다.
     """
-    from vlm_trainer.core.compiler import compile_graph
-    from vlm_trainer.core.graph import Edge, NodeInstance
-    from vlm_trainer.spec.loader import load_project
+    spec = os.path.join(ROOT, "solutions", "vlm_open", "projects", "01_open", "project.yaml")
+    cg = compile_project(spec)     # 추론이 경계 뒤에 있는데도 통과해야 한다
+    assert cg.lanes["n_train"] < cg.lanes["n_infer"], "학습이 추론보다 아래에 놓였다"
+    assert cg.lanes["n_answers"] == max(cg.lanes.values()), "종결 Output 이 맨 아래가 아니다"
+
+
+def test_the_inference_node_takes_the_same_pictures_training_saw():
+    """전처리를 거친 이미지를 받아야 한다. 원본을 바로 물리면 모델이 한 번도 본 적 없는
+    크기가 들어가고, 답이 나빠진 이유를 모델 탓으로 돌리게 된다."""
+    d = resolve("infer.vlm@1.0.0")
+    assert "images" in d.inputs, "포트가 없으면 노드가 이미지를 읽어도 배선할 길이 없다"
 
     spec = os.path.join(ROOT, "solutions", "vlm_open", "projects", "01_open", "project.yaml")
-    g = load_project(spec)
-    g.nodes.append(NodeInstance("n_infer", "infer.vlm@1.0.0", {}))
-    g.nodes.append(NodeInstance("n_rep", "io.answer_report@1.0.0", {}))
-    g.edges += [
-        Edge.parse("n_train:model", "n_infer:model"),
-        Edge.parse("n_guard:prompt", "n_infer:prompt"),
-        Edge.parse("n_infer:answer", "n_rep:answer"),
-        Edge.parse("p_answer:answer", "n_rep:expected"),
-    ]
-    cg = compile_graph(g)     # 추론이 경계 뒤에 있는데도 통과해야 한다
-    assert cg.lanes["n_train"] < cg.lanes["n_infer"], "학습이 추론보다 아래에 놓였다"
-    assert cg.lanes["n_rep"] == max(cg.lanes.values()), "종결 Output 이 맨 아래가 아니다"
+    cg = compile_project(spec)
+    src = cg.nodes["n_infer"].inputs.get("images", "")
+    assert src.startswith("p_prep"), f"전처리를 거치지 않은 이미지가 들어온다: {src!r}"
 
 
 def test_a_terminal_output_still_sits_at_the_bottom():

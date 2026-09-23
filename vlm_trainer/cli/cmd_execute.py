@@ -272,3 +272,140 @@ def cmd_sweep(a: argparse.Namespace) -> int:
     return 0 if not rep.rejected else 7
 
 
+
+
+# 파이프라인이 단계마다 직접 꽂는 인자. 나머지는 전부 `pipeline` 파서가 받아야 한다 —
+# 하나라도 빠지면 그 단계에서 AttributeError 로 죽고, 하필 굽기가 끝난 뒤에 죽는다.
+STAGE_SET_ARGS = frozenset({"split", "run_id", "resume", "skip_budget"})
+
+
+def cmd_pipeline(a: argparse.Namespace) -> int:
+    """준비 → 굽기 → 학습 → 추론을 한 번에.
+
+    **여기에 실행 코드는 없다.** 위에 있는 `cmd_materialize` · `cmd_train` · `cmd_run` 을
+    그 순서로 부를 뿐이고, 각 단계는 터미널에서 그 명령을 직접 쳤을 때와 글자 하나까지
+    같은 일을 한다. 부른 명령을 그대로 찍어 주는 것도 그래서다 — 어느 단계가 이상하면
+    그 줄만 복사해 따로 돌려 볼 수 있어야 한다.
+    """
+    import copy
+
+    from ..engine import pipeline as pipe
+
+    _load_nodes(a.nodes)
+    cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
+    run_id = _run_id(a)
+    snap = pipe.snapshot_path(run_id)
+
+    # 굽다 만 것부터 판단한다. 멈출 자리라면 아무것도 계산하지 않고 멈춘다.
+    left = pipe.leftover(run_id)
+    resume = bool(a.resume)
+    if left and not a.resume and not a.fresh:
+        # 말없이 이어받으면 예전 파라미터로 구운 샘플이 새 학습에 섞이고,
+        # 말없이 지우면 몇 시간이 날아간다. 양쪽 다 나쁘므로 묻는다.
+        answer = None
+        if sys.stdin is not None and sys.stdin.isatty():
+            print(f"굽다 만 것이 있다: shard {left.shards}개 · 샘플 {left.samples}건")
+            print(f"  {left.out_dir}")
+            try:
+                answer = input("  이어 받을까? [y/N] ").strip().lower().startswith("y")
+            except (EOFError, KeyboardInterrupt):
+                # 터미널처럼 보였지만 읽을 것이 없다. 그 경우에도 대신 고르지 않는다.
+                print()
+                answer = None
+        if answer is None:
+            print(f"굽다 만 것이 있다: shard {left.shards}개 · 샘플 {left.samples}건", file=sys.stderr)
+            print(f"  {left.out_dir}", file=sys.stderr)
+            print("  이어 받으려면 --resume, 처음부터 구우려면 --fresh 를 준다.", file=sys.stderr)
+            print("  물어볼 수 없는 자리라 대신 고르지 않는다 — 말없이 이어받으면 예전",
+                  file=sys.stderr)
+            print("  파라미터로 구운 샘플이 섞이고, 말없이 지우면 구운 시간이 날아간다.",
+                  file=sys.stderr)
+            return 8
+        resume = answer
+
+    p = pipe.plan(cg, run_id, bake_split=_bake_split(a, cg))
+    print(f"pipeline {run_id} · {pipe.headline(p)}")
+    p.started = time.time()
+    pipe.write(p, snap)
+
+    for stage in p.stages:
+        if stage.key == "prepare" and a.skip_budget:
+            stage.state, stage.note = pipe.SKIPPED, "--skip-budget"
+            pipe.write(p, snap)
+            continue
+
+        ns = copy.copy(a)
+        ns.run_id = run_id
+        ns.split = stage.split
+        ns.resume = resume if stage.key == "bake" else bool(a.resume)
+        # 예산은 준비 단계에서 이미 봤다. 단계마다 다시 보면 dry-run 실측이 매번 돈다.
+        ns.skip_budget = stage.key != "prepare"
+        stage.state = pipe.RUNNING
+        pipe.write(p, snap)
+
+        t0 = time.time()
+        print()
+        print(f"[{stage.label}] vlmt {stage.command} {os.path.basename(a.spec)}"
+              + (f" --split {stage.split}" if stage.split else "")
+              + (" --resume" if ns.resume and stage.key == "bake" else ""))
+        try:
+            code = _STAGE_FUNCS[stage.command](ns)
+        except SystemExit as exc:            # 하위 명령이 못 돌겠다고 한 경우
+            code, stage.note = 1, str(exc)
+            print(stage.note, file=sys.stderr)
+        stage.ms = (time.time() - t0) * 1000
+        stage.state = pipe.DONE if code == 0 else pipe.FAILED
+        pipe.write(p, snap)
+
+        if code != 0:
+            # 뒤 단계는 앞 단계의 산출물을 읽는다. 굽기가 깨졌는데 학습을 시작하면
+            # 반쯤 구운 shard 로 몇 시간을 태우고 나서야 안다.
+            for rest in p.stages:
+                if rest.state == pipe.PENDING:
+                    rest.state = pipe.SKIPPED
+                    rest.note = f"{stage.label} 단계가 끝나지 않았다"
+            p.finished = time.time()
+            pipe.write(p, snap)
+            print()
+            print(pipe.render(p))
+            print(f"  {stage.label} 단계에서 멈췄다 (종료 코드 {code})", file=sys.stderr)
+            return code
+
+    p.finished = time.time()
+    pipe.write(p, snap)
+    print()
+    print(pipe.render(p))
+    print(f"  전체 {_took((p.finished - p.started) * 1000)} · runs/{run_id}")
+    return 0
+
+
+# 단계 이름 -> 위에 있는 명령. 파이프라인이 새 실행 경로를 만들지 않는다는 것이
+# 이 표로 드러난다.
+def _bake_split(a: argparse.Namespace, cg: Any) -> str:
+    """굽기가 돌 split. 기본은 **학습용만** 굽는 것이다.
+
+    학습은 구워진 shard 를 전부 읽는다. 검증 샘플까지 구워 두면 그것도 학습에 들어가고,
+    그러면 "검증 10장이 뭐라 답하는지 본다" 가 아무 의미도 없어진다. 이미 외운 것을
+    다시 물어보는 셈이다. 조용히 그렇게 되는 것이 나빠서 고른 이유를 찍어 준다.
+
+    split 이 하나뿐인 그래프는 나눌 것이 없으니 그대로 전부 굽는다.
+    """
+    want = (a.bake_split or "auto").strip()
+    if want == "all":
+        return ""
+    if want != "auto":
+        return want
+    names = {str(r.get("_split", "")) for r in _space(a, cg).rows}
+    if len(names) > 1 and "train" in names:
+        print("굽기는 train split 만 굽는다 — 검증 샘플을 구우면 학습이 그것까지 읽는다")
+        print("  전부 구우려면 --bake-split all")
+        return "train"
+    return ""
+
+
+_STAGE_FUNCS = {
+    "budget": cmd_budget,
+    "materialize": cmd_materialize,
+    "train": cmd_train,
+    "run": cmd_run,
+}

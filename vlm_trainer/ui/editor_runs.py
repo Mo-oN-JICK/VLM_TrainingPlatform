@@ -20,6 +20,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
+from ..engine import pipeline as pipe_mod
 from ..engine import runner as runner_mod
 from ..engine import samples as samples_mod
 from ..spec import recipe as recipe_mod
@@ -106,6 +107,37 @@ class RunsMixin:
             }
         return {"ok": True}
 
+    def pipeline_start(self, resume: Optional[bool] = None) -> Dict[str, Any]:
+        """`vlmt pipeline` — 준비 → 굽기 → 학습 → 추론.
+
+        **버튼 하나가 여전히 CLI 명령 하나다.** 편집기가 세 명령을 엮어 돌리는 것이
+        아니라, 그 엮음을 CLI 가 `pipeline` 이라는 이름으로 갖고 있고 버튼은 그것을 부른다.
+
+        굽다 만 것이 있으면 **돌리지 않고 되묻는다**(`ask_resume`). 창이 사람에게 묻고
+        답을 갖고 다시 부른다 — 하위 프로세스는 물어볼 입이 없다.
+        """
+        ready = self._ready_to_launch()
+        if not ready["ok"]:
+            return ready
+        self.run_id = self.run_id or ("ui_" + time.strftime("%Y%m%dT%H%M%S"))
+
+        left = pipe_mod.leftover(self.run_id)
+        if left and resume is None:
+            return {"ok": False, "ask_resume": {
+                "run_id": left.run_id, "shards": left.shards,
+                "samples": left.samples, "out_dir": left.out_dir}}
+
+        cmd = self._base_command("pipeline")
+        cmd += ["--resume"] if resume else ["--fresh"]
+        return self._spawn(cmd, "pipeline")
+
+    def pipeline_state(self) -> Dict[str, Any]:
+        """단계 진행. 파이프라인이 남긴 파일을 읽을 뿐이다 — 다시 셈하지 않는다."""
+        if not self.run_id:
+            return {}
+        p = pipe_mod.read(os.path.join(os.getcwd(), pipe_mod.snapshot_path(self.run_id)))
+        return pipe_mod.as_dict(p) if p is not None else {}
+
     def materialize_start(self, limit: int = 0) -> Dict[str, Any]:
         """`vlmt materialize` — 학습이 읽을 shard를 만든다."""
         ready = self._ready_to_launch()
@@ -189,6 +221,7 @@ class RunsMixin:
             "active": "",
             "elapsed_ms": elapsed_ms,
             "eta_ms": 0.0,
+            "pipeline": self.pipeline_state(),
         }
         # 물질화·학습 중에도 직전 실행이 남긴 카드 상태는 그대로 둔다.
         # 지우면 "아무것도 안 돌았다"로 읽히는데 그것은 사실이 아니다.

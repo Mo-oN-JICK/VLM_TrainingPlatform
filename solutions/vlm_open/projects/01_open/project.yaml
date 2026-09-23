@@ -30,6 +30,12 @@ nodes:
   - {id: n_train, type: "train.vlm_trainer@0.1.0",
      params: {config_path: "trainer.yaml", out_dir: "runs/{run_id}/train"}}
 
+  # ── 학습 뒤 ────────────────────────────────────────────────────────
+  # 학습이 산출물이 **어디 있는지**를 내보내고 추론이 그것을 받는다. 경로를
+  # 파라미터에 적어도 돌기는 하지만, 그러면 "학습한 모델로 추론한다" 가 화면에서 사라진다.
+  - {id: n_infer, type: "infer.vlm@1.0.0", params: {max_new_tokens: 48, only_split: val}}
+  - {id: n_answers, type: "io.answer_report@1.0.0", params: {out_dir: "runs/{run_id}/infer"}}
+
 procedures:
   - id: p_prep
     ref: "image_prep_resize@1.0.0"
@@ -60,6 +66,11 @@ edges:
   - {from: "n_cols:meta", to: "n_sample:meta"}
   - {from: "n_sample:sample", to: "n_train:sample"}
   - {from: "n_schema:schema", to: "n_train:schema"}
+  - {from: "n_train:model", to: "n_infer:model"}
+  - {from: "n_guard:prompt", to: "n_infer:prompt"}
+  - {from: "p_prep:images", to: "n_infer:images"}
+  - {from: "n_infer:answer", to: "n_answers:answer"}
+  - {from: "p_answer:answer", to: "n_answers:expected"}
 
 materialize:
   boundary: [n_sample]

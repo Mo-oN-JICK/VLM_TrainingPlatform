@@ -201,6 +201,19 @@ class EditorWindow(QtWidgets.QMainWindow):
                     lambda: self._mutate(self.editor.reset_layout, "자동 정렬"))
         v.addAction(self.library.toggleViewAction())
 
+        r = m.addMenu("실행(&R)")
+        r.addAction("실행", QtGui.QKeySequence("F5"), self._run_pipeline)
+        r.addAction("미리보기", QtGui.QKeySequence("F6"), lambda: self._launch(
+            lambda: self.editor.run_start(self.spin_limit.value(), self.chk_debug.isChecked()),
+            "미리보기"))
+        r.addSeparator()
+        # 단계 하나만 돌리는 길은 남겨 둔다. CLI 에 있는 명령이 앱에서 사라지면,
+        # 굽기만 다시 하고 싶은 사람이 터미널로 나가야 한다.
+        r.addAction("굽기만", lambda: self._launch(self.editor.materialize_start, "굽기"))
+        r.addAction("학습만", lambda: self._launch(self.editor.train_start, "학습"))
+        r.addSeparator()
+        r.addAction("중단", self._stop)
+
         m.addMenu("도움말(&H)").addAction("조작법", self._show_help)
 
     def _build_toolbar(self) -> None:
@@ -208,14 +221,16 @@ class EditorWindow(QtWidgets.QMainWindow):
         tb.setMovable(False)
         self.addToolBar(tb)
 
-        self.act_run = tb.addAction("Run", lambda: self._launch(
+        # 버튼은 둘이다. **실행**은 이 그래프가 할 수 있는 데까지 끝까지 가고,
+        # **미리보기**는 몇 건만 돌려 중간값을 본다. `Materialize` 와 `Train` 을
+        # 따로 두면 누르는 순서를 사람이 외워야 하는데, 그 순서는 그래프가 이미 안다.
+        self.act_run = tb.addAction("실행", self._run_pipeline)
+        self.act_run.setToolTip("준비 → 굽기 → 학습 → 추론. 그래프에 있는 단계까지 간다")
+        self.act_preview = tb.addAction("미리보기", lambda: self._launch(
             lambda: self.editor.run_start(self.spin_limit.value(), self.chk_debug.isChecked()),
-            "Run"))
-        self.act_mat = tb.addAction("Materialize", lambda: self._launch(
-            self.editor.materialize_start, "Materialize"))
-        self.act_train = tb.addAction("Train", lambda: self._launch(
-            self.editor.train_start, "Train"))
-        self.act_stop = tb.addAction("Stop", self._stop)
+            "미리보기"))
+        self.act_preview.setToolTip("샘플 몇 건만 돌려 중간값을 본다. 학습하지 않는다")
+        self.act_stop = tb.addAction("중단", self._stop)
         self.act_stop.setEnabled(False)
 
         tb.addSeparator()
@@ -363,6 +378,43 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.watcher.start()
         self.statusBar().showMessage(f"{label} 시작", 3000)
 
+    def _run_pipeline(self, resume: Any = None) -> None:
+        """`실행`. 굽다 만 것이 있으면 편집기가 되묻고, 그 답을 갖고 다시 부른다.
+
+        말없이 이어받으면 예전 파라미터로 구운 샘플이 새 학습에 섞이고, 말없이 지우면
+        구운 시간이 날아간다. 양쪽 다 나빠서 사람이 고른다.
+        """
+        res = self.editor.pipeline_start(resume)
+        ask = res.get("ask_resume")
+        if ask:
+            self._ask_resume(ask)
+            return
+        if not res.get("ok"):
+            self._refuse("실행", res)
+            return
+        self.run_dock.show()
+        self.run_dock.raise_()
+        self.watcher.start()
+        self.statusBar().showMessage("실행 시작", 3000)
+
+    def _ask_resume(self, ask: Dict[str, Any]) -> None:
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("굽다 만 것이 있습니다")
+        box.setText(f"shard {ask['shards']}개 · 샘플 {ask['samples']}건이 이미 구워져 있습니다.")
+        box.setInformativeText(
+            f"{ask['out_dir']}\n\n"
+            "이어 받으면 그 샘플은 다시 굽지 않습니다. 전처리 설정을 고쳤다면 "
+            "예전 값으로 구운 샘플이 섞이므로 처음부터 굽는 편이 맞습니다.")
+        keep = box.addButton("이어 받기", QtWidgets.QMessageBox.AcceptRole)
+        fresh = box.addButton("처음부터", QtWidgets.QMessageBox.DestructiveRole)
+        box.addButton("취소", QtWidgets.QMessageBox.RejectRole)
+        box.exec()
+        picked = box.clickedButton()
+        if picked is keep:
+            self._later(lambda: self._run_pipeline(True))
+        elif picked is fresh:
+            self._later(lambda: self._run_pipeline(False))
+
     def _stop(self) -> None:
         res = self.editor.run_stop()
         if not res.get("ok"):
@@ -371,7 +423,7 @@ class EditorWindow(QtWidgets.QMainWindow):
     def set_running(self, on: bool) -> None:
         """돌고 있는 동안에는 그래프를 못 고치게 한다. 실행은 **디스크의 스펙**을
         도는데 편집은 메모리를 바꾼다 — 둘이 갈라지면 화면과 다른 것이 돌아간다."""
-        for a in (self.act_run, self.act_mat, self.act_train):
+        for a in (self.act_run, self.act_preview):
             a.setEnabled(not on)
         self.act_stop.setEnabled(on)
         self.library.setEnabled(not on)

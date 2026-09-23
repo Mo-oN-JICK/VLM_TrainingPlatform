@@ -242,3 +242,68 @@ def test_random_edits_do_not_crash(win, ed):
             app.processEvents()
 
     assert win.canvas.cards, "그래프가 통째로 사라졌다"
+
+
+# ── 실행 버튼 ───────────────────────────────────────────────────────────
+def test_the_run_button_calls_one_cli_command(win, monkeypatch):
+    """버튼 하나가 CLI 명령 하나다. 편집기가 세 명령을 엮어 돌리기 시작하면
+    그것이 CLI 에 없는 경로이고, 터미널에서 재현할 수 없는 결과가 나온다."""
+    seen = {}
+
+    def fake_spawn(cmd, phase):
+        seen["cmd"], seen["phase"] = cmd, phase
+        return {"ok": True}
+
+    monkeypatch.setattr(win.editor, "_spawn", fake_spawn)
+    monkeypatch.setattr(win.editor, "_ready_to_launch", lambda: {"ok": True})
+    win._run_pipeline()
+
+    assert seen["phase"] == "pipeline"
+    assert seen["cmd"][2:5] == ["vlm_trainer.cli.main", "pipeline", win.editor.path]
+
+
+def test_leftover_shards_stop_the_run_and_ask(win, monkeypatch):
+    """말없이 이어받으면 예전 파라미터로 구운 샘플이 섞이고, 말없이 지우면 구운 시간이
+    날아간다. 양쪽 다 나빠서 사람이 고르기 전에는 아무것도 띄우지 않는다."""
+    from vlm_trainer.engine import pipeline as pipe
+
+    win.editor.run_id = "r_left"
+    monkeypatch.setattr(pipe, "leftover",
+                        lambda rid, root="runs": pipe.Leftover(rid, "runs/x", 2, 100))
+    monkeypatch.setattr(win.editor, "_ready_to_launch", lambda: {"ok": True})
+    monkeypatch.setattr(win.editor, "_spawn",
+                        lambda *a: pytest.fail("묻기 전에 실행을 띄웠다"))
+
+    res = win.editor.pipeline_start()
+    assert not res["ok"] and res["ask_resume"]["shards"] == 2
+
+
+def test_answering_the_question_passes_the_choice_to_the_cli(win, monkeypatch):
+    """고른 답이 명령줄에 그대로 실려야 한다. 창에만 남으면 하위 프로세스는 모른다."""
+    from vlm_trainer.engine import pipeline as pipe
+
+    win.editor.run_id = "r_left"
+    monkeypatch.setattr(pipe, "leftover",
+                        lambda rid, root="runs": pipe.Leftover(rid, "runs/x", 2, 100))
+    monkeypatch.setattr(win.editor, "_ready_to_launch", lambda: {"ok": True})
+    got = []
+    monkeypatch.setattr(win.editor, "_spawn", lambda cmd, phase: got.append(cmd) or {"ok": True})
+
+    win.editor.pipeline_start(resume=True)
+    win.editor.pipeline_start(resume=False)
+    assert "--resume" in got[0] and "--fresh" in got[1]
+
+
+def test_the_stage_line_says_which_part_is_running(win):
+    """숫자만 흐르면 굽는 중인지 학습 중인지 알 수 없는데, 둘은 걸리는 시간이
+    자릿수로 다르다."""
+    from vlm_trainer.core.compiler import compile_project
+    from vlm_trainer.engine import pipeline as pipe
+
+    p = pipe.plan(compile_project(win.editor.path), "r1")
+    p.stages[0].state = pipe.DONE
+    p.stages[1].state = pipe.RUNNING
+    line = win.watcher._headline(
+        {"kind": "pipeline", "run_id": "r1", "pipeline": pipe.as_dict(p), "total": 0})
+
+    assert "준비 v" in line and "굽기 >" in line
