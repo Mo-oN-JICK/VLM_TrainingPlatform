@@ -45,8 +45,15 @@ def decompile(cg: CompiledGraph, *, keep_procedures: bool = True) -> Dict[str, A
     edges: List[Dict[str, str]] = []
     for e in cg.edges:
         src_hidden, dst_hidden = e.src_node in hidden, e.dst_node in hidden
-        if src_hidden and dst_hidden:
-            continue  # Procedure 내부 배선은 Procedure 안에 있다
+        # **같은 Procedure 안**의 배선만 버린다. 그것은 Procedure 파일에 있으므로
+        # 프로젝트가 다시 적을 것이 아니다.
+        #
+        # 양쪽이 숨겨졌다는 것만으로 버리면 **Procedure 에서 Procedure 로 가는 배선이
+        # 사라진다.** 그것은 프로젝트가 그은 선이고 어디에도 다시 적히지 않는다 —
+        # 편집기에서 저장 한 번에 그래프가 조용히 끊긴다(실측: `p_prep:images ->
+        # p_prompt:images` 가 사라져 저장한 파일이 컴파일되지 않았다).
+        if src_hidden and dst_hidden and node_origin[e.src_node] == node_origin[e.dst_node]:
+            continue
         src = out_map.get(e.src, e.src) if src_hidden else e.src
         dst = in_map.get(e.dst, e.dst) if dst_hidden else e.dst
         edges.append({"from": src, "to": dst})

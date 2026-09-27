@@ -91,3 +91,83 @@ def test_pinned_procedure_version_is_not_auto_upgraded():
 
     with pytest.raises(Exception, match="핀 고정"):
         compile_graph(src)
+
+
+# ── Procedure 가 둘 이상일 때 ───────────────────────────────────────────
+#
+# 위 테스트들이 쓰는 그래프에는 Procedure 가 **하나**뿐이라, Procedure 에서 Procedure 로
+# 가는 배선이 있을 수 없었다. 그래서 그 배선이 저장할 때마다 사라지는 것을 한 번도
+# 잡지 못했다 — 편집기에서 값 하나 고치고 저장하면 그래프가 컴파일되지 않았다.
+
+REAL = os.path.join(os.path.dirname(HERE), "solutions", "vlm_open",
+                    "projects", "01_open", "project.yaml")
+
+
+@pytest.fixture
+def nodes():
+    from vlm_trainer.core import registry
+
+    registry.load_builtin_nodes()
+
+
+def _roundtrip(spec_path, tmp_path, *, keep: bool = True):
+    """decompile 한 것을 **원본과 같은 깊이**에 두고 다시 컴파일한다.
+    Procedure 파일이 solution 위쪽에 있어 경로가 얕아지면 찾지 못한다."""
+    import shutil
+
+    root = os.path.dirname(HERE)          # 저장소 루트
+    work = tmp_path / "w"
+    shutil.copytree(os.path.join(root, "solutions"), work / "solutions")
+    dst = str(work / os.path.relpath(spec_path, root))
+
+    cg = compile_project(spec_path)
+    with open(dst, "w", encoding="utf-8") as fh:
+        fh.write(dump_yaml(decompile(cg, keep_procedures=keep)))
+    return cg, compile_project(dst)
+
+
+def test_an_edge_between_two_procedures_survives_a_save(nodes, tmp_path):
+    """`p_prep:images -> p_prompt:images` 는 **프로젝트가 그은 선**이다. 양쪽 끝이
+    Procedure 안에 있다는 이유로 버리면 어디에도 다시 적히지 않는다."""
+    cg, again = _roundtrip(REAL, tmp_path)
+    assert len(again.edges) == len(cg.edges), "배선이 사라졌다"
+    assert canonical_view(again) == canonical_view(cg)
+    assert again.spec_hash == cg.spec_hash
+
+
+def test_the_wiring_inside_one_procedure_is_still_left_to_the_procedure_file(nodes, tmp_path):
+    """규칙을 푼 것이지 버린 것이 아니다. 같은 Procedure 안의 배선은 프로젝트가
+    다시 적을 것이 아니다 — 적으면 Procedure 를 고쳐도 프로젝트가 옛 배선을 붙든다."""
+    cg = compile_project(REAL)
+    spec = decompile(cg, keep_procedures=True)
+    inner = [e for e in spec["edges"]
+             if e["from"].split(":")[0].split("/")[0] == e["to"].split(":")[0].split("/")[0]
+             and "/" in e["from"]]
+    assert not inner, f"Procedure 내부 배선이 프로젝트에 적혔다: {inner}"
+
+
+def test_a_graph_with_several_procedures_survives_being_flattened(nodes, tmp_path):
+    """Procedure 를 펼쳐 저장하는 길도 같은 배선을 들고 있어야 한다."""
+    cg, again = _roundtrip(REAL, tmp_path, keep=False)
+    assert again.spec_hash == cg.spec_hash
+
+
+def test_saving_from_the_editor_leaves_a_graph_that_still_compiles(nodes, tmp_path):
+    """이것이 실제로 겪은 길이다 — 앱에서 값 하나 고치고 저장하자 다음 실행이
+    "필수 입력 포트 'images' 가 연결되지 않았다" 로 멈췄다."""
+    import shutil
+
+    from vlm_trainer.ui.api import Editor
+
+    root = os.path.dirname(HERE)
+    work = tmp_path / "w"
+    shutil.copytree(os.path.join(root, "solutions"), work / "solutions")
+    spec = str(work / "solutions" / "vlm_open" / "projects" / "01_open" / "project.yaml")
+
+    ed = Editor.open(spec)
+    assert ed.set_param("n_infer", "max_new_tokens", 32).get("ok")
+    ed.save()
+
+    cg = compile_project(spec)          # CLI 가 읽는 길
+    assert cg.nodes["n_infer"].params["max_new_tokens"] == 32
+    assert len(cg.edges) == 23

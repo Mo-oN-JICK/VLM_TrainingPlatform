@@ -497,6 +497,9 @@ Project Tabs·Log 패널·Toolbar 버튼 구성까지 맞출 수 있다.
 
 | 항목 | 사실 | 대응 |
 |---|---|---|
+| **저장이 Procedure 사이 배선을 지웠다** (2026-09-26 고침) | `decompile` 이 양쪽 끝이 Procedure 안이면 무조건 버렸다. **같은 Procedure 안인지 따지지 않았다** — `p_prep:images -> p_prompt:images` 는 프로젝트가 그은 선이라 어디에도 다시 적히지 않는다. 앱에서 값 하나 고치고 저장하면 다음 실행이 "필수 입력 포트 'images' 가 연결되지 않았다" 로 멈췄다 | 같은 Procedure 안일 때만 버린다. 왕복 테스트가 Procedure **하나짜리** 그래프만 썼기 때문에 못 잡았다 — 이제 `vlm_open`(Procedure 3개)으로도 돈다 |
+| **따라가기가 느린 노드를 안 가리켰다** (2026-09-26 고침) | 진행 파일 기록을 시간 간격만으로 걸렀다. 느린 노드는 앞 기록 직후에 시작해 늘 탈락하고, 그 노드가 만든 공백 덕에 **뒤의 빠른 노드**가 기록된다. 실측: `n_infer`(1.5초/샘플) 0회 vs `n_answers`(4ms) 10회 | 노드의 평균 소요로 판단한다(`_worth_writing`). 처음 보는 노드는 느린 쪽으로 친다 |
+| 편집기 저장은 **주석을 지운다** | `decompile` 이 스펙을 다시 직렬화한다. 의미와 `spec_hash` 는 보존되지만 주석·따옴표·키 순서는 아니다 | 설계상 그렇다(`decompile.py` 첫 줄에 적혀 있다). 주석을 지키려면 `ruamel.yaml` 이 필요한데 "코어는 표준 라이브러리 + yaml만" 규약을 깬다. **설명을 담은 프로젝트 파일은 앱에서 저장하지 않는다** |
 | GPU | RTX 3060 **12GB** (4090 아님) | Phase 3에서 프로파일 분리. stage1 projector 정렬은 `grad_checkpointing: true` + `per_device: 1`이어야 들어간다 |
 | torch | **`.venv`에 설치됨** (2.14.0+cu130, CUDA True) | 3.14 host에는 없다. 항상 `.venv\Scripts\python.exe`를 쓴다 |
 | `uv venv`는 pip를 넣지 않는다 | 활성화해도 `pip`가 venv 밖으로 샌다 | venv 안에서는 **항상 `python -m pip`**. 이 venv에는 pip를 넣어 두었다 |
