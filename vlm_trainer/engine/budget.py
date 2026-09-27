@@ -42,6 +42,7 @@ class StageEstimate:
     grads: float = 0.0
     optimizer: float = 0.0
     activations: float = 0.0
+    vision_activations: float = 0.0   # 위 activations 에 포함된 값. 어디서 왔는지 보이려고 둔다
     logits: float = 0.0
     context: float = CUDA_CONTEXT_GB
     trainable_params: float = 0.0
@@ -138,6 +139,19 @@ def _trainable_params(stage: Stage, spec: BackboneSpec) -> Tuple[float, Dict[str
             detail[group] = 0.0
         total += detail[group]
     return total, detail
+
+
+def _act(b: int, s_len: int, h: int, layers: int, checkpointing: bool) -> float:
+    """트랜스포머 한 무더기가 붙드는 활성화 바이트. 설계 문서 07 §7.3 의 공식이다.
+
+    층이 없으면(`layers=0`) 0이다 — conv 한 겹짜리 비전 타워(tiny-vlm)는 모델링할
+    트랜스포머가 없고, 그 경우 이 항이 예산에 끼어들지 않아야 한다.
+    """
+    if layers <= 0 or h <= 0 or s_len <= 0:
+        return 0.0
+    if checkpointing:
+        return (layers + K_BLK) * b * s_len * h * ACT_BYTES
+    return K_ALL * layers * b * s_len * h * ACT_BYTES
 
 
 def estimate(
@@ -238,9 +252,13 @@ def estimate(
         e.optimizer = p_train * OPTIMIZER_BYTES.get(st.optimizer, 8.0) / GB
 
         b, s_len, h, layers = st.per_device, res.s_total, spec.hidden, spec.n_layers
-        act = (layers * b * s_len * h * ACT_BYTES + K_BLK * b * s_len * h * ACT_BYTES) if st.grad_checkpointing \
-            else (K_ALL * layers * b * s_len * h * ACT_BYTES)
-        e.activations = act / GB
+        act = _act(b, s_len, h, layers, st.grad_checkpointing)
+        # **비전 타워도 활성화를 붙든다.** 이것이 빠져 있어 예산이 실측보다 낮았다
+        # (Qwen2-VL lora_ft: 예산 6.2 GB vs 실측 11.58 GB).
+        v_seq = spec.vision_seq(res.tokens_per_tile) * max(1, res.images * res.tiles)
+        v_act = _act(b, v_seq, spec.vision_hidden, spec.vision_layers, st.grad_checkpointing)
+        e.activations = (act + v_act) / GB
+        e.vision_activations = v_act / GB
 
         e.logits = (
             cfg.loss.chunk * spec.vocab * 2.0 * 2.0 if cfg.loss.chunked_ce

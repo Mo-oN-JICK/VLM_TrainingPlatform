@@ -79,6 +79,11 @@ class BackboneSpec:
     # patch_px가 0이면 tokens_per_tile이 그대로 답이다.
     patch_px: int = 0
     spatial_merge: int = 1
+    # 비전 타워의 트랜스포머 깊이와 폭. **활성화 예산이 이것 없이는 계산될 수 없다.**
+    # 0이면 "모델링할 비전 트랜스포머가 없다" — conv 한 겹짜리 타워(tiny-vlm)가 그렇다.
+    # Qwen2-VL 은 32층 x 1280 이고, LLM 쪽 활성화보다 크다.
+    vision_layers: int = 0
+    vision_hidden: int = 0
     os_support: Tuple[str, ...] = ("windows", "linux")
     supports_quantization: Tuple[str, ...] = ("none", "int8", "nf4")
     supports_attn: Tuple[str, ...] = ("sdpa", "eager")
@@ -93,6 +98,15 @@ class BackboneSpec:
             return self.tokens_per_tile
         grid = tile_px // self.patch_px
         return max(1, (grid // max(1, self.spatial_merge)) ** 2)
+
+    def vision_seq(self, tokens_per_tile: int) -> int:
+        """비전 타워가 실제로 붙드는 시퀀스 길이.
+
+        LLM 에 도달하는 토큰 수가 아니다. spatial merge 가 패치를 합치기 **전**의 길이라
+        merge² 배 더 길다 — Qwen2-VL 에서 256 토큰은 타워 안에서 1024 패치였다.
+        이 제곱을 빼먹으면 예산이 비전 활성화를 네 배 낮게 잡는다.
+        """
+        return max(0, int(tokens_per_tile)) * max(1, self.spatial_merge) ** 2
 
     def lora_params(self, r: int, targets: Tuple[str, ...]) -> float:
         """LoRA 어댑터 파라미터 개수. 모듈 모양에서 계산한다."""
@@ -127,6 +141,25 @@ class BackboneAdapter:
 
     # 내보낸 폴더를 무엇으로 열어야 하는지. 받은 사람이 알아야 하고, 계약에 실린다.
     export_format: str = "state_dict"
+
+    @classmethod
+    def set_grad_checkpointing(cls, model: Any, on: bool) -> bool:
+        """활성화 재계산을 켜거나 끈다. **실제로 켰는지**를 돌려준다.
+
+        예산(G4)이 이 스위치를 켠 것으로 보고 메모리를 깎는다. 선언만 받아 놓고 모델에
+        적용하지 않으면 예산은 **일어나지 않는 절약**을 빼고, 학습은 예산이 약속한 것보다
+        많이 쓴다. 실측으로 겪은 일이다 — Qwen2-VL `lora_ft` 예산 6.2 GB / 실측 11.58 GB.
+
+        그래서 **결과를 돌려준다** — 요청대로 했는지가 아니라 **지금 켜져 있는지**다.
+        끄기에 성공한 것을 "켜짐" 으로 적으면 보고서가 거짓이 된다.
+        조용히 넘어가면 예산이 계속 거짓말을 한다.
+        """
+        fn = getattr(model, "gradient_checkpointing_enable" if on
+                     else "gradient_checkpointing_disable", None)
+        if fn is None:
+            return False
+        fn()
+        return on
 
     @classmethod
     def save(cls, model: Any, out_dir: str) -> Any:

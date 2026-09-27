@@ -31,6 +31,11 @@ _LAYERS = ("num_hidden_layers", "n_layer", "num_layers")
 _INTER = ("intermediate_size", "ffn_dim", "n_inner")
 _VOCAB = ("vocab_size",)
 _CTX = ("max_position_embeddings", "max_sequence_length", "n_positions")
+# 비전 타워의 깊이·폭. Qwen2-VL 은 `depth` / `embed_dim` 을 쓰고 CLIP 계열은 흔한 이름을 쓴다.
+# `vision_config.hidden_size` 는 **타워의 폭이 아니라 LLM 으로 넘기는 폭**인 경우가 있어
+# (Qwen2-VL 이 그렇다) `embed_dim` 을 먼저 본다.
+_V_LAYERS = ("depth", "num_hidden_layers", "n_layer", "num_layers")
+_V_HIDDEN = ("embed_dim", "hidden_size", "d_model")
 
 
 def _pick(d: Dict[str, Any], keys: Tuple[str, ...], default: int = 0) -> int:
@@ -171,6 +176,8 @@ def spec_from_config(path: str, model_id: str) -> BackboneSpec:
         tokenizer_id=model_id[len(PREFIX):] if model_id.startswith(PREFIX) else model_id,
         patch_px=_vision_grid(cfg)[0],
         spatial_merge=_vision_grid(cfg)[1],
+        vision_layers=_pick(cfg.get("vision_config") or {}, _V_LAYERS),
+        vision_hidden=_pick(cfg.get("vision_config") or {}, _V_HIDDEN),
         supports_quantization=("none", "int8", "nf4"),
         supports_attn=("sdpa", "eager"),
     )
@@ -325,6 +332,15 @@ class HFBackbone(BackboneAdapter):
                     v = v.to(dtype)
             out[k] = v
         return out
+
+    @classmethod
+    def set_grad_checkpointing(cls, model: Any, on: bool) -> bool:
+        """HF 는 `use_cache` 를 **함께 꺼야 한다.** 켜 둔 채로 재계산을 켜면
+        transformers 가 경고 한 줄을 내고 재계산을 무시한다 — 예산이 깎은 메모리가
+        실제로는 안 깎인다."""
+        if on and hasattr(model, "config"):
+            model.config.use_cache = False
+        return super().set_grad_checkpointing(model, on)
 
     @classmethod
     def forward(cls, model: Any, batch: Any, device: Any) -> Any:

@@ -192,3 +192,93 @@ def test_run_refuses_to_start_when_over_budget(tmp_path, monkeypatch, capsys):
     assert "예산 초과" in err
     assert "학습을 시작하지 않았다" in err
     assert not (tmp_path / "dataset").exists()
+
+
+# ── 예산이 실측보다 낮으면 게이트가 무의미하다 ──────────────────────────
+def test_the_vision_tower_holds_activations_too():
+    """비전 타워가 예산 모형에서 통째로 빠져 있었다. Qwen2-VL 에서 그 타워는
+    32층 x 1280 이고 이미지당 패치 1024개를 붙드는데, LLM 쪽(28층 x 1536, 304토큰)
+    활성화보다 크다. 빠뜨리면 예산이 조용히 낙관적으로 기운다."""
+    from vlm_trainer.engine import budget as B
+
+    big = B._act(b=2, s_len=1024, h=1280, layers=32, checkpointing=False)
+    llm = B._act(b=2, s_len=304, h=1536, layers=28, checkpointing=False)
+    assert big > llm, "비전 타워가 LLM 보다 작게 잡혔다 — 숫자를 다시 보라"
+
+
+def test_a_conv_only_tower_adds_nothing():
+    """층이 없으면 0이다. `tiny-vlm` 의 비전 타워는 conv 한 겹이라 모델링할
+    트랜스포머가 없고, 그 경우 이 항이 예산에 끼어들면 안 된다."""
+    from vlm_trainer.engine import budget as B
+
+    assert B._act(b=4, s_len=1024, h=0, layers=0, checkpointing=False) == 0.0
+
+
+def test_the_tower_sequence_is_longer_than_what_reaches_the_llm():
+    """spatial merge 가 패치를 합치기 **전**의 길이다 — Qwen2-VL 에서 256 토큰은
+    타워 안에서 1024 패치였다. 제곱을 빼먹으면 비전 활성화를 네 배 낮게 잡는다."""
+    from vlm_trainer.plugins.base import BackboneSpec
+
+    s = BackboneSpec(id="x", params_total=0, params_by_group={}, n_layers=1, hidden=1,
+                     intermediate=1, vocab=1, tokens_per_tile=256, max_context=1,
+                     spatial_merge=2)
+    assert s.vision_seq(256) == 1024
+
+    flat = BackboneSpec(id="y", params_total=0, params_by_group={}, n_layers=1, hidden=1,
+                        intermediate=1, vocab=1, tokens_per_tile=256, max_context=1)
+    assert flat.vision_seq(256) == 256, "merge 가 없으면 합쳐지지 않는다"
+
+
+def test_checkpointing_is_a_saving_only_if_someone_actually_turns_it_on():
+    """예산이 이 스위치를 켠 것으로 보고 메모리를 깎는다. 선언만 받아 놓고 모델에
+    적용하지 않으면 예산은 **일어나지 않는 절약**을 빼고, 학습은 약속보다 많이 쓴다.
+    실측으로 겪었다 — Qwen2-VL `lora_ft` 예산 6.2 GB / 실측 11.58 GB."""
+    import inspect
+
+    from vlm_trainer.train import loop as loop_mod
+
+    src = inspect.getsource(loop_mod.train)
+    assert "set_grad_checkpointing" in src, "예산이 깎는 것을 루프가 켜지 않는다"
+
+
+def test_the_switch_reports_whether_it_is_on_not_whether_it_was_called():
+    """끄기에 성공한 것을 "켜짐" 으로 적으면 보고서가 거짓이 된다."""
+    from vlm_trainer.plugins.base import BackboneAdapter
+
+    class _M:
+        def gradient_checkpointing_enable(self):
+            pass
+
+        def gradient_checkpointing_disable(self):
+            pass
+
+    assert BackboneAdapter.set_grad_checkpointing(_M(), True) is True
+    assert BackboneAdapter.set_grad_checkpointing(_M(), False) is False
+    # 켤 줄 모르는 백본은 False. 루프가 그것을 보고 경고한다
+    assert BackboneAdapter.set_grad_checkpointing(object(), True) is False
+
+
+def test_a_stage_handoff_does_not_copy_the_checkpoint_onto_the_gpu():
+    """`map_location=dev` 로 읽으면 2B 모델에서 체크포인트 사본 4.25 GB 가 GPU 에
+    따로 생기고, `state` 를 놓지 않는 한 그 단계가 끝날 때까지 붙잡혀 있다.
+    예산이 6.4 GB 인 자리에서 실측 10.11 GB 가 나온 이유가 이것이었다."""
+    import ast
+    import inspect
+    import textwrap
+
+    from vlm_trainer.train import loop as loop_mod
+
+    # 주석에 그 글자가 적혀 있을 수 있으므로 **호출을 파싱해서** 본다.
+    tree = ast.parse(textwrap.dedent(inspect.getsource(loop_mod.train)))
+    loads = [n for n in ast.walk(tree)
+             if isinstance(n, ast.Call) and ast.unparse(n.func) == "torch.load"]
+    assert loads, "체크포인트를 읽는 자리를 못 찾았다 — 이 테스트가 낡았다"
+    for call in loads:
+        where = next((k.value for k in call.keywords if k.arg == "map_location"), None)
+        assert isinstance(where, ast.Constant) and where.value == "cpu", (
+            f"체크포인트를 GPU 로 읽는다: {ast.unparse(call)}")
+
+    # 읽은 것을 놓아야 한다. 놓지 않으면 그 단계가 끝날 때까지 붙잡혀 있다.
+    freed = sum(1 for n in ast.walk(tree) if isinstance(n, ast.Delete)
+                and any(ast.unparse(t) == "state" for t in n.targets))
+    assert freed >= len(loads), f"읽은 체크포인트 {len(loads)}개 중 {freed}개만 놓는다"

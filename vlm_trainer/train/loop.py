@@ -61,6 +61,9 @@ class StageResult:
     peak_vram_gb: float = 0.0
     ckpt: str = ""
     resumed_from: int = 0
+    # 활성화 재계산을 **실제로** 켰는가. 선언과 다르면 예산이 거짓말을 하고 있다는 뜻이다.
+    grad_checkpointing: bool = False
+    warnings: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -125,14 +128,27 @@ def train(
         ckpt_path = os.path.join(sdir, CKPT)
         res = StageResult(name=stage.name)
 
-        # 단계 연결: init_from이 가리키는 단계의 가중치에서 출발한다
+        # 단계 연결: init_from이 가리키는 단계의 가중치에서 출발한다.
+        # **CPU 로 읽는다.** `map_location=dev` 로 읽으면 2B 모델에서 체크포인트 사본
+        # 4.25 GB 가 GPU 에 따로 생기고, `state` 를 놓지 않는 한 그 단계가 끝날 때까지
+        # 붙잡혀 있다. 예산이 6.4 GB 라 한 자리에서 실측 10.11 GB 가 나온 이유가 이것이다.
+        # `load_state_dict` 가 모델의 텐서로 복사해 주므로 GPU 사본은 필요하지 않다.
         if stage.init_from and prev_stage_ckpt and os.path.exists(prev_stage_ckpt):
-            state = torch.load(prev_stage_ckpt, map_location=dev, weights_only=False)
+            state = torch.load(prev_stage_ckpt, map_location="cpu", weights_only=False)
             model.load_state_dict(state["model"], strict=False)
+            del state
 
         fr = freeze_mod.apply(model, stage, adapter)
         model.to(dev)
         res.trainable, res.lora_modules = dict(fr.trainable), len(fr.lora_modules)
+
+        # 예산(G4)이 이 스위치를 켠 것으로 보고 메모리를 깎는다. 선언만 받아 놓고
+        # 적용하지 않으면 예산은 일어나지 않는 절약을 빼고, 학습은 약속보다 많이 쓴다.
+        res.grad_checkpointing = adapter.set_grad_checkpointing(model, stage.grad_checkpointing)
+        if stage.grad_checkpointing and not res.grad_checkpointing:
+            res.warnings.append(
+                f"{stage.name}: grad_checkpointing 을 켜라고 선언했는데 이 백본은 켤 줄 모른다. "
+                "예산이 깎은 활성화 메모리가 실제로는 깎이지 않는다 — OOM 이 나면 이것부터 보라.")
 
         params = [p for p in model.parameters() if p.requires_grad]
         if not params:
@@ -143,7 +159,8 @@ def train(
 
         start_step, start_epoch, consumed = 0, 0, 0
         if resume and os.path.exists(ckpt_path):
-            state = torch.load(ckpt_path, map_location=dev, weights_only=False)
+            # 위와 같은 이유로 CPU 로 읽는다. 재개는 학습이 이미 무거운 자리다.
+            state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
             model.load_state_dict(state["model"], strict=False)
             try:
                 opt.load_state_dict(state["optimizer"])
@@ -153,6 +170,7 @@ def train(
             start_epoch = int(state.get("epoch", 0))
             consumed = int(state.get("consumed", 0))
             res.resumed_from = start_step
+            del state
 
         loader = DataLoader(
             ds,
@@ -246,8 +264,12 @@ def render(rep: TrainReport) -> str:
             + (f" · peak {s.peak_vram_gb:.2f} GB" if s.peak_vram_gb else "")
         )
         lines.append(f"    학습 파라미터: {tr or '없음'}" + (f" · LoRA {s.lora_modules}개 모듈" if s.lora_modules else ""))
+        if s.grad_checkpointing:
+            lines.append("    활성화 재계산 켜짐")
         if s.resumed_from:
             lines.append(f"    step {s.resumed_from}에서 재개")
+        for w in s.warnings:
+            lines.append(f"    주의: {w}")
     if rep.contract:
         lines.append(f"  추론 계약: {rep.contract.get('contract')}")
         lines.append(f"  추론 그래프: {rep.contract.get('graph')}")

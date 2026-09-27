@@ -49,8 +49,7 @@ Node Library에서 노드를 누르거나 캔버스로 끌어다 놓아 추가�
 예산을 답하므로 가중치 없이도 G4가 돈다. **`Qwen/Qwen2-VL-2B-Instruct`로 한 바퀴가 돌았다**
 (2026-09-23, RTX 3060 12GB): 굽기 → 학습 → 추론 → Export 까지 가고, 내보낸 폴더는
 이 저장소 없이 `transformers`만으로 열린다. 아래 "처음부터 끝까지"를 보라.
-남은 것은 실제 다중 GPU 실행과 원격 실행, 그리고 **G4 예산이 실측보다 낮은 것**
-(`lora_ft` 예산 6.2 GB vs 실측 11.58 GB — `STATUS.md` 참고).
+남은 것은 실제 다중 GPU 실행과 원격 실행.
 
 실행 환경은 `.venv`(Python 3.12 + torch 2.14.0+cu130)다. `python` 대신 `.venv\\Scripts\\python.exe`를 쓴다.
 
