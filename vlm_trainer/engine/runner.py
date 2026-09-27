@@ -167,6 +167,18 @@ def report_from_snapshot(data: Dict[str, Any]) -> RunReport:
     return rep
 
 
+def _worth_writing(rep: RunReport, nid: str, every: float) -> bool:
+    """이 노드가 도는 동안 화면이 멈춰 보일 만큼 느린가.
+
+    지금까지의 평균으로 판단한다. 아직 한 번도 안 돌아 본 노드는 **느린 쪽으로 친다** —
+    모르는 것을 빠르다고 가정하면 첫 샘플에서 무거운 노드가 그대로 안 보인다.
+    """
+    seen = sum(rep.states_of(nid).values())
+    if not seen:
+        return True
+    return (rep.node_ms.get(nid, 0.0) / seen) >= every * 1000.0
+
+
 def write_progress(rep: RunReport, opts: "RunOptions", total: int, phase: str) -> None:
     """진행 상황을 원자 교체로 남긴다.
 
@@ -310,9 +322,19 @@ def execute(
             # 여기부터가 실제로 시간을 쓰는 구간이다. 진행 파일 갱신을 샘플 단위가 아니라
             # 노드 단위로 두는 이유 — 한 노드가 30초를 먹으면 샘플 경계는 30초 뒤에나 오고,
             # 그동안 보는 쪽에는 아무 변화가 없어 멈춘 것처럼 보인다.
+            #
+            # **시간 간격만으로 거르면 정확히 반대로 동작한다.** 느린 노드는 앞 기록
+            # 직후에 시작하므로 `now - last_write` 가 작아 늘 탈락하고, 그 노드가 만든
+            # 공백 덕에 **그 뒤의 빠른 노드가** 기록된다. 실측: `n_infer` 가 샘플마다
+            # 1.5초를 먹는데 진행 파일은 한 번도 그것을 가리키지 않고, 4ms 걸리는
+            # `n_answers` 만 가리켰다. 보고 싶은 노드가 유일하게 안 보였다.
+            #
+            # 그래서 **이 노드가 느린지**로 판단한다. 아직 모르는 노드(첫 샘플)도 쓴다 —
+            # 시작할 때 화면이 한 번은 채워져야 한다. 빠른 것으로 판명된 노드만
+            # 시간 간격에 맡긴다. 그 편이 기록 횟수도 적다.
             rep.active, rep.active_since = nid, t0
             now = time.time()
-            if now - last_write >= opts.progress_every:
+            if _worth_writing(rep, nid, opts.progress_every) or now - last_write >= opts.progress_every:
                 last_write = now
                 write_progress(rep, opts, len(rows), "running")
             try:

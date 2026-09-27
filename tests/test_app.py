@@ -307,3 +307,45 @@ def test_the_stage_line_says_which_part_is_running(win):
         {"kind": "pipeline", "run_id": "r1", "pipeline": pipe.as_dict(p), "total": 0})
 
     assert "준비 v" in line and "굽기 >" in line
+
+
+# ── 실행 따라가기 ───────────────────────────────────────────────────────
+def test_following_moves_only_when_the_running_box_changes(win):
+    """폴링마다 화면을 옮기면 사람이 다른 곳을 보려 할 때마다 끌려 돌아온다."""
+    moved = []
+    win.canvas.centerOn = lambda item: moved.append(item)
+
+    nid = next(iter(win.canvas.cards))
+    card = win.canvas.cards[nid]
+    card.setPos(0, 100_000)                  # 확실히 화면 밖으로
+
+    win.watcher._follow(nid)
+    win.watcher._follow(nid)                 # 같은 상자 — 다시 옮기지 않는다
+    assert len(moved) == 1, f"같은 상자에 {len(moved)}번 따라갔다"
+
+
+def test_following_leaves_a_box_alone_if_it_is_already_visible(win):
+    """이미 보이는 것을 화면 가운데로 끌어오면 그래프가 이유 없이 출렁인다."""
+    moved = []
+    win.canvas.centerOn = lambda item: moved.append(item)
+    win.canvas.fit()
+
+    nid = next(iter(win.canvas.cards))
+    win.watcher._follow(nid)
+    assert not moved, "보이는 상자를 따라갔다"
+
+
+def test_the_follow_toggle_is_obeyed(win):
+    moved = []
+    win.canvas.centerOn = lambda item: moved.append(item)
+    nid = next(iter(win.canvas.cards))
+    win.canvas.cards[nid].setPos(0, 100_000)
+
+    win.act_follow.setChecked(False)
+    win.watcher._follow(nid)
+    assert not moved, "따라가기를 껐는데 옮겼다"
+
+
+def test_a_box_that_is_not_on_the_canvas_does_not_crash_the_follow(win):
+    """접힌 Procedure 안쪽 id 가 올라오면 캔버스에 그 상자가 없다. 죽지 않아야 한다."""
+    win.watcher._follow("없는노드")
