@@ -31,13 +31,13 @@ OK, OVER_BUDGET, FAILED = "ok", "over_budget", "failed"
 
 
 def materialize_key(cg: CompiledGraph) -> str:
-    """물질화 결과를 결정하는 부분만의 지문.
+    """물질화 결과를 결정하는 부분만의 지문. 구현은 `materialize.bake_key` 다.
 
-    경계 상류 노드들의 캐시 키를 모은 것이라, Trainer 설정만 다른 레시피들은
-    같은 키를 갖고 같은 bake를 공유한다.
+    Trainer 설정만 다른 레시피들은 같은 키를 갖고 같은 bake 를 공유한다.
+    재개 검사도 같은 값을 써야 한다 — 두 곳이 다르게 셈하면, 스윕이 공유한 bake 를
+    재개가 거부하거나 그 반대가 된다.
     """
-    targets = sorted(mat_mod.boundary_targets(cg))
-    return hash_parts("materialize", [cg.nodes[i].cache_key for i in targets]).split(":")[-1][:12]
+    return mat_mod.bake_key(cg)
 
 
 @dataclass

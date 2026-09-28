@@ -20,6 +20,9 @@ PHASE_DONE = "phase_done"
 @dataclass
 class Replay:
     spec_hash: str = ""
+    # 경계 상류가 실제로 무엇으로 계산됐는지. `spec_hash` 는 **그래프의 모양**만 보므로
+    # 남이 만든 노드의 코드가 바뀐 것을 못 본다 — 스펙은 한 글자도 안 바뀌기 때문이다.
+    bake_key: str = ""
     done_keys: Set[str] = field(default_factory=set)
     shards: List[Dict[str, Any]] = field(default_factory=list)
     phases_done: Set[str] = field(default_factory=set)
@@ -64,6 +67,7 @@ class Journal:
             ev = rec.get("event")
             if ev == RUN_START:
                 r.spec_hash = rec.get("spec_hash", r.spec_hash)
+                r.bake_key = rec.get("bake_key", r.bake_key)
             elif ev == SHARD_COMMITTED:
                 r.shards.append(rec)
                 r.done_keys.update(rec.get("keys") or ())

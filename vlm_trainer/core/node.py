@@ -144,6 +144,14 @@ class NodeDef:
     per_sample: bool = True     # False면 샘플 루프가 아니라 데이터셋 전체에 한 번 실행된다(학습)
     doc: NodeDoc = field(default_factory=NodeDoc)
     impl: Optional[Type[Node]] = None
+    # 구현 소스의 지문. **저장소 밖에서 온 노드에만 채워진다**(`registry.register`).
+    #
+    # 캐시는 노드 **이름**(`type@version`)으로 옛 결과를 찾는다. 내장 노드는 코드를 고칠 때
+    # `ENGINE_ABI` 를 올려 캐시를 통째로 무효화하지만, 남이 만든 노드에는 그 레버가 없다.
+    # 버전을 안 올리고 코드만 고치면 캐시가 **옛 결과를 조용히 돌려준다** — 고친 사람
+    # 눈에는 "코드를 바꿨는데 결과가 안 변한다" 로 보이고 원인을 찾을 길이 없다.
+    # 버전 올리는 것을 사람의 기억에 맡기지 않는다.
+    impl_fingerprint: str = ""
 
     @property
     def ref(self) -> str:

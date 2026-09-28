@@ -20,6 +20,7 @@ import numpy as np
 
 from ..core.compiler import CompiledGraph
 from ..core.errors import StructureError
+from ..spec.canonical import hash_parts
 from . import samples as samples_mod
 from . import worker
 from .journal import Journal, PHASE_DONE, RUN_START, SHARD_COMMITTED
@@ -106,6 +107,20 @@ def boundary_targets(cg: CompiledGraph) -> Set[str]:
     return out
 
 
+def bake_key(cg: CompiledGraph) -> str:
+    """구운 결과를 결정하는 부분만의 지문 — 경계 상류 노드들의 캐시 키를 모은 것.
+
+    `spec_hash` 로는 부족하다. 그것은 **그래프의 모양**만 보므로, 남이 만든 노드의 코드가
+    바뀌어도 스펙이 한 글자도 안 바뀌면 같은 값이 나온다. 캐시 키에는 그 노드의 구현
+    지문이 들어 있으므로(`registry._source_fingerprint`) 여기에 모으면 변화가 드러난다.
+
+    Trainer 설정만 다른 레시피들은 같은 키를 갖고 같은 bake 를 공유한다 — 스윕이 그
+    성질을 쓴다.
+    """
+    targets = sorted(boundary_targets(cg))
+    return hash_parts("materialize", [cg.nodes[i].cache_key for i in targets]).split(":")[-1][:12]
+
+
 def materialize(
     cg: CompiledGraph,
     space: samples_mod.SampleSpace,
@@ -125,12 +140,29 @@ def materialize(
     journal = Journal(os.path.join(os.path.dirname(out_dir), "journal.jsonl"))
     replay = journal.replay()
 
+    now_bake = bake_key(cg)
     if o.resume and replay.spec_hash and o.strict_spec_match and replay.spec_hash != cg.spec_hash:
         rep.aborted = (
             f"재개 거부: 스펙이 바뀌었다.\n"
             f"  저널의 spec_hash {replay.spec_hash}\n"
             f"  현재    spec_hash {cg.spec_hash}\n"
             "  같은 run_id로 다른 실험을 이어 붙이면 재현이 깨진다. 새 run_id로 시작하라."
+        )
+        return rep
+
+    # **스펙이 그대로여도 굽는 방식이 달라질 수 있다.** 남이 만든 노드의 코드가 바뀌면
+    # 스펙은 한 글자도 안 바뀌지만 그 노드가 내는 값이 달라진다. 그대로 이어받으면
+    # 옛 코드로 구운 shard 와 새 코드로 구운 shard 가 한 학습에 섞이고, 손실은 정상으로
+    # 내려가며 아무도 눈치채지 못한다.
+    if o.resume and replay.bake_key and o.strict_spec_match and replay.bake_key != now_bake:
+        rep.aborted = (
+            "재개 거부: 스펙은 같은데 굽는 방식이 바뀌었다.\n"
+            f"  저널의 bake_key {replay.bake_key}\n"
+            f"  현재    bake_key {now_bake}\n"
+            "  보통 커스텀 노드의 코드를 고친 경우다 — 스펙은 그대로라 spec_hash 로는 안 보인다.\n"
+            "  이 검사가 없었다면: 옛 코드로 구운 샘플과 새 코드로 구운 샘플이 한 학습에\n"
+            "  섞이고, 손실은 정상으로 내려가며 아무도 눈치채지 못한다.\n"
+            "  새 run_id 로 시작하거나, --resume 없이 다시 구워라."
         )
         return rep
 
@@ -149,9 +181,11 @@ def materialize(
     if not o.resume:
         # 새로 시작하면 매니페스트도 비운다
         open(os.path.join(out_dir, MANIFEST), "w", encoding="utf-8").close()
-        journal.append(RUN_START, phase="materialize", spec_hash=cg.spec_hash, out_dir=out_dir)
+        journal.append(RUN_START, phase="materialize", spec_hash=cg.spec_hash,
+                       bake_key=now_bake, out_dir=out_dir)
     elif not replay.spec_hash:
-        journal.append(RUN_START, phase="materialize", spec_hash=cg.spec_hash, out_dir=out_dir)
+        journal.append(RUN_START, phase="materialize", spec_hash=cg.spec_hash,
+                       bake_key=now_bake, out_dir=out_dir)
 
     src = space.split(o.split) if o.split else space
     rows = [r for r in src.rows if str(r[src.key]) not in done_keys]

@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import dataclasses
 import importlib
+import inspect
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Type
 
+from ..spec.canonical import hash_obj
 from .errors import RegistrationError
 from .node import Node, NodeDef, NodeDoc, NodeKind, Port
 
@@ -74,6 +76,34 @@ def _check_contracts(d: NodeDef) -> None:
             raise RegistrationError(f"{d.ref}: 노드 구현을 __main__에 두면 spawn 워커가 임포트할 수 없다")
 
 
+BUILTIN_ROOT = "vlm_trainer."
+
+
+def _source_fingerprint(cls: Type[Node]) -> str:
+    """저장소 밖에서 온 노드의 **구현 소스 지문**. 내장 노드는 빈 문자열이다.
+
+    왜 나누는가. 캐시는 노드 이름(`type@version`)으로 옛 결과를 찾는다. 내장 노드의
+    코드를 고칠 때는 우리가 `ENGINE_ABI` 를 올려 캐시를 통째로 버리지만, 남이 만든
+    노드에는 그 레버가 없다. 버전을 안 올리고 코드만 고치면 **캐시가 옛 결과를 조용히
+    돌려준다.** 고친 사람에게는 "코드를 바꿨는데 결과가 안 변한다" 로 보이고, 예외도
+    경고도 없어 원인을 찾을 길이 없다.
+
+    그래서 남의 노드는 **소스 자체**를 지문에 넣는다. 한 글자만 바뀌어도 캐시가 갈린다.
+    버전을 올리는 일을 사람의 기억에 맡기지 않는다.
+
+    소스를 읽을 수 없는 경우(대화형 세션, 압축 배포)는 빈 문자열이 아니라 **못 읽었다는
+    사실**을 지문에 남긴다. 조용히 내장 노드처럼 취급하면 딱 이 위험이 되살아난다.
+    """
+    mod = getattr(cls, "__module__", "") or ""
+    if mod.startswith(BUILTIN_ROOT):
+        return ""
+    try:
+        src = inspect.getsource(cls)
+    except (OSError, TypeError):
+        return "unreadable:" + mod + "." + getattr(cls, "__qualname__", "?")
+    return hash_obj(src)
+
+
 def register(
     *,
     type: str,
@@ -110,6 +140,7 @@ def register(
             per_sample=per_sample,
             doc=doc or NodeDoc(),
             impl=cls,
+            impl_fingerprint=_source_fingerprint(cls),
         )
         _check_shape(d)
         _check_contracts(d)

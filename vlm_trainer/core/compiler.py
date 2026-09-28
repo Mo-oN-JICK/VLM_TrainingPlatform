@@ -513,7 +513,12 @@ def compile_graph(
     for nid in order:
         cn = compiled[nid]
         ups = sorted(compiled[e.src_node].cache_key for e in incoming[nid])
-        cn.cache_key = canonical.hash_parts(ENGINE_ABI, cn.ref, cn.params, ups, cn.kind.value)
+        # 남이 만든 노드는 **구현 소스 지문**도 섞는다. 내장 노드는 빈 값이라 아무것도
+        # 붙지 않고 기존 캐시 키가 그대로 남는다 — 이 변경으로 구워 둔 것이 버려지지 않는다.
+        parts = [ENGINE_ABI, cn.ref, cn.params, ups, cn.kind.value]
+        if defs[nid].impl_fingerprint:
+            parts.append(defs[nid].impl_fingerprint)
+        cn.cache_key = canonical.hash_parts(*parts)
 
     lanes = _lanes(order, edges, {i: defs[i].kind for i in order})
     for nid, lane in lanes.items():
