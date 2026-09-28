@@ -130,7 +130,6 @@ def build_parser() -> argparse.ArgumentParser:
     nw.add_argument("--profile", default="windows_single_gpu",
                     help="실행 프로파일 (windows_single_gpu | linux_multi_gpu)")
     nw.add_argument("--edit", action="store_true", help="만든 뒤 편집기를 연다")
-    nw.add_argument("--port", type=int, default=8770)
     nw.set_defaults(func=cmd_new)
 
     ed = sub.add_parser("edit", help="그래프 편집기를 연다 (네이티브 창)")

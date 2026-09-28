@@ -13,9 +13,13 @@ set "PY=%~dp0.venv\Scripts\python.exe"
 if not exist "%PY%" goto :noenv
 
 set "SPEC=%~1"
-if "%SPEC%"=="" set "SPEC=solutions\vlm_parts\projects\01_parts\project.yaml"
+rem Default: vlm_open. Its photos are committed, so this works on a fresh clone
+rem even before setup.bat generates the synthetic datasets.
+if "%SPEC%"=="" set "SPEC=solutions\vlm_open\projects\01_open\project.yaml"
 
-"%PY%" -m vlm_trainer.cli.main edit "%SPEC%" --open
+rem No --open here. `vlmt edit` opens a native window; --open was a leftover
+rem from the web editor and argparse rejects it, so this never launched.
+"%PY%" -m vlm_trainer.cli.main edit "%SPEC%"
 if errorlevel 1 pause
 exit /b %errorlevel%
 
