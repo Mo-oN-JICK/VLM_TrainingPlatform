@@ -1,5 +1,9 @@
 # 3. 초기 기본 노드 카탈로그
 
+> **이 문서는 만들 노드의 설계다. 등록된 노드 목록이 아니다.** 여기 이름이 적힌 것이
+> 전부 구현돼 있지는 않다 — 실제로 무엇이 등록돼 있는지는 `vlmt nodes` 가 답한다.
+> 아직 안 만든 노드를 스펙에 쓰면 컴파일이 "노드를 찾을 수 없다" 로 막는다.
+
 Mech-Vision의 Step Library처럼 **기능별 카테고리**로 묶는다. `[문서확인 + 이미지확인]`
 Mech-Vision 최신 문서의 카테고리는 Data Acquisition / Preprocessing / Recognition / AI Tools / Locating / Postprocessing / Measurement / Pose Processing / Path Planning / Trajectory Processing / Evaluation / Data Processing / File / Transmission / System / Tools / Common Procedure / Advanced Step 이고 `[문서확인]`, 캡처된 구버전 UI는 2D/3D Feature Detector·General Processing·Matching, Arithmetic, Camera, Communication, Deep Learning, Drawing, Label, Mask Processing, Measuring 등으로 나뉜다 `[이미지확인]`.
 
@@ -91,6 +95,7 @@ Input 노드는 배선으로 입력을 받지 않고 Project의 `sample_space` �
 | `adapt.image_denorm` | P | `image: Image{norm=x}` | `image: Image{norm=none}` | — |
 | `adapt.colorspace` | P | `image: Image{color=a}` | `image: Image{color=b}` | `to(RGB\|BGR\|GRAY)` |
 | `adapt.frame` | P | `regions: Regions{frame=a}` | `regions: Regions{frame=b}` | `to`, `ref_shape`(원본 크기 참조), `clip_to_bounds` |
+| `adapt.image_frame` | P | `image: Image{frame=a}` | `image: Image{frame=b}` | `to`, `ref_shape`. `[신설]` crop 을 원본과 한 리스트에 담으려면 좌표 기준을 **다시 선언**해야 한다 |
 | `adapt.ts_time_base` | P | `series/regions{ts_index}` | `{ts_seconds}` | `hz`, `t0` |
 | `adapt.tokenize` | P | `text: Text` | `tokens: Tokens{int64,shape=[?L]}` | `tokenizer`(백본 어댑터에서 해소), `add_special`, `max_len`, `on_overflow(fail\|truncate)` |
 | `adapt.regions_topk` | P | `regions` | `regions{max_n=k}` | `k`, `sort_by`, `min_score` |
@@ -159,6 +164,8 @@ Mech-Vision과 동일하게 시각화 결과는 **포트로 나오는 값**이�
 | 노드 | 태그 | 입력 | 출력 | 주요 파라미터 |
 |---|---|---|---|---|
 | `io.dataset_export` | **O** | `sample: Sample` | — | `format(jsonl\|webdataset\|arrow)`, `out_dir`, `shard_size`, `image_encoding(png\|jpeg:q)`, `split_by` |
+| `io.prompt_export` | **O** | `prompt: Text` | — | `out_dir`. 학습에 넣기 전의 프롬프트를 그대로 남긴다 |
+| `io.answer_report` | **O** | `answer: Text`, `expected: Text?` | — | `out_dir`. 모델의 답을 정답과 나란히 적는다. **채점하지 않는다** |
 | `io.report_save` | **O** | `report: Report` | — | `path`, `format(json\|md)` |
 | `debug.data_storage` | **O** | `any: T`(가변 다중 입력) | — | `enabled`, `path`, `what(inputs\|previews\|answers\|all)`, `keep_runs` |
 
@@ -168,8 +175,18 @@ Mech-Vision과 동일하게 시각화 결과는 **포트로 나오는 값**이�
 
 | 노드 | 태그 | 입력 | 출력 | 주요 파라미터 |
 |---|---|---|---|---|
-| `train.vlm_trainer` | **O** | `sample: Sample`, `schema: Schema` | — | 문서 7의 TrainerConfig 전체 |
+| `train.vlm_trainer` | **O** | `sample: Sample`, `schema: Schema` | `model: Model` | 문서 7의 TrainerConfig 전체 |
+| `infer.vlm` | **P**, `external_call` | `model: Model`, `prompt: Text`, `images: ImageList?` | `answer: Text` | `max_new_tokens`, `only_split(val)` |
 | `train.resume` | **O** | `sample: Sample` | — | `run_id`, `from_step`, `strict_spec_match(true)` |
+
+**`train.vlm_trainer`가 출력 포트를 갖는다.** 설계는 Output 을 그래프의 끝으로 두었지만,
+"학습한 모델로 추론한다" 를 화면에 보이게 하려면 학습이 산출물이 **어디 있는지**를
+내보내야 한다. Output 은 **부작용의 자리**이지 반드시 끝은 아니다. 가중치를 값으로
+흘려보내지는 않는다 — 그러면 샘플마다 수 GB 가 캐시에 복사된다.
+
+`infer.vlm`은 모델 파일을 디스크에서 읽으므로 순수 함수가 아니다. `external_call`로
+그 예외를 드러낸다. 물질화 경계 규칙은 이 노드에 걸리지 않는다 — 그 규칙이 막는 위험은
+학습 루프 **안에서** VRAM 을 뺏는 것인데, 학습 뒤의 노드는 루프 안에 있을 수 없다.
 
 `strict_spec_match=true`가 기본이다. 재개할 run의 canonical 스펙 해시가 현재 스펙과 다르면 재개를 거부한다.
 

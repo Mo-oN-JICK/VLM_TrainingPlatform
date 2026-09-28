@@ -3,10 +3,11 @@
 이 파일은 **세션이 중단되어도 다음 세션이 그대로 이어받을 수 있게** 유지한다.
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
-- 최종 갱신: 2026-09-22
-- 마지막 커밋: `3fe36d2` 웹 편집기를 걷어낸다 — 편집기는 네이티브 앱 하나다
-- **편집기가 Qt 네이티브 앱이다. 웹 편집기는 걷어냈다 → §8**
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **312 passed, 1 skipped**
+- 최종 갱신: 2026-09-26
+- 마지막 커밋: `9ca64ca` fix: 저장이 Procedure 사이 배선을 지웠다
+- **실물 Qwen2-VL 로 한 바퀴가 돈다** — 굽기 → 학습 → 추론 → Export → §9
+- 편집기는 Qt 네이티브 앱이다. 웹 편집기는 걷어냈다 → §8
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **381 passed, 1 skipped**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)

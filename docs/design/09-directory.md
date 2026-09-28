@@ -65,15 +65,38 @@ vlm_trainer/
     contract.py        inference_contract.json / inference_graph.yaml 생성(6.5)
 
   cli/
-    main.py            compile dryrun budget materialize run preview decompile
-                       sweep recipe cache infer-graph
-    render.py          터미널 표·에러 출력
+    main.py            인자 정의와 진입점. 하위 명령 20개
+    cmd_graph.py       compile decompile nodes show view infer-graph
+    cmd_execute.py     dryrun run materialize train budget preview sweep
+                       pipeline export
+    cmd_project.py     new edit recipe
+    common.py          하위 명령이 함께 쓰는 헬퍼(run_id, 진행 파일 경로, 시간 표기)
 
-  ui/                  (Phase 7)
-    server.py          코어 API를 감싸는 로컬 서버. UI 전용 실행 경로 없음
-    events.py          노드 상태·preview 스트림
-    web/               7파티션 레이아웃, 캔버스, 토큰(문서 12)
+  ui/                  네이티브 앱. **웹 서버가 아니다**(아래 9.1.1)
+    api.py             편집 로직. HTTP를 전혀 모르는 순수 함수다
+    editor_*.py        `Editor`의 관심사별 믹스인 — project / history / recipe /
+                       runs / paths / common
+    layout.py          배치와 상태 계산. 앱과 `vlmt view`가 이 좌표를 공유한다
+    tokens.py          색 팔레트(문서 12)
+    render.py          `vlmt view`의 단독 HTML. 읽기 전용이다
+    app/               PySide6 — window / canvas / library / inspector /
+                       history / progress
 ```
+
+### 9.1.1 설계에서 바뀐 것
+
+**`ui/`는 설계가 뒤집힌 자리다.** 처음 설계는 `server.py`(로컬 HTTP) + `web/`(브라우저
+캔버스)였고 Phase 7에서 실제로 그렇게 만들었다. 그러나 창이 두 개(콘솔 + 브라우저) 뜨고
+DOM 상자라 팬·줌이 되지 않아, 사용자 결정으로 **PySide6 네이티브 앱으로 재작성하고 웹
+편집기를 걷어냈다**. `server.py` · `events.py` · `web/`은 **존재하지 않는다**.
+
+바뀌지 않은 것: "UI 전용 실행 경로 없음"은 그대로다. 앱의 `실행` 버튼은 `vlmt pipeline`을
+하위 프로세스로 띄우고 그 진행 파일을 읽을 뿐이다.
+
+위 트리의 나머지는 **설계 의도**이고 구현은 더 적은 파일로 합쳐져 있다
+(`core/checks/*` → `compiler.py`, `core/fingerprint.py` → `spec/canonical.py`,
+`engine/scheduler.py` → `runner.py`, `nodes/<카테고리>/*.py` → `nodes/<주제>.py` 8개).
+합친 이유는 `README.md`의 "설계에서 구현으로 오며 바뀐 것" 표에 있다.
 
 ## 9.2 사용자 데이터
 
