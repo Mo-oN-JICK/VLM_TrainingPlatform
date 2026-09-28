@@ -79,6 +79,7 @@ class CompiledGraph:
     spec_hash: str = ""
     procedures: List[Dict[str, Any]] = field(default_factory=list)
     defaults: Dict[str, Any] = field(default_factory=dict)
+    node_modules: List[str] = field(default_factory=list)
     debug: Dict[str, Any] = field(default_factory=dict)
 
     def by_kind(self, kind: NodeKind) -> List[CompiledNode]:
@@ -537,6 +538,7 @@ def compile_graph(
         lock={compiled[i].id: compiled[i].ref for i in order},
         procedures=procs,
         defaults=canonical.canon_value(g.defaults),
+        node_modules=list(g.node_modules),
         debug=canonical.canon_value(g.debug),
     )
     cg.spec_hash = canonical.hash_obj(canonical_view(cg))
@@ -614,6 +616,9 @@ def canonical_view(cg: CompiledGraph) -> Dict[str, Any]:
         "sample_space": cg.sample_space,
         "materialize": cg.materialize,
         "runtime_profile": cg.runtime_profile,
+        # 비어 있으면 **키 자체를 넣지 않는다.** 넣으면 이 변경만으로 기존 스펙의
+        # spec_hash 가 전부 달라지고, 재개와 캐시가 통째로 무효가 된다.
+        **({"node_modules": sorted(cg.node_modules)} if cg.node_modules else {}),
         "nodes": [
             {
                 "id": n.id,

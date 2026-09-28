@@ -79,6 +79,10 @@ class GraphModel:
     materialize: Materialize = field(default_factory=Materialize)
     defaults: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     runtime_profile: str = "windows_single_gpu"
+    # 이 그래프가 쓰는 저장소 밖 노드 모듈. 스펙이 **자기완결적**이려면 여기 적혀야 한다 —
+    # CLI 플래그로만 알려 주면, 파일만 받은 사람은 "노드를 찾을 수 없다" 로 막히고
+    # 무엇을 더 받아야 하는지 파일 어디에도 없다. 편집기 목록에도 안 나온다.
+    node_modules: List[str] = field(default_factory=list)
     debug: Dict[str, Any] = field(default_factory=dict)
     source_dir: Optional[str] = None  # procedure 상대 경로 해소용
 

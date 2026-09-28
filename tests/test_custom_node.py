@@ -57,9 +57,11 @@ def _probe(dirpath, script: str) -> str:
     "코드를 고치고 다시 켰다" 를 흉내 낼 수 있다."""
     p = os.path.join(dirpath, "probe.py")
     io.open(p, "w", encoding="utf-8", newline="\n").write(textwrap.dedent(script))
+    # `PYTHONUTF8` 이 없으면 자식이 한국어 오류를 cp949 로 쓰고, 읽는 쪽이
+    # UnicodeDecodeError 로 죽는다 — 정작 보려던 메시지가 사라진다.
+    env = {**os.environ, "PYTHONPATH": dirpath + os.pathsep + ROOT, "PYTHONUTF8": "1"}
     r = subprocess.run([PY, "probe.py"], cwd=dirpath, capture_output=True,
-                       text=True, encoding="utf-8",
-                       env={**os.environ, "PYTHONPATH": dirpath + os.pathsep + ROOT})
+                       text=True, encoding="utf-8", errors="replace", env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     return r.stdout.strip()
 
@@ -210,3 +212,151 @@ def test_the_sweep_and_the_resume_check_use_the_same_key():
     from vlm_trainer.engine import sweep
 
     assert "bake_key" in inspect.getsource(sweep.materialize_key)
+
+
+# ── 스펙이 자기 노드를 데리고 다닌다 ────────────────────────────────────
+#
+# 전에는 `vlmt --nodes mymod ...` 플래그뿐이었다. 그래서 project.yaml 만 받은 사람은
+# "노드를 찾을 수 없다" 로 막혔고, 무엇을 더 받아야 하는지 파일 어디에도 없었다.
+# `editor.bat` 은 그 플래그를 안 넘기므로 **앱에는 커스텀 노드가 아예 안 보였다.**
+
+SOLUTION_NODE = '''from dataclasses import dataclass
+
+from vlm_trainer.core.node import Node, NodeDoc, NodeKind, Port, RunCtx
+from vlm_trainer.core.registry import register
+from vlm_trainer.core.types import text
+
+
+@dataclass
+class P:
+    suffix: str = "!"
+
+
+@register(type="my.tag", version="1.0.0", category="Prompt Assembly",
+          kind=NodeKind.PROCESSING,
+          inputs={"t": Port(text("prompt"), "in")},
+          outputs={"t": Port(text("prompt"), "out")},
+          params=P, doc=NodeDoc(label="꼬리표 붙이기"))
+class Tag(Node):
+    def run(self, ctx: RunCtx, params, **inputs):
+        return {"t": str(inputs["t"]) + params.suffix}
+'''
+
+
+def _solution_with_custom_node(tmp_path, *, declare: bool = True, module: str = "my_nodes.crop"):
+    """`<solution>/my_nodes/crop.py` 를 둔 과제 하나. 프로젝트 스펙이 그것을 선언한다."""
+    import shutil
+
+    import yaml
+
+    shutil.copytree(os.path.join(ROOT, "solutions"), os.path.join(tmp_path, "solutions"))
+    sol = os.path.join(tmp_path, "solutions", "vlm_open")
+    os.makedirs(os.path.join(sol, "my_nodes"), exist_ok=True)
+    io.open(os.path.join(sol, "my_nodes", "__init__.py"), "w").close()
+    io.open(os.path.join(sol, "my_nodes", "crop.py"), "w", encoding="utf-8",
+            newline="\n").write(SOLUTION_NODE)
+
+    spec = os.path.join(sol, "projects", "01_open", "project.yaml")
+    d = yaml.safe_load(io.open(spec, encoding="utf-8"))
+    if declare:
+        d["node_modules"] = [module]
+    d["nodes"].append({"id": "n_tag", "type": "my.tag@1.0.0", "params": {}})
+    d["edges"] = [e for e in d["edges"]
+                  if not (e["from"] == "n_guard:prompt" and e["to"] == "n_sample:prompt")]
+    d["edges"] += [{"from": "n_guard:prompt", "to": "n_tag:t"},
+                   {"from": "n_tag:t", "to": "n_sample:prompt"}]
+    io.open(spec, "w", encoding="utf-8").write(yaml.safe_dump(d, allow_unicode=True))
+    return "solutions/vlm_open/projects/01_open/project.yaml"
+
+
+def test_a_declared_module_is_imported_without_any_flag(tmp_path):
+    """이것이 요점이다. 플래그 없이 컴파일된다."""
+    rel = _solution_with_custom_node(str(tmp_path))
+    out = _probe(str(tmp_path), f"""
+        from vlm_trainer.core import registry
+        from vlm_trainer.core.compiler import compile_project
+        registry.load_builtin_nodes()
+        cg = compile_project({rel!r})
+        print(len(cg.nodes))
+    """)
+    assert int(out) == 15
+
+
+def test_without_the_declaration_it_still_fails(tmp_path):
+    """선언이 일을 하고 있다는 증거. 이것이 통과하면 위 테스트는 아무것도 안 본 것이다."""
+    rel = _solution_with_custom_node(str(tmp_path), declare=False)
+    with pytest.raises(AssertionError) as e:
+        _probe(str(tmp_path), f"""
+            from vlm_trainer.core import registry
+            from vlm_trainer.core.compiler import compile_project
+            registry.load_builtin_nodes()
+            compile_project({rel!r})
+        """)
+    assert "my.tag" in str(e.value)
+
+
+def test_a_missing_module_says_where_it_looked(tmp_path):
+    """스펙 파일이 파이썬을 임포트한다. 실패를 조용히 넘기면 그다음 오류가
+    "노드를 찾을 수 없다" 인데, 거기서는 무엇이 빠졌는지 안 나온다."""
+    rel = _solution_with_custom_node(str(tmp_path), module="my_nodes.없는것")
+    with pytest.raises(AssertionError) as e:
+        _probe(str(tmp_path), f"""
+            from vlm_trainer.core.compiler import compile_project
+            compile_project({rel!r})
+        """)
+    msg = str(e.value)
+    assert "임포트할 수 없다" in msg and "뒤진 곳" in msg
+
+
+def test_the_declaration_survives_a_save(tmp_path):
+    """저장 한 번에 선언이 사라지면 다음 컴파일이 막힌다.
+    `p_prep:images -> p_prompt:images` 가 사라지던 것과 같은 부류다."""
+    rel = _solution_with_custom_node(str(tmp_path))
+    out = _probe(str(tmp_path), f"""
+        import io, yaml
+        from vlm_trainer.core import registry
+        from vlm_trainer.ui.api import Editor
+        registry.load_builtin_nodes()
+        ed = Editor.open({rel!r})
+        ed.save()
+        print(yaml.safe_load(io.open({rel!r}, encoding="utf-8")).get("node_modules"))
+    """)
+    assert "my_nodes.crop" in out
+
+
+def test_the_app_library_lists_the_custom_node(tmp_path):
+    """`editor.bat` 은 `--nodes` 를 넘기지 않는다. 선언이 없으면 앱에서 그 상자를
+    끌어다 놓을 수가 없다."""
+    rel = _solution_with_custom_node(str(tmp_path))
+    out = _probe(str(tmp_path), f"""
+        from vlm_trainer.core import registry
+        from vlm_trainer.ui.api import Editor
+        registry.load_builtin_nodes()
+        ed = Editor.open({rel!r})
+        print(any(n["type"].startswith("my.tag") for n in ed.library()))
+    """)
+    assert out == "True"
+
+
+def test_the_solution_root_is_found_by_structure_not_by_a_marker_file(tmp_path):
+    """`solution.yaml` 의 존재로 판단하면 안 된다 — 코드가 그 파일을 읽지도 않고,
+    `vlm_open` 에는 아예 없다. 없는 표지를 기준으로 삼으면 멀쩡한 과제에서 조용히
+    못 찾는다."""
+    from vlm_trainer.spec.loader import solution_root
+
+    d = os.path.join("X", "solutions", "vlm_open", "projects", "01_open")
+    assert solution_root(d).endswith(os.path.join("solutions", "vlm_open"))
+    assert not os.path.exists(os.path.join(ROOT, "solutions", "vlm_open", "solution.yaml"))
+
+
+def test_an_empty_declaration_does_not_move_the_spec_hash():
+    """`node_modules` 를 안 쓰는 스펙의 `spec_hash` 가 이 변경으로 달라지면,
+    구워 둔 것과 재개가 통째로 무효가 된다."""
+    from vlm_trainer.core import registry
+    from vlm_trainer.core.compiler import canonical_view, compile_project
+
+    registry.load_builtin_nodes()
+    cg = compile_project(os.path.join(ROOT, "solutions", "vlm_open",
+                                      "projects", "01_open", "project.yaml"))
+    assert not cg.node_modules
+    assert "node_modules" not in canonical_view(cg)

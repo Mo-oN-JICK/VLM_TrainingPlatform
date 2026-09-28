@@ -5,7 +5,9 @@ project.yaml만이 의미를 갖는다. layout.json은 읽지 않는다.
 
 from __future__ import annotations
 
+import importlib
 import os
+import sys
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -46,6 +48,75 @@ def _edges(raw: Any, where: str) -> List[Edge]:
     return out
 
 
+def _node_modules(raw: Any, where: str) -> List[str]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or any(not isinstance(m, str) for m in raw):
+        raise SpecError(f"{where}: node_modules는 문자열 목록이어야 한다 (예: [my_nodes.crop])")
+    return [m.strip() for m in raw if m.strip()]
+
+
+def solution_root(spec_dir: str) -> str:
+    """과제(solution) 루트. 노드는 보통 과제 단위로 공유되므로 여기도 찾아본다.
+
+    규약은 `<solution>/projects/<project>/project.yaml` 이다. 부모 폴더 이름이
+    `projects` 면 그 위가 루트다 — **`solution.yaml` 의 존재로 판단하지 않는다.**
+    그 파일은 지금 코드가 읽지 않고, 실제로 `vlm_open` 에는 아예 없다. 없는 표지를
+    기준으로 삼으면 멀쩡한 과제에서 조용히 못 찾는다.
+    """
+    parent = os.path.dirname(spec_dir)
+    if os.path.basename(parent).lower() == "projects":
+        return os.path.dirname(parent)
+    for cur in (parent, os.path.dirname(parent)):
+        if cur and os.path.exists(os.path.join(cur, "solution.yaml")):
+            return cur
+    return ""
+
+
+def import_node_modules(g: GraphModel) -> List[str]:
+    """스펙이 선언한 저장소 밖 노드 모듈을 임포트한다. 임포트한 모듈 이름을 돌려준다.
+
+    **여기서 임포트해야 CLI·편집기·테스트가 같은 길을 탄다.** 플래그로만 알려 주면
+    부르는 곳마다 잊을 수 있고, 잊은 곳에서는 "노드를 찾을 수 없다" 로 막힌다.
+
+    찾는 자리는 스펙 폴더와 그 위의 solution 루트다. `my_nodes/crop.py` 를 프로젝트
+    옆에 두면 그대로 잡힌다. 이미 설치된 패키지면 그것도 잡힌다.
+
+    스펙 파일이 파이썬을 임포트한다는 뜻이므로, **실패를 조용히 넘기지 않는다** —
+    모듈이 없으면 어느 자리를 뒤졌는지까지 말한다.
+    """
+    if not g.node_modules:
+        return []
+
+    d = os.path.abspath(g.source_dir or ".")
+    roots: List[str] = [d, solution_root(d)]
+    roots = [r for i, r in enumerate(roots) if r and r not in roots[:i]]
+
+    added = [r for r in roots if r not in sys.path]
+    sys.path[:0] = added
+    try:
+        for m in g.node_modules:
+            if m in sys.modules:
+                continue
+            try:
+                importlib.import_module(m)
+            except ImportError as e:
+                where_looked = ", ".join(roots)
+                raise SpecError(
+                    f"node_modules의 {m!r}을 임포트할 수 없다 — {e}\n"
+                    f"  뒤진 곳: {where_looked}\n"
+                    "  안 잡혔다면: 이 스펙이 쓰는 노드가 등록되지 않은 채\n"
+                    "  컴파일에 들어가고 '노드를 찾을 수 없다'로 막힌다.\n"
+                    "  무엇이 빠졌는지는 거기서 안 나온다.\n"
+                    "  파일 이름과 위치를 확인하라 (예: my_nodes/crop.py -> my_nodes.crop)."
+                ) from None
+    finally:
+        for r in added:
+            if r in sys.path:
+                sys.path.remove(r)
+    return list(g.node_modules)
+
+
 def _nodes(raw: Any, where: str) -> List[NodeInstance]:
     out: List[NodeInstance] = []
     for i, n in enumerate(raw or []):
@@ -60,7 +131,11 @@ def _nodes(raw: Any, where: str) -> List[NodeInstance]:
 
 def load_project(path: str) -> GraphModel:
     path = os.path.abspath(path)
-    return build_project(_read_yaml(path), os.path.dirname(path), os.path.basename(path))
+    g = build_project(_read_yaml(path), os.path.dirname(path), os.path.basename(path))
+    # 스펙이 선언한 노드 모듈을 **여기서** 임포트한다. 이 한 줄이 CLI·편집기·테스트를
+    # 같은 길에 올린다 — 부르는 쪽마다 따로 챙기면 챙기지 않은 곳이 생긴다.
+    import_node_modules(g)
+    return g
 
 
 def build_project(data: Dict[str, Any], source_dir: str, where: str = "spec") -> GraphModel:
@@ -99,6 +174,7 @@ def build_project(data: Dict[str, Any], source_dir: str, where: str = "spec") ->
         ),
         defaults=dict(data.get("defaults") or {}),
         runtime_profile=str(data.get("runtime_profile", "windows_single_gpu")),
+        node_modules=_node_modules(data.get("node_modules"), where),
         debug=dict(data.get("debug") or {}),
         source_dir=source_dir,
     )

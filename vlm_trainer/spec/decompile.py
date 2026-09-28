@@ -71,6 +71,10 @@ def decompile(cg: CompiledGraph, *, keep_procedures: bool = True) -> Dict[str, A
     }
     if cg.defaults:
         spec["defaults"] = cg.defaults
+    if cg.node_modules:
+        # 이것이 빠지면 저장 한 번에 커스텀 노드 선언이 사라지고, 다음 컴파일이
+        # "노드를 찾을 수 없다" 로 막힌다.
+        spec["node_modules"] = list(cg.node_modules)
     if procs:
         spec["procedures"] = procs
     if cg.debug:
