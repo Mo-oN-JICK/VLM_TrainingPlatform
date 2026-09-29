@@ -175,6 +175,7 @@ Mech-Vision과 동일하게 시각화 결과는 **포트로 나오는 값**이�
 
 | 노드 | 태그 | 입력 | 출력 | 주요 파라미터 |
 |---|---|---|---|---|
+| `source.model` | **I** | — | `model: Model` | `dir`, `backbone`(비우면 계약 파일에서 읽는다) `[신설]` |
 | `train.vlm_trainer` | **O** | `sample: Sample`, `schema: Schema` | `model: Model` | 문서 7의 TrainerConfig 전체 |
 | `infer.vlm` | **P**, `external_call` | `model: Model`, `prompt: Text`, `images: ImageList?` | `answer: Text` | `max_new_tokens`, `only_split(val)` |
 | `train.resume` | **O** | `sample: Sample` | — | `run_id`, `from_step`, `strict_spec_match(true)` |
@@ -183,6 +184,19 @@ Mech-Vision과 동일하게 시각화 결과는 **포트로 나오는 값**이�
 "학습한 모델로 추론한다" 를 화면에 보이게 하려면 학습이 산출물이 **어디 있는지**를
 내보내야 한다. Output 은 **부작용의 자리**이지 반드시 끝은 아니다. 가중치를 값으로
 흘려보내지는 않는다 — 그러면 샘플마다 수 GB 가 캐시에 복사된다.
+
+**`source.model` 이 없으면 단계 분해가 그래프에서 표현되지 않는다.** 모델을 내보내는
+노드가 `train.vlm_trainer` 뿐이면, 쓸 수 있는 것은 **같은 그래프 안에서 방금 학습한 것**
+하나뿐이다. 어려운 일을 단계로 쪼개 단계마다 모델을 학습하는 방식에서는 2단계 그래프가
+1단계 모델을 못 받고, 단계마다 처음부터 다시 학습해야 한다.
+
+Input 이므로 `fingerprint()` 를 구현한다(C4). 가중치 전체를 해싱하지는 않는다 — 4GB 를
+샘플마다 읽으면 추론보다 그쪽이 오래 걸린다. 계약 파일과 가중치 파일의 크기·시각이면
+폴더를 갈아 끼운 것을 잡는다.
+
+**모델을 내보내는 노드의 하류는 물질화 경계 앞에 둘 수 없다.** 모델이 아직 없거나
+(학습 전), 있어도 샘플마다 수 GB 를 올렸다 내렸다 해야 한다. 그래서 `external_call`
+배치 검사는 그 하류를 묻지 않는다 — 못 지킬 것을 요구하는 게이트는 믿지 않게 된다.
 
 `infer.vlm`은 모델 파일을 디스크에서 읽으므로 순수 함수가 아니다. `external_call`로
 그 예외를 드러낸다. 물질화 경계 규칙은 이 노드에 걸리지 않는다 — 그 규칙이 막는 위험은

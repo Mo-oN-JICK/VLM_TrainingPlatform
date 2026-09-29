@@ -46,6 +46,11 @@ class NodeDoc:
     ports: str = ""
 
 
+def _rebuild_node_error(node_id: str, cause: str, port: str, sample_key: str, hint: str) -> "NodeError":
+    """`NodeError.__reduce__` 가 가리키는 복원 함수. **모듈 최상위여야** pickle 이 찾는다."""
+    return NodeError(node_id, cause, port=port, sample_key=sample_key, hint=hint)
+
+
 class NodeError(VlmtError):
     """노드 실행 실패. 엔진은 이 타입만 격리한다."""
 
@@ -65,6 +70,20 @@ class NodeError(VlmtError):
             sample_key,
             cause,
             hint,
+        )
+
+    def __reduce__(self) -> Any:
+        """**격리 워커에서 던진 것이 부모까지 살아서 와야 한다.**
+
+        기본 pickle 은 예외를 `(클래스, self.args)` 로 복원하는데, `args` 에는 이미
+        합쳐진 메시지 한 개뿐이라 `cause` 가 없다고 `TypeError` 가 난다. 그러면 결과를
+        받는 쪽이 깨지고 `external_call` 노드의 실패가 전부 **"워커 프로세스가 죽었다"**
+        로 바뀐다 — 네 줄짜리 진단(불일치 필드 / 안 잡혔다면 / 추정 낭비 / 해결 배선)이
+        통째로 사라지고, 사람은 네이티브 크래시를 의심하며 엉뚱한 곳을 판다.
+        """
+        return (
+            _rebuild_node_error,
+            (self.node_id, self.cause, self.port, self.sample_key, self.hint),
         )
 
 

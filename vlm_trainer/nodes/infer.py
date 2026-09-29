@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from hashlib import blake2b
 from typing import Any, Dict, Optional, Tuple
 
 from ..core.node import Node, NodeDoc, NodeError, NodeKind, Port, RunCtx
 from ..core.registry import register
 from ..core.types import ANY, BaseKind, image, simple, text
+
+CONTRACT = "inference_contract.json"
 
 # (모델 디렉터리, 백본 id) -> 올려 둔 모델. 프로세스가 사는 동안 유지된다.
 _LOADED: Dict[Tuple[str, str], Any] = {}
@@ -54,6 +57,109 @@ def _load(node_id: str, model_dir: str, backbone: str) -> Any:
     except ckpt_mod.CheckpointError as e:
         raise NodeError(node_id, cause=e.cause, hint=e.hint) from None
     return _LOADED[key]
+
+
+@dataclass
+class ModelSourceParams:
+    dir: str = "runs/{run_id}/export"
+    backbone: str = ""     # 비우면 `inference_contract.json` 에서 읽는다
+
+
+@register(
+    type="source.model",
+    version="1.0.0",
+    category="Training",
+    kind=NodeKind.INPUT,
+    outputs={"model": Port(simple(BaseKind.MODEL), "이미 학습해 둔 모델")},
+    params=ModelSourceParams,
+    recipe_overridable=["dir", "backbone"],
+    doc=NodeDoc(
+        label="학습된 모델 불러오기",
+        hint="이전에 학습하거나 Export 한 모델 폴더를 그래프에 들여옵니다.",
+        summary="학습 없이도 `모델 추론` 에 모델을 물릴 수 있게 한다.",
+        scenario=(
+            "어려운 일을 단계로 쪼개 단계마다 모델을 따로 학습할 때, 1단계에서 만든 "
+            "모델을 2단계 그래프에서 쓴다. 이것이 없으면 단계마다 처음부터 다시 학습해야 한다."
+        ),
+    ),
+)
+class ModelSource(Node):
+    """이미 만들어 둔 모델을 그래프에 들여온다.
+
+    `모델 학습` 만이 모델을 내보낼 수 있으면, **같은 그래프 안에서 방금 학습한 것**밖에
+    쓸 수 없다. 단계를 쪼개 단계마다 모델을 학습하는 방식이 그래프에서 표현되지 않는다.
+
+    `backbone` 을 비워 두면 폴더의 `inference_contract.json` 에서 읽는다. 추측하지
+    않는다 — bf16 으로 학습한 가중치를 다른 자료형으로 열면 답이 조용히 나빠지고,
+    그것을 모델 탓으로 돌리게 된다.
+    """
+
+    def fingerprint(self, ctx: RunCtx, params: Any) -> str:
+        """모델 폴더의 정체. 폴더를 갈아 끼우면 캐시가 갈려야 한다.
+
+        가중치 전체를 해싱하지 않는다 — 4GB 를 샘플마다 읽으면 추론보다 그쪽이 오래
+        걸린다. 계약 파일과 가장 큰 가중치 파일의 크기·시각이면 갈아 끼운 것을 잡는다.
+        """
+        d = _model_dir(ctx, params)
+        parts = [os.path.normcase(os.path.abspath(d))]
+        for name in (CONTRACT, *_weight_files(d)):
+            p = os.path.join(d, name)
+            try:
+                st = os.stat(p)
+                parts.append(f"{name}|{st.st_size}|{st.st_mtime_ns}")
+            except OSError:
+                parts.append(f"{name}|missing")
+        return blake2b("||".join(parts).encode(), digest_size=12).hexdigest()
+
+    def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
+        d = _model_dir(ctx, params)
+        if not os.path.isdir(d):
+            raise NodeError(
+                ctx.node_id,
+                cause=f"모델 폴더가 없다: {d}",
+                hint=(
+                    "  안 잡혔다면: 없는 모델로 답을 만들려 하고, 그 답을 보고 판단하게 된다.\n"
+                    "  추정 낭비: 없음(시작하지 않았다).\n"
+                    "  먼저 학습하거나 Export 한 폴더를 dir 에 적어라."
+                ),
+            )
+        backbone = (params.backbone or "").strip() or _backbone_from_contract(d)
+        if not backbone:
+            raise NodeError(
+                ctx.node_id,
+                cause=f"{d} 의 백본을 알 수 없다",
+                hint=(
+                    "  안 잡혔다면: 아무 백본으로나 열어 보다 엉뚱한 자료형으로 얹고,\n"
+                    "  답이 조용히 나빠진다.\n"
+                    "  추정 낭비: 추론 시간 전부 + 그 뒤의 판단.\n"
+                    f"  {CONTRACT} 가 그 폴더에 없다면 backbone 파라미터에 직접 적어라."
+                ),
+            )
+        return {"model": {"dir": os.path.abspath(d), "backbone": backbone}}
+
+
+def _model_dir(ctx: RunCtx, params: Any) -> str:
+    return os.path.abspath(str(params.dir).replace("{run_id}", ctx.run_id))
+
+
+def _weight_files(d: str) -> Tuple[str, ...]:
+    """가중치처럼 보이는 파일 이름. 없으면 빈 것 — 그때는 계약 파일만으로 센다."""
+    try:
+        names = [f for f in sorted(os.listdir(d))
+                 if f.endswith((".safetensors", ".pt", ".bin"))]
+    except OSError:
+        return ()
+    return tuple(names[:4])
+
+
+def _backbone_from_contract(d: str) -> str:
+    import json
+
+    try:
+        with open(os.path.join(d, CONTRACT), "r", encoding="utf-8") as fh:
+            return str((json.load(fh).get("backbone") or {}).get("id") or "")
+    except (OSError, ValueError):
+        return ""
 
 
 @dataclass

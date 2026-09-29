@@ -92,11 +92,70 @@ def reinject_lora(adapter: Any, model: Any, spec: Dict[str, Any]) -> int:
                            int(spec.get("alpha") or 16), float(spec.get("dropout") or 0.0)))
 
 
+def exported_format(model_dir: str) -> str:
+    """내보낸 폴더면 그 형식(`huggingface` / `state_dict`), 아니면 빈 문자열.
+
+    학습이 남긴 폴더와 Export 한 폴더는 생김새가 다르다. 학습 쪽은 단계별 하위 폴더에
+    `.pt` 가 있고, Export 쪽은 합쳐진 모델이 평평하게 놓인다. 둘을 같은 코드로 열려고
+    하면 Export 폴더에서 "체크포인트가 없다" 가 난다 — 방금 내보낸 그 모델을 두고.
+    """
+    try:
+        with open(os.path.join(model_dir, CONTRACT), "r", encoding="utf-8") as fh:
+            return str((json.load(fh).get("exported") or {}).get("format") or "")
+    except (OSError, ValueError):
+        return ""
+
+
+def _load_exported(model_dir: str, backbone: str, fmt: str) -> Tuple[Any, Any]:
+    """Export 폴더를 연다. LoRA 는 이미 합쳐져 있으므로 트리를 손댈 일이 없다."""
+    from ..plugins.base import resolve_backbone
+
+    if fmt == "huggingface":
+        # **그 폴더 자체**를 백본으로 등록한다. 원래 모델 id 로 해소하면 가중치도
+        # 프로세서도 원본을 읽게 되고, 내보낸 것이 아니라 학습 전 모델로 답하게 된다.
+        from ..plugins import hf_backbone
+
+        adapter = hf_backbone.register(model_dir)
+        return adapter, adapter.build(build_cfg(model_dir), None)
+
+    import torch
+
+    adapter = resolve_backbone(backbone)
+    model = adapter.build(build_cfg(model_dir), None)
+    path = os.path.join(model_dir, "model.pt")
+    if not os.path.exists(path):
+        raise CheckpointError(
+            f"{path} 가 없다",
+            "  안 잡혔다면: 학습 전 모델이 답을 내고, 그 답을 보고 판단하게 된다.\n"
+            "  추정 낭비: 추론 시간 전부 + 그 뒤의 판단.\n"
+            "  내보낸 폴더가 온전한지 확인하라.")
+    res = model.load_state_dict(torch.load(path, map_location="cpu", weights_only=False),
+                                strict=False)
+    unexpected = list(getattr(res, "unexpected_keys", []))
+    if unexpected:
+        raise CheckpointError(
+            f"내보낸 가중치 {len(unexpected)}개가 모델에 들어갈 자리가 없다",
+            f"  첫 몇 개: {', '.join(unexpected[:3])}\n"
+            "  안 잡혔다면: 절반만 올라간 모델이 답을 낸다.\n"
+            "  내보낼 때와 다른 백본으로 열고 있지 않은지 확인하라.")
+    return adapter, model
+
+
 def load(model_dir: str, backbone: str, *, to_cuda: bool = False) -> Tuple[Any, Any]:
-    """`(어댑터, 모델)`. 학습 때와 **같은 모듈 트리**로 만들어 얹는다."""
+    """`(어댑터, 모델)`. 학습 때와 **같은 모듈 트리**로 만들어 얹는다.
+
+    Export 폴더면 그쪽 길로 간다 — LoRA 가 이미 합쳐져 있어 트리를 다시 만들 것이 없다.
+    """
     import torch
 
     from ..plugins.base import resolve_backbone
+
+    fmt = exported_format(model_dir)
+    if fmt:
+        adapter, model = _load_exported(model_dir, backbone, fmt)
+        if to_cuda and torch.cuda.is_available():
+            model = model.cuda()
+        return adapter, model
 
     adapter = resolve_backbone(backbone)
     path = latest(model_dir)

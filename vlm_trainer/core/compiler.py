@@ -27,7 +27,7 @@ from .errors import (
 from .graph import Edge, GraphModel, NodeInstance
 from .node import NodeDef, NodeKind
 from .registry import resolve as resolve_node
-from .types import PortType
+from .types import BaseKind, PortType
 from .unify import apply_subst, rename_vars, unify_ports
 
 ENGINE_ABI = "vlmt-abi-1"
@@ -450,10 +450,21 @@ def compile_graph(
     # 학습보다 **뒤에** 있는 노드는 루프 안에 있을 수가 없다. `모델 추론` 이 그렇다:
     # 학습이 끝나고 그 산출물을 받아 도는 것이라 학습과 GPU 를 나눠 쓰지 않는다.
     # 없는 위험을 게이트가 말하기 시작하면 사람이 게이트를 믿지 않게 된다.
-    trainers = {i for i in order if not defs[i].per_sample}
+    # 완성된 모델을 내보내는 노드. 학습(`train.vlm_trainer`)과 이미 학습해 둔 것을
+    # 들여오는 노드(`source.model`)가 여기 든다.
+    #
+    # 이 노드들의 **하류는 굽기 단계에 있을 수 없다.** 모델이 아직 없거나(학습 전),
+    # 있어도 샘플마다 수 GB 를 올렸다 내렸다 해야 한다. 그래서 "경계 앞에 두라" 는
+    # 요구가 만족 불가능하다 — 게이트가 못 지킬 것을 요구하기 시작하면 사람이
+    # 게이트를 믿지 않게 된다.
+    model_sources = {
+        i for i in order
+        if not defs[i].per_sample
+        or any(getattr(p.type, "base", None) is BaseKind.MODEL for p in defs[i].outputs.values())
+    }
     after_train: Set[str] = set()
-    if trainers:
-        stack = list(trainers)
+    if model_sources:
+        stack = list(model_sources)
         while stack:
             cur = stack.pop()
             for e in edges:
