@@ -360,3 +360,128 @@ def test_an_empty_declaration_does_not_move_the_spec_hash():
                                       "projects", "01_open", "project.yaml"))
     assert not cg.node_modules
     assert "node_modules" not in canonical_view(cg)
+
+
+# ── 뼈대와 검사 ─────────────────────────────────────────────────────────
+#
+# 빈 파일부터 시작하면 대부분 한두 가지를 빠뜨린다. 빠뜨린 것이 등록에서 걸리면 다행이고,
+# 안 걸리면 조용히 틀린 결과가 나온다.
+
+@pytest.mark.parametrize("kind", ["input", "processing", "output"])
+def test_a_fresh_node_passes_its_own_checks(tmp_path, kind):
+    """만들자마자 통과해야 한다. 뼈대가 등록 거부부터 만나게 하면 아무도 안 쓴다."""
+    from vlm_trainer.spec import node_scaffold as ns
+
+    made = ns.new_node(str(tmp_path / "nodes" / f"{kind}.py"), f"my.{kind}", kind,
+                       label=kind, root=str(tmp_path))
+    assert os.path.exists(made.module_path) and os.path.exists(made.test_path)
+    assert made.module_name == f"nodes.{kind}"
+
+    out = _probe(str(tmp_path), f"""
+        from vlm_trainer.spec import node_scaffold as ns
+        rep = ns.check_module("nodes.{kind}", root={str(tmp_path)!r})
+        print(rep.ok)
+        print("|".join(c.name for c in rep.checks if not c.ok))
+    """)
+    ok, failed = out.split("\n")[0], out.split("\n")[1] if "\n" in out else ""
+    assert ok == "True", f"갓 만든 노드가 검사에 걸린다: {failed}"
+
+
+def test_the_generated_test_file_runs(tmp_path):
+    """테스트 파일도 함께 만든다. 명령은 손으로 부르는 것이고 테스트는 잊지 않는다."""
+    from vlm_trainer.spec import node_scaffold as ns
+
+    ns.new_node(str(tmp_path / "nodes" / "crop.py"), "my.crop", "processing",
+                label="자르기", root=str(tmp_path))
+    r = subprocess.run([PY, "-m", "pytest", "-q"], cwd=str(tmp_path),
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       env={**os.environ, "PYTHONUTF8": "1",
+                            "PYTHONPATH": str(tmp_path) + os.pathsep + ROOT})
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@pytest.mark.parametrize(
+    "name,mutate,expect",
+    [
+        ("순수하지 않다",
+         ('return {"value": str(inputs["value"]) + params.example}',
+          'import random\n        return {"value": str(random.random())}'),
+         "두 번 돌려 같은 값"),
+        ("선언과 다른 타입",
+         ('return {"value": str(inputs["value"]) + params.example}',
+          'return {"value": 12345}'),
+         "선언한 타입대로"),
+        ("선언한 포트를 안 낸다",
+         ('return {"value": str(inputs["value"]) + params.example}', "return {}"),
+         "선언한 타입대로"),
+        ("이름이 비었다", ('label="t",', 'label="",'), "사람이 읽을 이름"),
+        ("실행 중 터진다",
+         ('return {"value": str(inputs["value"]) + params.example}',
+          'raise ValueError("터짐")'),
+         "실행"),
+    ],
+)
+def test_the_check_actually_catches_a_broken_node(tmp_path, name, mutate, expect):
+    """통과만 하는 검사는 검사가 아니다. **등록만으로는 알 수 없는 것**들이다 —
+    정말 순수한가, 정말 선언한 타입을 내는가, 정말 도는가."""
+    from vlm_trainer.spec import node_scaffold as ns
+
+    made = ns.new_node(str(tmp_path / "nodes" / "t.py"), "my.t", "processing",
+                       label="t", root=str(tmp_path))
+    src = io.open(made.module_path, encoding="utf-8").read()
+    old, new = mutate
+    assert old in src, "뼈대가 바뀌어 이 시험이 낡았다"
+    io.open(made.module_path, "w", encoding="utf-8", newline="\n").write(src.replace(old, new))
+
+    out = _probe(str(tmp_path), f"""
+        from vlm_trainer.spec import node_scaffold as ns
+        rep = ns.check_module("nodes.t", root={str(tmp_path)!r})
+        print(rep.ok)
+        print("|".join(c.name for c in rep.checks if not c.ok))
+    """)
+    ok, failed = (out.split("\n") + [""])[:2]
+    assert ok == "False", f"{name}: 검사가 통과시켰다"
+    assert expect in failed, f"{name}: 다른 것이 걸렸다 — {failed}"
+
+
+def test_the_check_refuses_to_invent_values_it_cannot_build(tmp_path):
+    """표본 값을 지어낼 수 없는 포트 타입이면 실행 검사를 **건너뛴다**.
+    지어낸 값으로 통과시키면 검사가 거짓말을 한다."""
+    from vlm_trainer.core.types import ANY, image, regions, text
+    from vlm_trainer.spec import node_scaffold as ns
+
+    assert ns.sample_value(text()) == "샘플"
+    assert ns.sample_value(image(frame=ANY)) is not None
+    assert ns.sample_value(regions()) is None, "만들 수 없는 것을 만들어 냈다"
+
+
+def test_a_node_placed_inside_the_package_is_flagged(tmp_path):
+    """`vlm_trainer.` 아래에 두면 내장 노드로 취급되어 구현 지문이 안 붙는다 —
+    코드를 고쳐도 캐시가 옛 결과를 돌려준다."""
+    from vlm_trainer.core.registry import _source_fingerprint
+
+    class _Inside:
+        __module__ = "vlm_trainer.nodes.mine"
+        __qualname__ = "_Inside"
+
+    assert _source_fingerprint(_Inside) == ""
+
+
+def test_new_node_refuses_a_bad_type_name(tmp_path):
+    from vlm_trainer.core.errors import SpecError
+    from vlm_trainer.spec import node_scaffold as ns
+
+    with pytest.raises(SpecError, match="범주.이름"):
+        ns.new_node(str(tmp_path / "x.py"), "crop", "processing")
+    with pytest.raises(SpecError, match="kind"):
+        ns.new_node(str(tmp_path / "y.py"), "my.crop", "sideways")
+
+
+def test_new_node_does_not_overwrite(tmp_path):
+    """덮어쓰면 고쳐 둔 노드가 날아간다."""
+    from vlm_trainer.core.errors import SpecError
+    from vlm_trainer.spec import node_scaffold as ns
+
+    ns.new_node(str(tmp_path / "a.py"), "my.a", "processing")
+    with pytest.raises(SpecError, match="이미 있는 파일"):
+        ns.new_node(str(tmp_path / "a.py"), "my.a", "processing")

@@ -37,7 +37,7 @@ from ..train import contract as contract_mod
 # 명령 본문은 주제별 모듈에 있다. 파서는 그것을 가리키기만 한다.
 from .cmd_graph import cmd_backbones, cmd_compile, cmd_decompile, cmd_infer_graph, cmd_nodes, cmd_show, cmd_view
 from .cmd_execute import cmd_budget, cmd_dryrun, cmd_export, cmd_materialize, cmd_pipeline, cmd_preview, cmd_run, cmd_sweep, cmd_train
-from .cmd_project import cmd_edit, cmd_new, cmd_recipe
+from .cmd_project import cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -131,6 +131,22 @@ def build_parser() -> argparse.ArgumentParser:
                     help="실행 프로파일 (windows_single_gpu | linux_multi_gpu)")
     nw.add_argument("--edit", action="store_true", help="만든 뒤 편집기를 연다")
     nw.set_defaults(func=cmd_new)
+
+    nn = sub.add_parser(
+        "new-node", help="새 노드의 뼈대와 그 테스트 파일을 만든다 (Custom Node)")
+    nn.add_argument("path", help="만들 파일 (예: my_nodes/crop.py)")
+    nn.add_argument("--type", required=True, help="노드 타입 (예: my.crop_by_rule)")
+    nn.add_argument("--kind", default="processing", choices=("input", "processing", "output"))
+    nn.add_argument("--category", default="Data Processing", help="라이브러리에서 묶일 자리")
+    nn.add_argument("--label", default="", help="카드에 뜰 한국어 이름")
+    nn.add_argument("--root", default="", help="임포트 이름을 셈할 기준 폴더 (기본: 파일의 폴더)")
+    nn.set_defaults(func=cmd_new_node)
+
+    cn = sub.add_parser(
+        "check-node", help="노드가 계약을 지키는지 실제로 돌려 본다 (등록 검사가 못 보는 것)")
+    cn.add_argument("module", help="임포트 이름 (예: my_nodes.crop)")
+    cn.add_argument("--root", default="", help="모듈을 찾을 기준 폴더 (기본: 현재 폴더)")
+    cn.set_defaults(func=cmd_check_node)
 
     ed = sub.add_parser("edit", help="그래프 편집기를 연다 (네이티브 창)")
     ed.add_argument("spec")

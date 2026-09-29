@@ -57,6 +57,30 @@ def cmd_edit(a: argparse.Namespace) -> int:
     return app_mod.launch(a.spec, extra_modules=tuple(a.nodes))
 
 
+def cmd_new_node(a: argparse.Namespace) -> int:
+    """노드 하나의 뼈대. 빈 파일부터 시작하면 대부분 한두 가지를 빠뜨린다."""
+    from ..spec import node_scaffold as ns
+
+    made = ns.new_node(a.path, a.type, a.kind, category=a.category, label=a.label,
+                       root=a.root or "")
+    print(f"만들었다: {made.module_path}")
+    print(f"          {made.test_path}")
+    print()
+    print("다음 두 가지:")
+    print(f"  1) 스펙에 적는다 — node_modules: [{made.module_name}]")
+    print(f"  2) 검사한다      — vlmt check-node {made.module_name}")
+    return 0
+
+
+def cmd_check_node(a: argparse.Namespace) -> int:
+    """등록 검사가 보지 못하는 것을 실제로 돌려 본다."""
+    from ..spec import node_scaffold as ns
+
+    rep = ns.check_module(a.module, root=a.root or os.getcwd())
+    print(ns.render(rep))
+    return 0 if rep.ok else 1
+
+
 def cmd_recipe(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
     book = recipe_mod.load(a.spec)
