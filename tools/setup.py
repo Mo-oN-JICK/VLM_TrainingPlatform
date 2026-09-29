@@ -20,6 +20,16 @@ PY = VENV / "Scripts" / "python.exe"
 SPEC = ROOT / "solutions" / "vlm_parts" / "projects" / "01_parts" / "project.yaml"
 
 CUDA_URL = "https://download.pytorch.org/whl/cu130"
+# 학습과 실물 백본 추론에 필요한 것. (사람이 읽을 이름, 임포트 이름).
+# torch 만 보면 안 된다 — transformers 가 없으면 굽기까지 가고 학습에서 죽는다.
+TRAIN_DEPS = (
+    ("torch", "torch"),
+    ("torchvision", "torchvision"),          # Qwen2-VL 프로세서가 비디오 처리기를 끌고 온다
+    ("transformers", "transformers"),
+    ("accelerate", "accelerate"),
+    ("safetensors", "safetensors"),
+    ("huggingface_hub", "huggingface_hub"),
+)
 CPU_URL = "https://download.pytorch.org/whl/cpu"
 
 
@@ -79,17 +89,25 @@ def verify() -> None:
     say("[4/4] 확인합니다...")
     run([str(PY), "-m", "vlm_trainer.cli.main", "compile", str(SPEC)])
     say("")
-    if run([str(PY), "-c", "import torch"], quiet=True) == 0:
-        say("  torch 확인됨. 학습까지 가능합니다.")
+    missing = [name for name, mod in TRAIN_DEPS if run([str(PY), "-c", f"import {mod}"],
+                                                       quiet=True) != 0]
+    if not missing:
+        say("  학습에 필요한 것이 전부 있습니다.")
         return
+
+    # **torch 만 안내하면 4090 에서 굽기까지 가고 학습에서 죽는다.** 실물 백본은
+    # transformers 를 쓰고, Qwen2-VL 프로세서는 torchvision 을 함께 끌고 온다.
+    # 빠진 것을 전부 세어서 한 번에 알려 준다.
     say("-" * 44)
-    say("  torch 가 없습니다. 학습을 뺀 나머지는 전부 동작합니다.")
-    say("  (편집기 / compile / dryrun / budget / run / materialize)")
+    say(f"  빠진 것: {', '.join(missing)}")
+    say("  이것 없이도 편집기 / compile / dryrun / budget / run / materialize 는 돕니다.")
+    say("  **학습과 실물 백본 추론은 안 됩니다.**")
     say("")
-    say("  학습까지 하려면 자신의 CUDA 에 맞는 torch 를 설치하세요:")
-    say(rf"    .venv\Scripts\python.exe -m pip install torch --index-url {CUDA_URL}")
-    say("  CUDA 가 없다면:")
-    say(rf"    .venv\Scripts\python.exe -m pip install torch --index-url {CPU_URL}")
+    say("  CUDA GPU 가 있다면 (드라이버에 맞는 cu 버전을 고르세요):")
+    say(rf"    .venv\Scripts\python.exe -m pip install torch torchvision --index-url {CUDA_URL}")
+    say(r"    .venv\Scripts\python.exe -m pip install transformers accelerate safetensors huggingface_hub")
+    say("  CUDA 가 없다면 첫 줄만 이렇게:")
+    say(rf"    .venv\Scripts\python.exe -m pip install torch torchvision --index-url {CPU_URL}")
     say("-" * 44)
 
 
