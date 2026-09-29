@@ -111,9 +111,10 @@ def test_every_registered_node_is_in_the_catalog():
     registry.load_builtin_nodes()
     doc = _read("03-node-catalog.md")
     named = set(re.findall(r"`([a-z_]+\.[a-z_]+)`", doc))
-    # `test.*` 는 `tests/fixture_nodes.py` 가 등록하는 시험용이다. 설계 카탈로그에
-    # 들어갈 물건이 아니다.
-    real = {d.type for d in registry.all_defs() if not d.type.startswith("test.")}
+    # **저장소 안 노드만 본다.** `test.*`(fixture)와 `example.*`(문서용 예제)는
+    # 설계 카탈로그에 들어갈 물건이 아니다. 구분은 구현 지문으로 한다 — 저장소 밖에서
+    # 온 노드에만 붙으므로, 이름 규칙을 새로 외울 필요가 없다.
+    real = {d.type for d in registry.all_defs() if not d.impl_fingerprint}
     missing = sorted(real - named)
     assert not missing, f"등록됐는데 카탈로그에 없는 노드: {missing}"
 

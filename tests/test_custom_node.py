@@ -485,3 +485,97 @@ def test_new_node_does_not_overwrite(tmp_path):
     ns.new_node(str(tmp_path / "a.py"), "my.a", "processing")
     with pytest.raises(SpecError, match="이미 있는 파일"):
         ns.new_node(str(tmp_path / "a.py"), "my.a", "processing")
+
+
+# ── 예제는 썩지 않아야 한다 ─────────────────────────────────────────────
+#
+# 문서가 가리키는 예제가 안 돌면 문서가 거짓말을 한다. 따라 하는 사람은 자기가 틀린 줄
+# 알고 시간을 버린다.
+
+EXAMPLE = "examples.custom_node.pad_to_square"
+
+
+def test_the_example_passes_its_own_checks():
+    """`docs/design/14-custom-node.md` 가 이것을 가리킨다."""
+    from vlm_trainer.spec import node_scaffold as ns
+
+    rep = ns.check_module(EXAMPLE, root=ROOT)
+    failed = [f"{c.name}: {c.detail}" for c in rep.checks if not c.ok]
+    assert rep.ok, failed
+
+
+def test_the_example_keeps_the_aspect_ratio():
+    """이 노드가 있는 이유다. 리사이즈만 하면 640x480 이 눌려서, 정답의
+    `orientation`(가로/세로)을 맞힐 근거가 사라진다."""
+    np = pytest.importorskip("numpy")
+
+    from vlm_trainer.core import registry
+    from vlm_trainer.core.node import RunCtx
+
+    registry.load_builtin_nodes()
+    __import__(EXAMPLE)
+    d = registry.resolve("example.pad_to_square@1.0.0")
+
+    wide = np.zeros((48, 64, 3), dtype="uint8")
+    wide[:, :] = 200
+    out = d.impl().run(RunCtx(run_id="t", node_id="n1"),
+                       d.build_params({"fill": [0, 0, 0]}), image=wide)["image"]
+
+    assert out.shape == (64, 64, 3), "정사각이 아니다"
+    # 원본이 가운데에 그대로 있다 — 늘리거나 자르지 않았다
+    assert (out[8:56, 0:64] == 200).all()
+    assert (out[0:8, :] == 0).all() and (out[56:, :] == 0).all()
+
+
+def test_the_example_already_square_is_left_alone():
+    np = pytest.importorskip("numpy")
+
+    from vlm_trainer.core import registry
+    from vlm_trainer.core.node import RunCtx
+
+    registry.load_builtin_nodes()
+    __import__(EXAMPLE)
+    d = registry.resolve("example.pad_to_square@1.0.0")
+    same = np.full((16, 16, 3), 7, dtype="uint8")
+    out = d.impl().run(RunCtx(run_id="t", node_id="n1"),
+                       d.build_params(d.default_params()), image=same)["image"]
+    assert out.shape == same.shape and (out == same).all()
+
+
+def test_the_example_refuses_a_shape_it_cannot_handle():
+    """C7 — 실패는 `NodeError` 로 던진다. 그래야 한 샘플의 실패가 격리되고
+    실행 전체를 죽이지 않는다."""
+    np = pytest.importorskip("numpy")
+
+    from vlm_trainer.core import registry
+    from vlm_trainer.core.node import NodeError, RunCtx
+
+    registry.load_builtin_nodes()
+    __import__(EXAMPLE)
+    d = registry.resolve("example.pad_to_square@1.0.0")
+    with pytest.raises(NodeError) as e:
+        d.impl().run(RunCtx(run_id="t", node_id="n1"),
+                     d.build_params(d.default_params()),
+                     image=np.zeros((3, 8, 8), dtype="uint8"))
+    assert "안 잡혔다면" in e.value.hint and "추정 낭비" in e.value.hint
+
+
+def test_the_design_doc_points_at_a_file_that_exists():
+    """문서가 없는 파일을 가리키면 따라 할 수가 없다."""
+    import re
+
+    doc = io.open(os.path.join(ROOT, "docs", "design", "14-custom-node.md"),
+                  encoding="utf-8").read()
+    for m in re.finditer(r"`(examples/[^`]+\.py)`", doc):
+        assert os.path.exists(os.path.join(ROOT, m.group(1))), m.group(1)
+    assert "examples/custom_node/pad_to_square.py" in doc
+
+
+def test_the_commands_the_doc_tells_you_to_run_exist():
+    from vlm_trainer.cli.main import build_parser
+
+    real = set(build_parser()._subparsers._group_actions[0].choices)
+    doc = io.open(os.path.join(ROOT, "docs", "design", "14-custom-node.md"),
+                  encoding="utf-8").read()
+    for cmd in ("new-node", "check-node"):
+        assert f"vlmt {cmd}" in doc and cmd in real

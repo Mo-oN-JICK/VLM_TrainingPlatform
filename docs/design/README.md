@@ -54,6 +54,7 @@ Mech-Vision의 규약을 의도적으로 모방한 범용 VLM 파인튜닝 플�
 | 11 | [11-mapping.md](11-mapping.md) | Mech-Vision ↔ 우리 플랫폼 개념 대응표 |
 | 12 | [12-ui-theme.md](12-ui-theme.md) | UI 파티션 레이아웃과 디자인 토큰 |
 | 13 | [13-parameter-recipe.md](13-parameter-recipe.md) | Parameter Recipe 시스템과 스윕 |
+| 14 | [14-custom-node.md](14-custom-node.md) | 직접 만든 노드 — 규약, 캐시 함정, 예제 |
 
 ## 용어 충돌 주의
 
