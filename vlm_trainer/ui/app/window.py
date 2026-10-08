@@ -372,7 +372,10 @@ class EditorWindow(QtWidgets.QMainWindow):
             return
         nid = res.get("id", "")
         if nid:
-            self.editor.move_node(nid, x, y)     # 놓은 자리에 둔다
+            # 놓은 자리에 **그대로** 두면 기존 상자 위에 겹친다. 실제로 그랬다 —
+            # 새 상자가 아래 상자를 덮어 둘 다 못 읽게 됐다. 비어 있는 가장 가까운
+            # 자리로 밀어 둔다.
+            self.editor.move_node(nid, *self.canvas.free_spot(x, y))
         self.reload_graph()
         if nid in self.canvas.cards:
             self.canvas.cards[nid].setSelected(True)

@@ -420,11 +420,59 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         if self.transform().m11() > 1.0:      # 작은 그래프를 확대까지 하지는 않는다
             self.resetTransform()
 
+    def resizeEvent(self, ev: Any) -> None:
+        """창이 좁아지면 배율을 같이 줄인다.
+
+        **창을 줄였는데 배율이 그대로면 상자가 화면 밖으로 잘려 나간다.** 실제로
+        그랬다 — 창 폭을 900 으로 줄이자 노드 상자의 왼쪽 절반이 사라졌다.
+
+        키울 때는 건드리지 않는다. 자리가 넓어졌다고 멋대로 확대하면, 보려고 맞춰 둔
+        배율이 창을 만질 때마다 달라진다.
+        """
+        super().resizeEvent(ev)
+        if self._loading or not self.cards:
+            return
+        old, new = ev.oldSize(), ev.size()
+        if not old.isValid() or new.width() >= old.width():
+            return
+        bounds = self._scene.itemsBoundingRect()
+        if bounds.isEmpty():
+            return
+        # 지금 배율로 상자들이 창에 안 들어가면, 들어갈 만큼만 줄인다.
+        need = (bounds.width() + 2 * L.PAD) * self.transform().m11()
+        if need > new.width():
+            self.zoom_to(self.transform().m11() * new.width() / need)
+
     def zoom_to(self, factor: float) -> None:
         now = self.transform().m11()
         target = min(ZOOM_MAX, max(ZOOM_MIN, factor))
         if now > 1e-9 and abs(target - now) > 1e-6:
             self.scale(target / now, target / now)
+
+    def free_spot(self, x: int, y: int, w: int = 0, h: int = 0) -> Any:
+        """`(x, y)` 에서 시작해 **비어 있는** 가장 가까운 자리를 찾는다.
+
+        놓은 자리에 그대로 두면 기존 상자 위에 겹치고, 겹친 둘 다 못 읽게 된다.
+        아래로 한 칸씩 내려가며 찾고, 그래도 없으면 오른쪽 열로 넘어간다 —
+        이 캔버스는 위에서 아래로 흐르므로 세로가 먼저다.
+        """
+        w = w or L.CARD_W
+        h = h or (L.HEAD_H + L.ROW_H * 4)
+        taken = [c.sceneBoundingRect().adjusted(-L.GRID, -L.GRID, L.GRID, L.GRID)
+                 for c in self.cards.values()]
+
+        def clear(px: float, py: float) -> bool:
+            r = QtCore.QRectF(px, py, w, h)
+            return not any(t.intersects(r) for t in taken)
+
+        step = L.GRID * 2
+        for col in range(12):
+            px = x + col * (w + L.PAD)
+            for row in range(60):
+                py = y + row * step
+                if clear(px, py):
+                    return int(px), int(py)
+        return int(x), int(y)
 
     def center_on_node(self, nid: str) -> None:
         if nid in self.cards:

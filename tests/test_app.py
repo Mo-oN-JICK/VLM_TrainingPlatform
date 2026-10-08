@@ -576,3 +576,106 @@ def test_the_library_payload_carries_labels():
     assert one["label"] == "모델 추론" and one["hint"]
     assert one["port_help"]["in:model"] and one["port_help"]["out:answer"]
     assert all(n.get("label") for n in by_type.values()), "이름 없는 노드가 있다"
+
+
+# ── 상자가 겹치지 않는다 ────────────────────────────────────────────────
+#
+# 겹친 둘은 **둘 다** 못 읽는다. `fixed` 좌표(사람이 옮긴 자리, 새로 놓은 자리)가
+# 자동 배치와 충돌을 전혀 안 따져서, 새 상자가 기존 상자 위에 그대로 얹혔다.
+
+def _overlaps(canvas):
+    items = list(canvas.cards.items())
+    return [f"{a}~{b}" for i, (a, ca) in enumerate(items)
+            for b, cb in items[i + 1:]
+            if ca.sceneBoundingRect().intersects(cb.sceneBoundingRect())]
+
+
+def test_no_two_boxes_overlap_when_the_graph_opens(win):
+    assert not _overlaps(win.canvas)
+
+
+def test_two_boxes_pinned_to_the_same_spot_are_pulled_apart(win):
+    """사람이 상자를 끌어다 다른 상자 위에 놓을 수 있다. 그 자리는 `layout.yaml` 에
+    박히고, 자동 배치는 `fixed` 좌표를 그대로 쓴다 — 그래서 겹친 채로 그려졌다.
+
+    **둘 다 고정해야 재현된다.** 한쪽만 고정하면 다른 쪽이 자동 배치로 비켜서서
+    겹침이 생기지 않는다.
+    """
+    from PySide6 import QtWidgets
+
+    app = QtWidgets.QApplication.instance()
+    a, b = list(win.canvas.cards)[:2]
+    win.editor.move_node(a, 200, 200)
+    win.editor.move_node(b, 200, 200)        # 같은 자리에 겹쳐 놓는다
+    win.reload_graph()
+    for _ in range(6):
+        app.processEvents()
+
+    assert not _overlaps(win.canvas), "겹친 채로 그려진다 — 둘 다 못 읽는다"
+
+
+def test_a_new_box_lands_somewhere_free(win):
+    """끌어다 놓은 자리에 **그대로** 두면 기존 상자 위에 얹힌다."""
+    from PySide6 import QtWidgets
+
+    app = QtWidgets.QApplication.instance()
+    some = next(iter(win.canvas.cards))
+    at = win.canvas.cards[some].scenePos()
+    before = len(win.canvas.cards)
+
+    win._add_node("source.field@1.0.0", int(at.x()), int(at.y()))
+    for _ in range(6):
+        app.processEvents()
+
+    assert len(win.canvas.cards) == before + 1, "노드가 안 늘었다"
+    assert not _overlaps(win.canvas)
+
+
+def test_the_layout_pushes_a_clashing_box_down_not_sideways():
+    """좌우로 밀면 레인 안의 순서(상류의 무게중심 순)가 흐트러진다.
+    위로 밀면 윗 레인을 침범한다."""
+    from vlm_trainer.ui import layout as L
+
+    a = L.Placed(id="a", x=100, y=100, lane=0, w=200, h=80)
+    b = L.Placed(id="b", x=100, y=100, lane=0, w=200, h=80)   # 완전히 겹친다
+    placed = {"a": a, "b": b}
+    L._unoverlap(placed)
+
+    moved = b if b.y != 100 else a
+    stayed = a if moved is b else b
+    assert moved.x == stayed.x, "좌우로 밀었다"
+    assert moved.y > stayed.y, "아래로 밀지 않았다"
+    assert moved.y >= stayed.y + stayed.h, "아직 겹친다"
+
+
+def test_boxes_far_apart_are_left_alone():
+    """겹치지 않는 것까지 건드리면 사람이 옮겨 둔 자리가 날아간다."""
+    from vlm_trainer.ui import layout as L
+
+    a = L.Placed(id="a", x=0, y=0, lane=0, w=200, h=80)
+    b = L.Placed(id="b", x=600, y=0, lane=0, w=200, h=80)
+    L._unoverlap({"a": a, "b": b})
+    assert (a.x, a.y, b.x, b.y) == (0, 0, 600, 0)
+
+
+def test_narrowing_the_window_shrinks_the_zoom(win):
+    """창을 줄였는데 배율이 그대로면 상자가 화면 밖으로 잘려 나간다."""
+    from PySide6 import QtWidgets
+
+    app = QtWidgets.QApplication.instance()
+    win.show()
+    win.resize(1480, 940)
+    for _ in range(10):
+        app.processEvents()
+    win.canvas.fit()
+    for _ in range(4):
+        app.processEvents()
+    wide = win.canvas.transform().m11()
+
+    win.resize(700, 940)
+    for _ in range(10):
+        app.processEvents()
+    narrow = win.canvas.transform().m11()
+    win.hide()
+
+    assert narrow < wide, f"창을 줄였는데 배율이 {wide:.3f} -> {narrow:.3f} 로 안 줄었다"

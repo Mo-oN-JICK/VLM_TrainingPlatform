@@ -105,7 +105,31 @@ def _layout(shown: Dict[str, "Shown"], edges: List[Tuple[str, str]],
             px, py = fixed.get(nid, (x, lane_y[lane]))
             placed[nid] = Placed(id=nid, x=int(px), y=int(py), lane=lane, w=w, h=h)
             x += w + COL_GAP
+
+    _unoverlap(placed)
     return placed
+
+
+def _unoverlap(placed: Dict[str, Placed]) -> None:
+    """겹친 상자를 떼어 놓는다. 겹친 둘은 **둘 다** 못 읽는다.
+
+    `fixed` 좌표(사람이 옮긴 자리, 새로 놓은 자리)는 자동 배치와 충돌을 따지지 않는다.
+    그래서 새 상자를 추가하면 기존 상자 위에 그대로 얹혔다 — 실제로 그랬다.
+
+    옮기는 것은 **나중에 놓인 쪽**이고, 아래로만 민다. 좌우로 밀면 레인 안의 순서
+    (상류의 무게중심 순)가 흐트러지고, 위로 밀면 윗 레인을 침범한다.
+    """
+    order = sorted(placed, key=lambda i: (placed[i].lane, placed[i].y, placed[i].x))
+    for k, nid in enumerate(order):
+        a = placed[nid]
+        for other in order[:k]:
+            b = placed[other]
+            # 가로로 안 겹치면 볼 것 없다. 칩이 카드 위아래로 삐져나오므로 그만큼 더 본다.
+            if a.x >= b.x + b.w + GRID or b.x >= a.x + a.w + GRID:
+                continue
+            need = b.y + b.h + CHIP_H * 2 + GRID
+            if a.y < need:
+                a.y = int(need)
 
 
 def _chips(ports: Dict[str, Any], x: int, y: int,
