@@ -17,6 +17,9 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ...core import humanize
 from .. import tokens as T
 
+# 상자가 화면 가장자리에 이만큼 안쪽으로 들어와 있어야 "보인다" 로 친다.
+# 끝에 딱 붙은 상자는 읽을 수 없다.
+FOLLOW_MARGIN = 40
 POLL_MS = 700       # 웹판과 같은 주기
 TICK_MS = 250       # 경과 시간을 화면이 스스로 세는 간격
 MUTED = "color:#6F7478; font-size:11px;"
@@ -227,8 +230,18 @@ class RunWatcher(QtCore.QObject):
         self.win.lbl_run.setText(text)
 
     def _follow(self, active: str) -> None:
-        """실행 중인 상자가 바뀔 때만 화면을 옮긴다. 폴링마다 옮기면 사람이 다른 곳을
-        보려 할 때마다 끌려 돌아온다. 이미 보이면 가만히 둔다."""
+        """실행 중인 상자가 바뀔 때만 화면을 옮긴다.
+
+        폴링마다 옮기면 사람이 다른 곳을 보려 할 때마다 끌려 돌아온다. 그래서 상자가
+        **바뀔 때만** 본다.
+
+        **상자 전체가 보여야 "보인다" 로 친다.** 전에는 중심점 하나만 봤는데, 그러면
+        상자가 가장자리에 반쯤 잘려 있어도 가만히 있는다 — 실측에서 18회 중 4회만
+        움직였고, 쓰는 사람 눈에는 "하나도 동작을 안 한다" 로 보였다.
+
+        가장자리에 딱 붙은 것도 옮긴다(`MARGIN`). 화면 끝에 걸친 상자는 읽을 수 없고,
+        거기서 뭘 하고 있는지 보려고 따라가기를 켠 것이다.
+        """
         if active == self._follow_last or not self.win.act_follow.isChecked():
             return
         self._follow_last = active
@@ -236,9 +249,10 @@ class RunWatcher(QtCore.QObject):
         if card is None:
             return
         view = self.win.canvas
-        if view.viewport().rect().contains(
-            view.mapFromScene(card.sceneBoundingRect().center())
-        ):
+        want = view.mapFromScene(card.sceneBoundingRect()).boundingRect()
+        room = view.viewport().rect().adjusted(FOLLOW_MARGIN, FOLLOW_MARGIN,
+                                               -FOLLOW_MARGIN, -FOLLOW_MARGIN)
+        if room.contains(want):
             return
         view.centerOn(card)
 

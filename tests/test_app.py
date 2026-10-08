@@ -163,10 +163,41 @@ def test_running_locks_editing(win):
     화면과 다른 것이 돌아간다."""
     win.set_running(True)
     assert not win.act_run.isEnabled() and win.act_stop.isEnabled()
-    assert not win.library.isEnabled() and not win.canvas.isInteractive()
+    assert not win.library.isEnabled()
+    assert win.canvas._read_only, "그래프를 바꿀 수 있는 상태다"
     win.set_running(False)
     assert win.act_run.isEnabled() and not win.act_stop.isEnabled()
-    assert win.library.isEnabled() and win.canvas.isInteractive()
+    assert win.library.isEnabled() and not win.canvas._read_only
+
+
+def test_running_does_not_lock_looking(win):
+    """**이것이 버그였다.** `setInteractive(False)` 로 캔버스의 마우스 이벤트를 통째로
+    껐더니 팬도 휠 줌도 선택도 죽었다 — 실행 중에 아래쪽 노드를 보러 갈 수가 없다.
+    실행 중에 제일 하고 싶은 일이 그것인데.
+    """
+    from PySide6 import QtWidgets
+
+    win.set_running(True)
+    assert win.canvas.isInteractive(), "마우스 이벤트가 통째로 꺼졌다"
+
+    # 팬이 실제로 먹는다
+    before = win.canvas.horizontalScrollBar().value()
+    win.canvas._panning = True
+    win.canvas.horizontalScrollBar().setValue(before + 40)
+    assert win.canvas.horizontalScrollBar().value() != before or before == 0
+    win.canvas._panning = False
+
+    # 줌도, 따라가기도 산다
+    win.canvas.zoom_to(1.4)
+    assert abs(win.canvas.transform().m11() - 1.4) < 1e-6
+    nid = next(iter(win.canvas.cards))
+    win.canvas.center_on_node(nid)           # 죽지 않아야 한다
+
+    # 그런데 상자는 끌 수 없다
+    card = win.canvas.cards[nid]
+    assert not card.flags() & QtWidgets.QGraphicsItem.ItemIsMovable
+    win.set_running(False)
+    assert card.flags() & QtWidgets.QGraphicsItem.ItemIsMovable
 
 
 def test_the_run_clock_reads_like_the_cli():
@@ -324,15 +355,65 @@ def test_following_moves_only_when_the_running_box_changes(win):
     assert len(moved) == 1, f"같은 상자에 {len(moved)}번 따라갔다"
 
 
+def _shown(win, w=1480, h=940):
+    """실제로 창을 띄운다. `show()` 없이는 Qt 가 레이아웃을 안 돌려 캔버스가
+    100x30 으로 남고, 무엇을 재든 거짓이 된다."""
+    from PySide6 import QtWidgets
+
+    app = QtWidgets.QApplication.instance()
+    win.resize(w, h)
+    win.show()
+    for _ in range(12):
+        app.processEvents()
+    return app
+
+
 def test_following_leaves_a_box_alone_if_it_is_already_visible(win):
     """이미 보이는 것을 화면 가운데로 끌어오면 그래프가 이유 없이 출렁인다."""
-    moved = []
-    win.canvas.centerOn = lambda item: moved.append(item)
-    win.canvas.fit()
-
+    app = _shown(win)
     nid = next(iter(win.canvas.cards))
+    win.canvas.centerOn(win.canvas.cards[nid])      # 화면 한가운데에 둔다
+    for _ in range(4):
+        app.processEvents()
+
+    moved = []
+    win.canvas.centerOn = lambda *a: moved.append(a)
+    win.watcher._follow_last = ""
     win.watcher._follow(nid)
-    assert not moved, "보이는 상자를 따라갔다"
+    win.hide()
+    assert not moved, "가운데 있는 상자를 따라갔다"
+
+
+def test_following_moves_when_the_box_is_only_half_on_screen(win):
+    """**이것이 "따라가기가 하나도 동작을 안 한다" 의 정체였다.** 전에는 상자의
+    중심점 하나만 보고 "보인다" 로 쳤다 — 가장자리에 반쯤 잘려 글자를 못 읽는
+    상태인데도 가만히 있는다. 실측에서 18회 중 4회만 움직였다."""
+    app = _shown(win)
+    nid = next(iter(win.canvas.cards))
+    card = win.canvas.cards[nid]
+
+    # **상자보다 좁은 화면**을 만든다. 그러면 어디에 두든 전체가 들어갈 수 없고,
+    # 중심만 보는 옛 검사는 "보인다" 로 지나간다 — 재현하려던 상황이 그것이다.
+    # 상자가 화면보다 **확실히 커지도록** 필요한 배율을 재서 쓴다. 숫자를 손으로
+    # 적으면 카드 크기나 화면 크기가 바뀌는 날 조용히 시험이 아니게 된다.
+    vw = win.canvas.viewport().width()
+    cw = card.sceneBoundingRect().width()
+    win.canvas.zoom_to(min(4.0, (vw / cw) * 1.6))
+    win.canvas.centerOn(card)
+    for _ in range(4):
+        app.processEvents()
+
+    vp = win.canvas.viewport().rect()
+    r = win.canvas.mapFromScene(card.sceneBoundingRect()).boundingRect()
+    assert vp.contains(win.canvas.mapFromScene(card.sceneBoundingRect().center())),         "중심이 화면 밖이다 — 옛 검사도 움직였을 상황이라 시험이 안 된다"
+    assert not vp.contains(r), "상자가 다 들어간다 — 더 확대해야 한다"
+
+    moved = []
+    win.canvas.centerOn = lambda *a: moved.append(a)
+    win.watcher._follow_last = ""
+    win.watcher._follow(nid)
+    win.hide()
+    assert moved, "반쯤 잘린 상자를 따라가지 않았다"
 
 
 def test_the_follow_toggle_is_obeyed(win):

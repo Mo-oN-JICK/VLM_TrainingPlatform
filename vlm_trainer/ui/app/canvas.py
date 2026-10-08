@@ -278,6 +278,9 @@ class GraphCanvas(QtWidgets.QGraphicsView):
 
         self._panning = False
         self._pan_from = QtCore.QPoint()
+        # 실행 중에는 그래프를 바꾸지 못한다. **보는 것은 그대로 된다** —
+        # 팬·줌·선택·따라가기는 살아 있어야 실행을 지켜볼 수 있다.
+        self._read_only = False
         self._wire_from: Optional[PortChip] = None
         self._rubber: Optional[QtWidgets.QGraphicsPathItem] = None
         self._drag_start: Dict[str, Tuple[float, float]] = {}
@@ -478,6 +481,13 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         if nid in self.cards:
             self.centerOn(self.cards[nid])
 
+    def set_read_only(self, on: bool) -> None:
+        """그래프를 바꾸는 것만 막는다. 보는 것은 막지 않는다."""
+        self._read_only = bool(on)
+        for card in self.cards.values():
+            card.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable, not on)
+            card.setCursor(QtCore.Qt.ArrowCursor if on else QtCore.Qt.SizeAllCursor)
+
     # ── 마우스 ──────────────────────────────────────────────────────────
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
         if ev.button() == QtCore.Qt.MiddleButton or (
@@ -489,6 +499,8 @@ class GraphCanvas(QtWidgets.QGraphicsView):
             return
 
         item = self.itemAt(ev.position().toPoint())
+        if self._read_only and isinstance(item, PortChip):
+            return                       # 실행 중에는 배선을 끌 수 없다
         if ev.button() == QtCore.Qt.LeftButton and isinstance(item, PortChip) and not item.is_input:
             self._begin_wire(item)
             return
@@ -583,6 +595,8 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         거기서 그래프를 다시 그리면 이 메뉴를 띄운 아이템이 지워진 채로 루프가 풀리고,
         Qt 가 없는 것을 만지다 죽는다. 고른 것만 받아 두고 밖에서 처리한다.
         """
+        if self._read_only:
+            return               # 메뉴의 항목이 전부 그래프를 바꾼다
         item = self.itemAt(ev.pos())
         menu = QtWidgets.QMenu(self)
         acts: Dict[QtGui.QAction, Any] = {}

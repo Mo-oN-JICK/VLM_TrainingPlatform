@@ -488,7 +488,13 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.act_stop.setEnabled(on)
         self.library.setEnabled(not on)
         self.inspector.setEnabled(not on)
-        self.canvas.setInteractive(not on)
+        # **보는 것은 막지 않는다.** 전에는 `setInteractive(False)` 로 캔버스의 마우스
+        # 이벤트를 통째로 껐는데, 그러면 팬도 휠 줌도 선택도 죽는다 — 실행 중에 아래쪽
+        # 노드를 보러 갈 수가 없었다. 실행 중에 제일 하고 싶은 일이 그것인데.
+        #
+        # 막아야 하는 것은 **그래프를 바꾸는 것**뿐이다. 실행은 디스크의 스펙을 도는데
+        # 편집은 메모리를 바꾸고, 둘이 갈라지면 화면과 다른 것이 돌아간다.
+        self.canvas.set_read_only(on)
 
     # ── 선택 ────────────────────────────────────────────────────────────
     def _on_pick(self, nid: str) -> None:
