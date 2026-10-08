@@ -354,3 +354,96 @@ def state_of_many(report: Any, ids: List[str]) -> Tuple[str, str]:
     return "pending", ""
 
 
+
+
+def node_label(cg: Any, nid: str) -> str:
+    """상자에 뜨는 한국어 이름. 없으면 id 를 쓴다.
+
+    `n_guard 의 prompt` 보다 `문제에 답이 섞였는지 검사 의 prompt` 가 읽힌다.
+    """
+    if nid not in cg.nodes:
+        return nid
+    try:
+        d = resolve_node(cg.nodes[nid].ref)
+    except Exception:
+        return nid
+    return (d.doc.label if d.doc else "") or nid
+
+
+# ── 포트 설명 ───────────────────────────────────────────────────────────
+#
+# 포트에 호버하면 타입 표기(`Image{u8, HWC, 0-255, ...}`)가 그대로 떴다. 그 표기는
+# 게이트가 쓰는 말이지 처음 보는 사람이 읽을 말이 아니다. 무엇이 들어가야 하는지,
+# 지금 무엇이 들어와 있는지, 어떻게 생긴 값인지를 사람 말로 적는다.
+
+_BASE_WORD = {
+    "Image": ("사진", "가로x세로x색(RGB) 숫자 배열"),
+    "ImageList": ("사진 여러 장", "[사진1, 사진2, ...]  — 한 장만 넣을 수도 있습니다"),
+    "TimeSeries": ("센서 신호", "시간 x 채널 숫자 배열"),
+    "Text": ("글", '"이 부품은 무엇입니까?"'),
+    "TextList": ("글 여러 개", '["첫 줄", "둘째 줄"]'),
+    "Tokens": ("토큰 번호", "[151652, 9707, 151653]"),
+    "Embedding": ("숫자 벡터", "[0.21, -0.08, ...]"),
+    "Regions": ("영역 좌표", "[{x, y, w, h}, ...]"),
+    "Mask": ("마스크", "픽셀마다 0/1"),
+    "Table": ("표 한 줄", '{"question": "...", "part_type": "기어"}'),
+    "Schema": ("정답 형식", "답을 어떤 칸으로 쓸지 정한 것"),
+    "Sample": ("학습 데이터 한 건", "사진 + 질문 + 정답을 묶은 것"),
+    "Report": ("결과 보고", "검사 결과 모음"),
+    "Model": ("모델", '{"dir": "runs/.../export", "backbone": "..."}'),
+}
+
+_SEM_WORD = {
+    "raw_image": "원본 사진 (아직 손대지 않음)",
+    "prompt": "모델에게 줄 질문",
+    "answer": "정답",
+    "label": "정답에서 온 값 — 질문 쪽으로 새면 안 된다",
+    "raw_signal": "원본 신호",
+}
+
+
+def port_help(port_type: Any, doc: str = "", *, wired: str = "", value: str = "",
+              required: bool = True, is_input: bool = True) -> str:
+    """포트 하나의 설명. 호버하면 뜨는 글이다.
+
+    네 가지를 이 순서로 답한다 — **무엇인가 / 어떻게 생겼나 / 지금 뭐가 꽂혔나 /
+    규칙**. 타입 표기는 맨 아래에 작게 둔다. 필요한 사람에게는 여전히 정확한 말이고,
+    처음 보는 사람에게는 읽지 않아도 되는 줄이다.
+    """
+    base, root, is_list = _type_label(port_type)
+    word, shape = _BASE_WORD.get(base) or _BASE_WORD.get(root) or (base, "")
+    lines = [f"<b>{word}</b>" + ("" if required else " <i>(없어도 됩니다)</i>")]
+    if doc:
+        lines.append(doc)
+    if shape:
+        lines.append(f"<br><b>예시</b><br><code>{shape}</code>")
+
+    extra = []
+    if getattr(port_type, "shape", None):
+        extra.append("크기 " + " x ".join(
+            "샘플마다 다름" if str(d) == "dyn" else str(d) for d in port_type.shape))
+    for sem in sorted(getattr(port_type, "semantic", ()) or ()):
+        extra.append(_SEM_WORD.get(sem, sem))
+    if is_list:
+        lo = getattr(port_type.list_of, "min_n", None)
+        hi = getattr(port_type.list_of, "max_n", None)
+        if lo is not None and lo == hi:
+            extra.append(f"딱 {lo}개")
+        elif lo is not None:
+            extra.append(f"{lo}개 이상 {hi}개 이하")
+    if extra:
+        lines.append("<br>" + "<br>".join("· " + e for e in extra))
+
+    if not is_input:
+        # 출력은 꽂는 자리가 아니라 내보내는 자리다. "아직 안 꽂혔다" 가 뜨면 안 된다.
+        pass
+    elif wired:
+        lines.append(f"<br><b>지금 꽂힌 것</b><br>{wired}")
+    elif required:
+        lines.append("<br><i>아직 아무것도 꽂혀 있지 않습니다. "
+                     "위쪽 상자의 출력을 끌어다 놓으세요.</i>")
+    if value:
+        lines.append(f"<br><b>마지막 값</b><br><code>{value}</code>")
+
+    lines.append(f'<br><span style="color:#6F7478">{base}</span>')
+    return "<div style='max-width:360px'>" + "<br>".join(lines) + "</div>"

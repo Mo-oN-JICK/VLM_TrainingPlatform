@@ -54,6 +54,12 @@ class RunOptions:
     cache_backend: str = "local"  # 저장 백엔드. 키 계산은 백엔드와 무관하다
     preview_dir: str = ""  # Debug Output 이미지가 저장될 자리. 비면 텍스트만 남는다
     progress_path: str = ""  # 진행 상황 스냅샷. 비어 있으면 남기지 않는다
+    # 상자 하나를 지날 때마다 쉬는 시간(초). 0이면 쉬지 않는다.
+    #
+    # **보라고 있는 것이지 조절하라고 있는 것이 아니다.** 빠른 노드는 1ms 에 끝나서
+    # 화면이 깜빡이기만 하고 어디를 도는지 안 보인다. 이것을 켜면 사람이 순서를 눈으로
+    # 따라갈 수 있다. 결과는 한 글자도 바뀌지 않는다 — 쉬는 것뿐이다.
+    step_delay: float = 0.0
     progress_every: float = 0.4  # 초. 샘플마다 fsync하지 않기 위한 간격
 
 
@@ -337,6 +343,10 @@ def execute(
             if _worth_writing(rep, nid, opts.progress_every) or now - last_write >= opts.progress_every:
                 last_write = now
                 write_progress(rep, opts, len(rows), "running")
+            if opts.step_delay > 0:
+                # **기록한 뒤에 쉰다.** 쉬고 나서 기록하면 보는 쪽은 여전히 아무것도
+                # 못 본다 — 쉬는 동안 화면에 "여기를 돌고 있다" 가 떠 있어야 한다.
+                time.sleep(opts.step_delay)
             try:
                 isolated = opts.isolate_external and d.external_call
                 if isolated:

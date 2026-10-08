@@ -271,6 +271,9 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         self.wires: List[Wire] = []
         self.compat: Dict[str, Dict[str, str]] = {}
         self.occupied: set = set()
+        # 포트 호버 설명이 쓰는 것. "지금 무엇이 꽂혀 있나" 와 "마지막으로 흐른 값".
+        self.wired_from: Dict[str, str] = {}
+        self.port_values: Dict[str, str] = {}
 
         self._panning = False
         self._pan_from = QtCore.QPoint()
@@ -301,8 +304,14 @@ class GraphCanvas(QtWidgets.QGraphicsView):
     # ── 채우기 ──────────────────────────────────────────────────────────
     def load(self, cg: Any, expanded: Any = (), fixed: Optional[Dict] = None,
              compat: Optional[Dict] = None, occupied: Any = (),
-             boundary: Any = ()) -> None:
+             boundary: Any = (), wired_from: Optional[Dict] = None) -> None:
         keep = self._selected_id()
+        # **보던 자리와 배율을 기억한다.** 아래에서 scene 을 통째로 비우고 다시 채우는데,
+        # 그대로 두면 Qt 가 경계를 다시 셈하면서 화면이 튄다 — 줌을 맞춰 놓고 노드를
+        # 하나 추가하면 비율이 깨져 보이던 것이 이것이다.
+        had = bool(self.cards)
+        keep_zoom = self.transform().m11()
+        keep_center = self.mapToScene(self.viewport().rect().center())
         # **지우기 전에** 파이썬 쪽 참조를 비운다. `scene.clear()` 는 C++ 객체를
         # 없애는데, 그동안 selectionChanged 가 날아와 죽은 배선을 만지면 그대로 죽는다.
         self._loading = True
@@ -312,9 +321,11 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         self.wires.clear()
         self._scene.clear()
         self._scene.blockSignals(False)
+        self._scene.setSceneRect(QtCore.QRectF())   # 비운 뒤 경계도 함께 비운다
         self.compat = compat or {}
         self.occupied = set(occupied or ())
         bset = set(boundary or ())
+        self.wired_from = dict(wired_from or {})
 
         shown, edges = L.fold(cg, expanded)
         placed = L._layout(shown, edges, fixed)
@@ -346,8 +357,18 @@ class GraphCanvas(QtWidgets.QGraphicsView):
             self._scene.addItem(wire)
             self.wires.append(wire)
 
-        self._scene.setSceneRect(
-            self._scene.itemsBoundingRect().adjusted(-L.PAD, -L.PAD, L.PAD, L.PAD))
+        # **경계를 넉넉히 잡는다.** 상자에 딱 맞추면 노드 하나를 추가할 때마다 경계가
+        # 바뀌고, 그때마다 스크롤바가 생겼다 사라지며 화면이 출렁인다.
+        bounds = self._scene.itemsBoundingRect()
+        margin = max(L.PAD, int(max(bounds.width(), bounds.height()) * 0.25))
+        self._scene.setSceneRect(bounds.adjusted(-margin, -margin, margin, margin))
+
+        # 보던 자리와 배율을 되돌린다. 처음 그리는 것(`had=False`)은 창이 `fit()` 을
+        # 따로 부르므로 건드리지 않는다.
+        if had:
+            self.zoom_to(keep_zoom)
+            self.centerOn(keep_center)
+
         self._loading = False
         if keep in self.cards:
             self.cards[keep].setSelected(True)
@@ -357,6 +378,15 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         base, root, is_list = L._type_label(port_type)
         chip = PortChip(nid, name, is_input, QtCore.QRectF(x, y, w, L.CHIP_H - 4),
                         T.port_color(root, is_list), f"<{base}>", card)
+        # 호버하면 타입 표기가 아니라 **사람 말**이 뜬다. 타입은 맨 아래 한 줄로 남는다.
+        docs = card.shown.in_docs if is_input else card.shown.out_docs
+        chip.setToolTip(L.port_help(
+            port_type, docs.get(name, ""),
+            wired=self.wired_from.get(f"{nid}:{name}", ""),
+            value=self.port_values.get(f"{nid}:{name}", ""),
+            required=not getattr(port_type, "optional", False),
+            is_input=is_input,
+        ))
         self.chips[("in:" if is_input else "out:") + f"{nid}:{name}"] = chip
 
     def reroute_for(self, nid: str) -> None:
@@ -392,7 +422,8 @@ class GraphCanvas(QtWidgets.QGraphicsView):
     def zoom_to(self, factor: float) -> None:
         now = self.transform().m11()
         target = min(ZOOM_MAX, max(ZOOM_MIN, factor))
-        self.scale(target / now, target / now)
+        if now > 1e-9 and abs(target - now) > 1e-6:
+            self.scale(target / now, target / now)
 
     def center_on_node(self, nid: str) -> None:
         if nid in self.cards:

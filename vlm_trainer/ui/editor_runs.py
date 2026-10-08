@@ -34,7 +34,8 @@ class RunsMixin:
     # 편집기는 실행 경로를 따로 갖지 않는다. `vlmt run`을 그대로 하위 프로세스로 띄우고
     # 그 프로세스가 남기는 진행 스냅샷을 읽을 뿐이다. UI에서만 되는 실행은 존재하지 않는다.
 
-    def run_command(self, limit: int = 8, debug_output: bool = False) -> List[str]:
+    def run_command(self, limit: int = 8, debug_output: bool = False,
+                    step_delay: float = 0.0) -> List[str]:
         """띄울 명령. 사람이 터미널에 그대로 쳐도 같은 결과가 나와야 한다."""
         cmd = [
             sys.executable, "-m", "vlm_trainer.cli.main",
@@ -46,6 +47,8 @@ class RunsMixin:
         ]
         if debug_output:
             cmd.append("--debug-output")
+        if step_delay > 0:
+            cmd += ["--step-delay", str(float(step_delay))]
         for mod in self.extra_modules:
             cmd += ["--nodes", mod]
         # 화면에 보이는 값 그대로 돈다. 레시피 오버레이는 CLI의 --set 으로 넘긴다.
@@ -107,7 +110,8 @@ class RunsMixin:
             }
         return {"ok": True}
 
-    def pipeline_start(self, resume: Optional[bool] = None) -> Dict[str, Any]:
+    def pipeline_start(self, resume: Optional[bool] = None,
+                       step_delay: float = 0.0) -> Dict[str, Any]:
         """`vlmt pipeline` — 준비 → 굽기 → 학습 → 추론.
 
         **버튼 하나가 여전히 CLI 명령 하나다.** 편집기가 세 명령을 엮어 돌리는 것이
@@ -129,6 +133,8 @@ class RunsMixin:
 
         cmd = self._base_command("pipeline")
         cmd += ["--resume"] if resume else ["--fresh"]
+        if step_delay > 0:
+            cmd += ["--step-delay", str(float(step_delay))]
         return self._spawn(cmd, "pipeline")
 
     def export_start(self) -> Dict[str, Any]:
@@ -194,12 +200,13 @@ class RunsMixin:
             }
         return self._spawn(self._base_command("train"), "train")
 
-    def run_start(self, limit: int = 8, debug_output: bool = False) -> Dict[str, Any]:
+    def run_start(self, limit: int = 8, debug_output: bool = False,
+                  step_delay: float = 0.0) -> Dict[str, Any]:
         ready = self._ready_to_launch()
         if not ready["ok"]:
             return ready
         self.run_id = "ui_" + time.strftime("%Y%m%dT%H%M%S")
-        return self._spawn(self.run_command(limit, debug_output), "run")
+        return self._spawn(self.run_command(limit, debug_output, step_delay), "run")
 
     def run_stop(self) -> Dict[str, Any]:
         if self.proc is None or self.proc.poll() is not None:

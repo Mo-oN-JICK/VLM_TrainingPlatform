@@ -349,3 +349,131 @@ def test_the_follow_toggle_is_obeyed(win):
 def test_a_box_that_is_not_on_the_canvas_does_not_crash_the_follow(win):
     """접힌 Procedure 안쪽 id 가 올라오면 캔버스에 그 상자가 없다. 죽지 않아야 한다."""
     win.watcher._follow("없는노드")
+
+
+# ── 화면이 흔들리지 않는다 ──────────────────────────────────────────────
+def test_adding_a_node_does_not_move_the_view(win):
+    """줌을 맞춰 놓고 노드를 하나 추가하면 **화면 비율이 깨져 보이던** 것이 이것이다.
+    `load()` 가 scene 을 통째로 비우고 다시 채우는데, 그때 Qt 가 경계를 다시 셈하면서
+    배율과 위치가 날아갔다."""
+    from PySide6 import QtWidgets
+
+    app = QtWidgets.QApplication.instance()
+    win.resize(1480, 940)
+    for _ in range(5):
+        app.processEvents()
+
+    win.canvas.zoom_to(2.2)
+    win.canvas.centerOn(300, 400)
+    z0 = win.canvas.transform().m11()
+    c0 = win.canvas.mapToScene(win.canvas.viewport().rect().center())
+
+    win._add_node("source.field@1.0.0", 100, 100)
+    for _ in range(6):
+        app.processEvents()
+
+    z1 = win.canvas.transform().m11()
+    c1 = win.canvas.mapToScene(win.canvas.viewport().rect().center())
+    assert abs(z1 - z0) < 1e-6, f"배율이 {z0:.3f} -> {z1:.3f} 로 바뀌었다"
+    # 스크롤 위치는 정수 픽셀로 떨어지므로 몇 px 는 어쩔 수 없다. 화면이 튀는 것은
+    # 수백 px 단위였다 — 그 차이를 잡는다.
+    assert abs(c1.x() - c0.x()) < 12 and abs(c1.y() - c0.y()) < 12, \
+        f"보던 자리가 ({c0.x():.0f},{c0.y():.0f}) -> ({c1.x():.0f},{c1.y():.0f}) 로 날아갔다"
+
+
+def test_the_scene_has_room_so_the_view_does_not_jitter(win):
+    """경계를 상자에 딱 맞추면 노드를 추가할 때마다 스크롤바가 생겼다 사라지며
+    화면이 출렁인다."""
+    r = win.canvas._scene.sceneRect()
+    b = win.canvas._scene.itemsBoundingRect()
+    assert r.contains(b), "경계가 상자를 다 담지 못한다"
+    assert r.width() > b.width() + 20, "여유가 없다"
+
+
+# ── 처음 보는 사람이 읽을 수 있는가 ─────────────────────────────────────
+def test_a_port_tooltip_is_written_for_a_person_not_for_the_gate(win):
+    """포트에 호버하면 `Image{u8, HWC, 0-255, none, RGB, ANY, [dyn,dyn,3]}` 가
+    그대로 떴다. 그 표기는 게이트가 쓰는 말이지 처음 보는 사람이 읽을 말이 아니다."""
+    tip = win.canvas.chips["out:n_img:image"].toolTip()
+    assert "사진" in tip, "무엇인지 사람 말로 말하지 않는다"
+    assert "예시" in tip, "어떻게 생긴 값인지 보여 주지 않는다"
+    assert "Image" in tip, "정확한 타입 이름도 남아 있어야 한다"
+    assert "{" not in tip.split("Image")[-1], "타입 표기가 그대로 들어갔다"
+
+
+def test_an_input_port_says_what_is_plugged_into_it(win):
+    """처음 보는 사람이 제일 먼저 궁금해하는 것이다."""
+    tip = win.canvas.chips["in:n_stats:series"].toolTip()
+    assert "지금 꽂힌 것" in tip
+    # 앞 상자를 id(`n_win`)가 아니라 한국어 이름으로 부른다
+    assert "n_" not in tip.split("지금 꽂힌 것")[1].split("<br>")[1]
+
+
+def test_an_empty_required_port_says_so_and_an_output_does_not(win):
+    """출력은 꽂는 자리가 아니다. 거기에 "아직 안 꽂혔다" 가 뜨면 혼란만 준다."""
+    out = win.canvas.chips["out:n_img:image"].toolTip()
+    assert "꽂혀 있지 않" not in out
+
+    from vlm_trainer.ui import layout as L
+    from vlm_trainer.core.types import text
+
+    empty = L.port_help(text(), "질문", wired="", required=True, is_input=True)
+    assert "꽂혀 있지 않" in empty and "끌어다 놓" in empty
+
+
+def test_an_optional_port_says_it_is_optional():
+    from vlm_trainer.core.types import text
+    from vlm_trainer.ui import layout as L
+
+    tip = L.port_help(text().as_optional(), "정답", required=False)
+    assert "없어도 됩니다" in tip
+
+
+def test_the_node_label_is_used_not_the_id():
+    from vlm_trainer.core import registry
+    from vlm_trainer.core.compiler import compile_project
+    from vlm_trainer.ui import layout as L
+
+    registry.load_builtin_nodes()
+    cg = compile_project(os.path.join(ROOT, "solutions", "vlm_open",
+                                      "projects", "01_open", "project.yaml"))
+    assert L.node_label(cg, "n_train") == "모델 학습"
+    assert L.node_label(cg, "없는노드") == "없는노드", "모르는 id 에 죽지 않아야 한다"
+
+
+# ── 실행 따라가기 ───────────────────────────────────────────────────────
+def test_the_follow_toggle_shows_whether_it_is_on(win):
+    """QSS 에 `QToolButton:checked` 가 없어서, 눌러도 화면에 아무 차이가 없었다 —
+    켜졌는지 꺼졌는지 알 길이 없다."""
+    assert win.act_follow.isCheckable() and win.act_follow.isChecked()
+    assert "QToolButton:checked" in win.styleSheet()
+
+
+def test_slow_mode_is_off_by_default_and_asks_the_engine_to_wait(win):
+    """빠른 상자는 눈 깜짝할 새에 지나가 어디를 도는지 안 보인다. 1초씩 쉬면
+    따라가기가 실제로 움직이는 것이 보인다."""
+    assert win.act_slow.isCheckable() and not win.act_slow.isChecked()
+    assert win._step_delay() == 0.0
+
+    win.act_slow.setChecked(True)
+    assert win._step_delay() == 1.0
+
+
+def test_the_delay_reaches_the_command_line(win, monkeypatch):
+    """앱이 제 실행 경로를 갖지 않는다 — `vlmt run --step-delay` 를 띄운다."""
+    got = []
+    monkeypatch.setattr(win.editor, "_ready_to_launch", lambda: {"ok": True})
+    monkeypatch.setattr(win.editor, "_spawn", lambda cmd, phase: got.append(cmd) or {"ok": True})
+
+    win.editor.run_start(4, False, 1.0)
+    assert "--step-delay" in got[0] and "1.0" in got[0]
+
+    got.clear()
+    win.editor.run_start(4, False, 0.0)
+    assert "--step-delay" not in got[0], "꺼져 있으면 넘기지 않는다"
+
+
+def test_the_sample_count_says_which_button_uses_it(win):
+    """`샘플 8` 만 적혀 있어 무슨 숫자인지 알 수 없었다."""
+    assert "건" in win.spin_limit.suffix()
+    assert "미리보기" in win.spin_limit.toolTip()

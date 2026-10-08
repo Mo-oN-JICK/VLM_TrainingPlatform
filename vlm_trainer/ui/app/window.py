@@ -39,6 +39,10 @@ QToolButton {{ background: {T.SURFACE['panel']}; color: #D8DCDF;
                border: 1px solid {T.NODE['border']}; border-radius: 2px; padding: 3px 10px; }}
 QToolButton:hover {{ background: {T.NODE['bg_selected']}; }}
 QToolButton:disabled {{ color: #5F6468; border-color: #3A3A3A; }}
+/* 켜진 토글. 이것이 없어서 `실행 따라가기` 가 켜졌는지 꺼졌는지 화면에 안 보였다. */
+QToolButton:checked {{ background: {T.STATE['running']}; color: #0F1113;
+                       border-color: {T.STATE['running']}; font-weight: 600; }}
+QToolButton:checked:hover {{ background: {T.STATE['running']}; }}
 QStatusBar {{ background: {T.SURFACE['chrome']}; color: #8A9196; }}
 QStatusBar::item {{ border: 0; }}
 QDockWidget {{ titlebar-close-icon: none; color: #C6CCD1; font-size: 11px; }}
@@ -205,7 +209,9 @@ class EditorWindow(QtWidgets.QMainWindow):
         r = m.addMenu("실행(&R)")
         r.addAction("실행", QtGui.QKeySequence("F5"), self._run_pipeline)
         r.addAction("미리보기", QtGui.QKeySequence("F6"), lambda: self._launch(
-            lambda: self.editor.run_start(self.spin_limit.value(), self.chk_debug.isChecked()),
+            lambda: self.editor.run_start(self.spin_limit.value(),
+                                          self.chk_debug.isChecked(),
+                                          self._step_delay()),
             "미리보기"))
         r.addSeparator()
         # 단계 하나만 돌리는 길은 남겨 둔다. CLI 에 있는 명령이 앱에서 사라지면,
@@ -228,7 +234,9 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.act_run = tb.addAction("실행", self._run_pipeline)
         self.act_run.setToolTip("준비 → 굽기 → 학습 → 추론. 그래프에 있는 단계까지 간다")
         self.act_preview = tb.addAction("미리보기", lambda: self._launch(
-            lambda: self.editor.run_start(self.spin_limit.value(), self.chk_debug.isChecked()),
+            lambda: self.editor.run_start(self.spin_limit.value(),
+                                          self.chk_debug.isChecked(),
+                                          self._step_delay()),
             "미리보기"))
         self.act_preview.setToolTip("샘플 몇 건만 돌려 중간값을 본다. 학습하지 않는다")
         self.act_stop = tb.addAction("중단", self._stop)
@@ -238,17 +246,34 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.act_follow = tb.addAction("실행 따라가기")
         self.act_follow.setCheckable(True)
         self.act_follow.setChecked(True)
-        self.act_follow.setToolTip("실행 중인 상자가 화면 밖이면 그쪽으로 옮긴다")
+        self.act_follow.setToolTip(
+            "켜면 지금 도는 상자가 화면 밖일 때 그쪽으로 화면을 옮깁니다.\n"
+            "켜진 동안 버튼이 밝게 표시됩니다.")
+
+        self.act_slow = tb.addAction("천천히 보기")
+        self.act_slow.setCheckable(True)
+        self.act_slow.setToolTip(
+            "상자 하나를 지날 때마다 1초씩 쉽니다.\n"
+            "빠른 상자는 눈 깜짝할 새에 지나가서 어디를 도는지 보이지 않습니다.\n"
+            "무엇이 어떤 순서로 도는지 눈으로 확인할 때만 켭니다 — 그만큼 느려집니다.")
 
         self.chk_debug = QtWidgets.QCheckBox("Debug Output")
-        self.chk_debug.setToolTip("꺼져 있으면 미리보기를 생성조차 하지 않는다")
+        self.chk_debug.setToolTip(
+            "상자마다 중간 결과를 그림으로 남깁니다.\n"
+            "꺼져 있으면 만들지도 않습니다 — 켜면 그만큼 느려집니다.")
         tb.addWidget(self.chk_debug)
 
-        tb.addWidget(QtWidgets.QLabel("  샘플 "))
+        # `샘플 8` 만 적혀 있어 무슨 숫자인지 알 수 없었다. 어느 버튼이 쓰는 값인지
+        # 이름에 넣는다.
+        lbl = QtWidgets.QLabel("  미리보기 샘플 ")
+        lbl.setToolTip("`미리보기` 가 돌릴 샘플 수입니다. `실행` 은 전부 돕니다.")
+        tb.addWidget(lbl)
         self.spin_limit = QtWidgets.QSpinBox()
         self.spin_limit.setRange(1, 99999)
         self.spin_limit.setValue(8)
         self.spin_limit.setFixedWidth(72)
+        self.spin_limit.setSuffix(" 건")
+        self.spin_limit.setToolTip(lbl.toolTip())
         tb.addWidget(self.spin_limit)
 
         tb.addSeparator()
@@ -281,11 +306,22 @@ class EditorWindow(QtWidgets.QMainWindow):
             return
         fixed = {k: (int(v[0]), int(v[1])) for k, v in (self.editor.layout or {}).items()
                  if isinstance(v, (list, tuple)) and len(v) == 2}
+        # 어느 포트에 무엇이 꽂혀 있는지. 포트에 호버했을 때 "지금 꽂힌 것" 으로 뜬다 —
+        # 처음 보는 사람이 제일 먼저 궁금해하는 것이다.
+        from ..layout import node_label
+
+        wired = {}
+        for n in cg.nodes.values():
+            for port, src in (n.inputs or {}).items():
+                sn, _, sp = src.partition(":")
+                wired[f"{n.id}:{port}"] = f"{node_label(cg, sn)} 의 {sp}"
+
         self.canvas.load(
             cg, self.editor.expanded, fixed or None,
             compat=compat_matrix(cg),
             occupied=occupied_inputs(cg),
             boundary=self.editor.graph.materialize.boundary,
+            wired_from=wired,
         )
         warn = "" if self.editor.valid else "   ⚠ 저장·실행 불가"
         self.lbl_graph.setText(
@@ -385,7 +421,7 @@ class EditorWindow(QtWidgets.QMainWindow):
         말없이 이어받으면 예전 파라미터로 구운 샘플이 새 학습에 섞이고, 말없이 지우면
         구운 시간이 날아간다. 양쪽 다 나빠서 사람이 고른다.
         """
-        res = self.editor.pipeline_start(resume)
+        res = self.editor.pipeline_start(resume, self._step_delay())
         ask = res.get("ask_resume")
         if ask:
             self._ask_resume(ask)
@@ -397,6 +433,10 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.run_dock.raise_()
         self.watcher.start()
         self.statusBar().showMessage("실행 시작", 3000)
+
+    def _step_delay(self) -> float:
+        """`천천히 보기` 가 켜져 있으면 1초. 결과는 바뀌지 않고 보일 뿐이다."""
+        return 1.0 if self.act_slow.isChecked() else 0.0
 
     def _ask_resume(self, ask: Dict[str, Any]) -> None:
         box = QtWidgets.QMessageBox(self)

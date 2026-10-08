@@ -95,6 +95,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="누가 이 실행을 띄웠나. Debug Output 규약이 여기에 달려 있다")
     r.add_argument("--progress", default="",
                    help="진행 상황 스냅샷 경로 (기본 runs/<run-id>/progress.json, 'off'면 남기지 않는다)")
+    r.add_argument("--step-delay", type=float, default=0.0,
+                   help="상자 하나를 지날 때마다 쉬는 시간(초). 어디를 도는지 눈으로 "
+                        "보려는 용도다 — 결과는 바뀌지 않고 그만큼 느려진다")
     r.set_defaults(func=cmd_run)
 
     b = sub.add_parser("budget", help="G4 — 학습 전에 단계별 VRAM과 시퀀스 길이를 산정한다")
@@ -241,6 +244,8 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--debug-output", action="store_true")
     pl.add_argument("--trigger", default="cli", choices=("cli", "ui", "external"))
     pl.add_argument("--progress", default="")
+    pl.add_argument("--step-delay", type=float, default=0.0,
+                    help="상자 하나를 지날 때마다 쉬는 시간(초)")
     pl.set_defaults(func=cmd_pipeline)
 
     ex = sub.add_parser(
