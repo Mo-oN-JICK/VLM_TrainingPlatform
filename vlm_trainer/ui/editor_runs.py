@@ -185,18 +185,20 @@ class RunsMixin:
         if not self.run_id:
             return {
                 "ok": False,
-                "reason": "먼저 Materialize를 눌러야 한다",
+                "reason": "먼저 사전 준비를 실행해야 한다",
                 "detail": (
                     "학습은 물질화된 shard를 읽는다. 아직 이 세션에서 만든 것이 없다.\n"
-                    "  Materialize를 먼저 누르거나, 터미널에서 vlmt materialize를 돌려라."
+                    "  `실행` 을 누르면 사전 준비부터 학습까지 한 번에 갑니다.\n"
+                    "  사전 준비만 따로 하려면 실행 메뉴의 `사전 준비 실행 만`,\n"
+                    "  터미널에서는 vlmt materialize."
                 ),
             }
         mat = os.path.join(os.getcwd(), "runs", self.run_id, "materialized")
         if not os.path.isdir(mat):
             return {
                 "ok": False,
-                "reason": "물질화된 shard가 없다",
-                "detail": f"{mat}가 없다. Materialize를 먼저 누른다.",
+                "reason": "미리 준비해 둔 것이 없다",
+                "detail": f"{mat} 가 없습니다. `실행` 을 누르면 사전 준비부터 합니다.",
             }
         return self._spawn(self._base_command("train"), "train")
 

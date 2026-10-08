@@ -336,17 +336,39 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin):
 
     # ── 조회 ────────────────────────────────────────────────────────────
     def library(self) -> List[Dict[str, Any]]:
-        return [
-            {
+        """라이브러리에 뜰 목록.
+
+        **한국어 이름과 한 줄 설명을 함께 낸다.** 이것이 없어서 패널이 어쩔 수 없이
+        `source.field` 같은 타입 이름을 그대로 보였다 — 처음 보는 사람에게는 아무
+        뜻도 없는 글자다.
+
+        포트도 이름만이 아니라 **무엇이 들어가고 나오는지**를 함께 낸다. 호버했을 때
+        "어떤 값이 필요한가" 에 답할 수 있어야 한다.
+        """
+        from .layout import port_help
+
+        out: List[Dict[str, Any]] = []
+        for d in all_defs():
+            out.append({
                 "type": d.ref,
                 "category": d.category,
                 "kind": d.kind.value,
-                "summary": d.doc.summary,
+                "label": (d.doc.label if d.doc else "") or d.type.split(".")[-1],
+                "hint": (d.doc.hint if d.doc else ""),
+                "summary": d.doc.summary if d.doc else "",
+                "scenario": d.doc.scenario if d.doc else "",
                 "inputs": list(d.inputs),
                 "outputs": list(d.outputs),
-            }
-            for d in all_defs()
-        ]
+                # 포트별 설명. 호버 한 번으로 "무엇을 꽂아야 하나" 에 답한다.
+                "port_help": {
+                    **{f"in:{n}": port_help(p.type, p.doc, required=not p.type.optional,
+                                            is_input=True)
+                       for n, p in d.inputs.items()},
+                    **{f"out:{n}": port_help(p.type, p.doc, is_input=False)
+                       for n, p in d.outputs.items()},
+                },
+            })
+        return out
 
     def state(self) -> Dict[str, Any]:
         cg = self.compiled

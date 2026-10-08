@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 from PySide6 import QtCore, QtWidgets
 
 from .. import tokens as T
+from .. import words as W
 from ..api import param_meta
 
 MUTED = "color:#6F7478; font-size:11px;"
@@ -212,8 +213,8 @@ class Inspector(QtWidgets.QDockWidget):
         lay = QtWidgets.QVBoxLayout(box)
         lay.setSpacing(5)
 
-        chk = QtWidgets.QCheckBox("물질화 경계")
-        chk.setToolTip("여기까지 미리 굽고, 학습은 그 산출물만 읽는다")
+        chk = QtWidgets.QCheckBox(W.BOUNDARY)
+        chk.setToolTip(W.BOUNDARY_WHY)
         bset = set(state.get("boundary") or ())
         chk.setChecked(nid in bset or any(i in bset for i in shown.state_ids))
         chk.toggled.connect(lambda on: self.boundaryToggled.emit(nid, on))

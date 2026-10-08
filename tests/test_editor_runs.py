@@ -240,7 +240,7 @@ def test_the_run_writes_preview_images_when_the_toggle_is_on(ed_with_data, tmp_p
 
 def test_training_before_materializing_says_so(ed):
     res = ed.train_start()
-    assert not res["ok"] and "Materialize" in res["reason"]
+    assert not res["ok"] and "사전 준비" in res["reason"]
     assert "vlmt materialize" in res["detail"], "터미널로도 할 수 있다는 것을 말한다"
 
 

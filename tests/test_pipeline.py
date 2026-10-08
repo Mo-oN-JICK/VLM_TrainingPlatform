@@ -125,11 +125,11 @@ def test_the_snapshot_survives_a_round_trip(tmp_path):
     assert back is not None and back.run_id == "r9"
     assert [s.state for s in back.stages] == [s.state for s in p.stages]
     assert back.active == "bake"
-    assert "굽기" in pipe.headline(back)
+    assert "사전 준비" in pipe.headline(back)
 
 
 def test_a_failed_stage_shows_in_the_headline():
     p = pipe.plan(compile_project(OPEN_SPEC), "r9")
     p.get("bake").state = pipe.FAILED
-    assert p.failed and "굽기 x" in pipe.headline(p)
+    assert p.failed and "사전 준비 x" in pipe.headline(p)
     assert pipe.as_dict(p)["failed"] is True

@@ -15,6 +15,7 @@ from typing import Any, Dict
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import tokens as T
+from .. import words as W
 from ..api import Editor, compat_matrix, occupied_inputs
 from .canvas import GraphCanvas
 from .history import HistoryDock, RecipeDock
@@ -128,7 +129,7 @@ class EditorWindow(QtWidgets.QMainWindow):
                 lambda: self._mutate(lambda: self.editor.toggle_expand(n), "펼치기")))
         c.boundaryRequested.connect(
             lambda n, on: self._later(
-                lambda: self._mutate(lambda: self.editor.set_boundary(n, on), "물질화 경계")))
+                lambda: self._mutate(lambda: self.editor.set_boundary(n, on), W.BOUNDARY)))
         c.addRequested.connect(lambda t, x, y: self._later(lambda: self._add_node(t, x, y)))
         c.movedNode.connect(self._move_node)       # 다시 그리지 않는다 — 미룰 필요 없다
 
@@ -137,7 +138,7 @@ class EditorWindow(QtWidgets.QMainWindow):
         i.paramChanged.connect(self._set_param)
         i.boundaryToggled.connect(
             lambda n, on: self._later(
-                lambda: self._mutate(lambda: self.editor.set_boundary(n, on), "물질화 경계")))
+                lambda: self._mutate(lambda: self.editor.set_boundary(n, on), W.BOUNDARY)))
         i.expandToggled.connect(
             lambda n: self._later(
                 lambda: self._mutate(lambda: self.editor.toggle_expand(n), "펼치기")))
@@ -215,8 +216,9 @@ class EditorWindow(QtWidgets.QMainWindow):
             "미리보기"))
         r.addSeparator()
         # 단계 하나만 돌리는 길은 남겨 둔다. CLI 에 있는 명령이 앱에서 사라지면,
-        # 굽기만 다시 하고 싶은 사람이 터미널로 나가야 한다.
-        r.addAction("굽기만", lambda: self._launch(self.editor.materialize_start, "굽기"))
+        # 한 단계만 다시 하고 싶은 사람이 터미널로 나가야 한다.
+        r.addAction(f"{W.BAKE} 만",
+                    lambda: self._launch(self.editor.materialize_start, W.BAKE))
         r.addAction("학습만", lambda: self._launch(self.editor.train_start, "학습"))
         r.addSeparator()
         r.addAction("중단", self._stop)
@@ -229,10 +231,12 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.addToolBar(tb)
 
         # 버튼은 둘이다. **실행**은 이 그래프가 할 수 있는 데까지 끝까지 가고,
-        # **미리보기**는 몇 건만 돌려 중간값을 본다. `Materialize` 와 `Train` 을
+        # **미리보기**는 몇 건만 돌려 중간값을 본다. 단계를 버튼으로 나눠 두면
         # 따로 두면 누르는 순서를 사람이 외워야 하는데, 그 순서는 그래프가 이미 안다.
         self.act_run = tb.addAction("실행", self._run_pipeline)
-        self.act_run.setToolTip("준비 → 굽기 → 학습 → 추론. 그래프에 있는 단계까지 간다")
+        self.act_run.setToolTip(
+            f"준비 → {W.BAKE} → 학습 → 추론 순으로 끝까지 갑니다.\n"
+            "이 그래프에 없는 단계는 건너뜁니다.")
         self.act_preview = tb.addAction("미리보기", lambda: self._launch(
             lambda: self.editor.run_start(self.spin_limit.value(),
                                           self.chk_debug.isChecked(),
@@ -326,7 +330,7 @@ class EditorWindow(QtWidgets.QMainWindow):
         warn = "" if self.editor.valid else "   ⚠ 저장·실행 불가"
         self.lbl_graph.setText(
             f"상자 {len(self.canvas.cards)} · 노드 {len(cg.nodes)} · 배선 {len(cg.edges)} · "
-            f"레인 {max(cg.lanes.values()) + 1}단   {cg.spec_hash}{warn}")
+            f"{W.DEPTH} {max(cg.lanes.values()) + 1}단   {cg.spec_hash}{warn}")
 
         # 패널은 한 번 만든 state 를 나눠 쓴다. 도크마다 다시 부르면 샘플 공간을
         # 세 번 읽게 된다 — 인덱스가 큰 프로젝트에서 그대로 체감된다.
@@ -441,7 +445,8 @@ class EditorWindow(QtWidgets.QMainWindow):
     def _ask_resume(self, ask: Dict[str, Any]) -> None:
         box = QtWidgets.QMessageBox(self)
         box.setWindowTitle("굽다 만 것이 있습니다")
-        box.setText(f"shard {ask['shards']}개 · 샘플 {ask['samples']}건이 이미 구워져 있습니다.")
+        box.setText(f"{W.SHARD} {ask['shards']}개 · 샘플 {ask['samples']}건이 "
+                    "이미 준비되어 있습니다.")
         box.setInformativeText(
             f"{ask['out_dir']}\n\n"
             "이어 받으면 그 샘플은 다시 굽지 않습니다. 전처리 설정을 고쳤다면 "
@@ -514,8 +519,9 @@ class EditorWindow(QtWidgets.QMainWindow):
             "  배선이나 위쪽 칩을 우클릭 — 끊기\n"
             "  왼쪽 라이브러리에서 끌어다 놓기 — 노드 추가\n"
             "  상자를 끌면 이동합니다. 자리는 layout.yaml 로 가고 spec_hash 는 그대로입니다.\n"
-            "  상자 우클릭 — 펼치기/접기 · 물질화 경계 · 삭제\n\n"
-            "실행(Run·Materialize·Train)은 5단계에서 붙습니다.")
+            f"  상자 우클릭 — 펼치기/접기 · {W.BOUNDARY} · 삭제\n\n"
+            f"실행 — `실행` 은 준비 → {W.BAKE} → 학습 → 추론을 끝까지,\n"
+            "       `미리보기` 는 샘플 몇 건만 돌려 중간값을 봅니다.")
 
 
 def launch(project_path: str, extra_modules: tuple = ()) -> int:

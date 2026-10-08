@@ -306,7 +306,7 @@ def test_the_stage_line_says_which_part_is_running(win):
     line = win.watcher._headline(
         {"kind": "pipeline", "run_id": "r1", "pipeline": pipe.as_dict(p), "total": 0})
 
-    assert "준비 v" in line and "굽기 >" in line
+    assert "준비 v" in line and "사전 준비 >" in line
 
 
 # ── 실행 따라가기 ───────────────────────────────────────────────────────
@@ -477,3 +477,102 @@ def test_the_sample_count_says_which_button_uses_it(win):
     """`샘플 8` 만 적혀 있어 무슨 숫자인지 알 수 없었다."""
     assert "건" in win.spin_limit.suffix()
     assert "미리보기" in win.spin_limit.toolTip()
+
+
+# ── 쓰는 사람이 아는 말로 ───────────────────────────────────────────────
+#
+# 사용자는 데이터 / 질문 양식 / 정답 양식 / 모델 넷을 넣고 학습하면 되는 사람이다.
+# `물질화 경계` 나 `shard` 는 우리가 설계하며 쓴 말이지 그 사람이 알아야 할 말이 아니다.
+
+def test_no_screen_text_uses_the_old_words(win):
+    """`vlm_trainer/ui/words.py` 의 표를 기준으로 화면 전체를 훑는다.
+    말이 한곳에 모여 있지 않으면 다음에 또 어긋난다."""
+    from PySide6 import QtWidgets
+
+    from vlm_trainer.ui import words as W
+
+    win._show_inspector("n_sample")
+    found = []
+    for widget in win.findChildren(QtWidgets.QWidget):
+        text = (getattr(widget, "text", lambda: "")() or "") + (widget.toolTip() or "")
+        for old in W.RENAMED:
+            if old in text:
+                found.append(f"{old} → {text[:40]}")
+    assert not found, found
+
+
+def test_the_words_are_defined_in_one_place():
+    """흩어 두면 같은 것이 두 이름으로 불린다."""
+    from vlm_trainer.ui import words as W
+
+    assert W.BOUNDARY == "사전 준비" and W.BAKE == "사전 준비 실행"
+    assert W.RENAMED["물질화 경계"] == W.BOUNDARY
+    assert W.BOUNDARY_WHY and "GPU" in W.BOUNDARY_WHY, "왜 필요한지도 적어야 한다"
+
+
+def test_the_boundary_is_still_a_real_setting(win):
+    """말만 바꾼 것이지 개념을 없앤 것이 아니다. 여전히 게이트가 요구하는 값이다."""
+    from PySide6 import QtWidgets
+
+    win._show_inspector("n_sample")
+    boxes = [c for c in win.inspector.findChildren(QtWidgets.QCheckBox) if c.text()]
+    assert boxes and boxes[0].text() == "사전 준비"
+    assert boxes[0].isChecked(), "이 그래프는 여기를 경계로 쓴다"
+
+
+# ── 라이브러리 ──────────────────────────────────────────────────────────
+def test_the_library_shows_korean_names_not_type_ids(win):
+    """`[?] source.field` 가 뜨던 자리다. `?` 는 `kind` 를 소문자 키로 찾아서 나온
+    것이고, 타입 이름은 처음 보는 사람에게 아무 뜻도 없다."""
+    from PySide6 import QtCore, QtWidgets
+
+    tree = win.library.findChild(QtWidgets.QTreeWidget)
+    names, refs = [], []
+    for i in range(tree.topLevelItemCount()):
+        top = tree.topLevelItem(i)
+        for j in range(top.childCount()):
+            it = top.child(j)
+            names.append(it.text(0))
+            refs.append(it.data(0, QtCore.Qt.UserRole))
+
+    assert names, "라이브러리가 비었다"
+    assert not any("[?]" in n for n in names), "kind 표식이 물음표로 떨어진다"
+    assert not any("." in n and "@" not in n and n.islower() for n in names), \
+        "타입 이름이 그대로 뜬다"
+    assert "단일 열 업로드" in names, "source.field 가 한국어 이름으로 안 보인다"
+    assert all(r and "@" in r for r in refs), "끌어다 놓을 때 쓸 타입은 그대로 있어야 한다"
+
+
+def test_hovering_a_library_item_says_what_goes_in(win):
+    """이름만으로는 무엇을 꽂아야 하는지 알 수 없다 — `입력: image, regions` 가
+    전부였다."""
+    from PySide6 import QtCore, QtWidgets
+
+    tree = win.library.findChild(QtWidgets.QTreeWidget)
+    tip = ""
+    for i in range(tree.topLevelItemCount()):
+        top = tree.topLevelItem(i)
+        for j in range(top.childCount()):
+            it = top.child(j)
+            if (it.data(0, QtCore.Qt.UserRole) or "").startswith("image.crop_by_regions"):
+                tip = it.toolTip(0)
+    assert tip, "그 노드를 못 찾았다"
+    assert "받는 것" in tip and "내보내는 것" in tip
+    assert "사진" in tip, "포트 종류를 사람 말로 말하지 않는다"
+    assert "image.crop_by_regions" in tip, "정확한 타입도 남아 있어야 한다"
+
+
+def test_the_library_payload_carries_labels():
+    """패널이 타입 이름을 쓸 수밖에 없었던 이유가 이것이다 — `library()` 가
+    `label` 을 안 줬다."""
+    from vlm_trainer.core import registry
+    from vlm_trainer.ui.api import Editor
+
+    registry.load_builtin_nodes()
+    ed = Editor.open(os.path.join(ROOT, "solutions", "vlm_open",
+                                  "projects", "01_open", "project.yaml"))
+    by_type = {n["type"]: n for n in ed.library()}
+    one = by_type["infer.vlm@1.0.0"]
+    assert one["label"] == "모델 추론" and one["hint"]
+    assert one["port_help"]["in:model"] and one["port_help"]["out:answer"]
+    assert all(n.get("label") for n in by_type.values()), "이름 없는 노드가 있다"

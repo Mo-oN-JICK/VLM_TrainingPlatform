@@ -112,11 +112,11 @@ def plan(cg: CompiledGraph, run_id: str = "", *, bake_split: str = "") -> Plan:
                           note="컴파일과 예산(G4). GPU 를 잡기 전 마지막 문이다"))
 
     if cg.materialize.get("boundary"):
-        p.stages.append(Stage("bake", "굽기", command="materialize", split=bake_split,
-                              note="경계까지 미리 구워 shard 로 남긴다"))
+        p.stages.append(Stage("bake", "사전 준비", command="materialize", split=bake_split,
+                              note="학습이 읽을 데이터를 미리 만들어 둔다"))
     if trainers(cg):
         p.stages.append(Stage("train", "학습", command="train",
-                              note="구운 shard 만 읽는다"))
+                              note="미리 만들어 둔 것만 읽는다"))
     if after_training(cg):
         p.stages.append(Stage("infer", "추론", command="run", split=infer_split(cg),
                               note="학습한 모델로 답을 만들고 Output 노드까지 돈다"))
@@ -209,12 +209,12 @@ def render(p: Plan) -> str:
         took = f"  {fmt_ms(s.ms)}" if s.ms else ""
         split = f"  split {s.split}" if s.split else ""
         note = f"  {s.note}" if s.note and s.state in (FAILED, SKIPPED) else ""
-        lines.append(f"  {mark.get(s.state, '?')} {s.label:<4} {s.command:<12}{split}{took}{note}")
+        lines.append(f"  {mark.get(s.state, '?')} {s.label:<6} {s.command:<12}{split}{took}{note}")
     return "\n".join(lines)
 
 
 def headline(p: Plan) -> str:
-    """진행 줄 하나. `준비 v · 굽기 > · 학습 · 추론` 처럼 읽힌다."""
+    """진행 줄 하나. `준비 v · 사전 준비 > · 학습 · 추론` 처럼 읽힌다."""
     mark = {PENDING: "", RUNNING: " >", DONE: " v", FAILED: " x", SKIPPED: " -"}
     return " · ".join(f"{s.label}{mark.get(s.state, '')}" for s in p.stages)
 

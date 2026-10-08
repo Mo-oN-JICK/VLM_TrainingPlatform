@@ -16,6 +16,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import layout as L
 from .. import tokens as T
+from .. import words as W
 from ...core.node import NodeKind
 
 FONT = "Malgun Gothic"        # 한글이 나오는 Windows 기본 폰트
@@ -551,7 +552,7 @@ class GraphCanvas(QtWidgets.QGraphicsView):
             nid, on = card.shown.id, card.boundary
             if card.shown.inner:
                 put("펼치기 / 접기", lambda n=nid: self.expandRequested.emit(n))
-            put("물질화 경계에서 빼기" if on else "물질화 경계로 지정",
+            put(f"{W.BOUNDARY} 에서 빼기" if on else f"{W.BOUNDARY} 로 지정",
                 lambda n=nid, o=on: self.boundaryRequested.emit(n, not o))
             menu.addSeparator()
             put("노드 삭제", lambda n=nid: self.removeRequested.emit(n))
