@@ -75,8 +75,24 @@ class RunDock(QtWidgets.QDockWidget):
             "font-family: Consolas, ui-monospace, monospace; font-size:10.5px;")
         lay.addWidget(QtWidgets.QLabel("콘솔 (실패했을 때만)"))
         lay.addWidget(self.console)
+        lay.addStretch(1)
 
-        self.setWidget(body)
+        # **스크롤 영역에 넣는다.** 미리보기가 세로로 쌓이면 이 도크가 요구하는 최소
+        # 높이가 같이 자라는데(실측 258 -> 2150), QMainWindow 는 그 요구를 맞추려고
+        # 창보다 큰 레이아웃을 만든다. 그러면 가운데 캔버스도 창 밖으로 늘어나
+        # **아래쪽 노드가 화면 밖으로 나가고 스크롤 범위는 0 이 된다** — 실행이 끝난 뒤
+        # 아래로 못 내려가던 것이 이것이다. 창 크기를 바꾸면 레이아웃이 다시 계산되며
+        # 풀리는데, 그래서 "전체화면으로 바꾸면 돌아온다" 로 보였다.
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(body)
+        self.setWidget(scroll)
+
+        # 도크가 제 안쪽 때문에 창을 밀어내지 못하게 못을 박는다. 스크롤 영역이 있으니
+        # 안쪽이 아무리 길어져도 여기서 끊긴다.
+        self.setMinimumHeight(120)
 
     def update_view(self, st: Dict[str, Any]) -> None:
         total, done = int(st.get("total") or 0), int(st.get("processed") or 0)

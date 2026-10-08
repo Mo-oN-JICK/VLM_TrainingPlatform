@@ -760,3 +760,71 @@ def test_narrowing_the_window_shrinks_the_zoom(win):
     win.hide()
 
     assert narrow < wide, f"창을 줄였는데 배율이 {wide:.3f} -> {narrow:.3f} 로 안 줄었다"
+
+
+# ── 실행이 끝나도 화면이 멀쩡해야 한다 ──────────────────────────────────
+def test_the_run_dock_cannot_push_the_window_out_of_shape(win):
+    """**이것이 "실행 후 아래쪽 노드로 못 간다" 의 정체였다.**
+
+    실행 도크에 미리보기가 세로로 쌓이면 그 도크가 요구하는 최소 높이가 같이
+    자란다(실측 258 → 2150). `QMainWindow` 는 그 요구를 맞추려고 **창보다 큰**
+    레이아웃을 만들고, 가운데 캔버스도 창 밖으로 늘어난다. 그러면 아래쪽 노드가
+    화면 밖으로 나가고 스크롤 범위는 0 이 된다 — 내려갈 방법이 없다.
+
+    창 크기를 바꾸면 레이아웃이 다시 계산되며 풀린다. 그래서 "전체화면으로 바꾸면
+    돌아온다" 로 보였다.
+    """
+    from PySide6 import QtWidgets
+
+    app = _shown(win)
+    before = win.canvas.viewport().height()
+
+    # 미리보기가 잔뜩 쌓인 상황을 만든다
+    win.run_dock.show()
+    for i in range(12):
+        tall = QtWidgets.QLabel("x" * 40)
+        tall.setMinimumHeight(180)
+        win.run_dock._pv_lay.addWidget(tall)
+    win.run_dock.previews.setVisible(True)
+    for _ in range(8):
+        app.processEvents()
+
+    after = win.canvas.viewport().height()
+    win.hide()
+    assert after <= before + 40, \
+        f"캔버스가 {before} -> {after} 로 늘어났다 — 창 밖으로 나간다"
+    assert win.canvas.viewport().height() <= win.height(), "캔버스가 창보다 크다"
+
+
+def test_the_run_dock_scrolls_instead_of_growing(win):
+    """끊어 주는 것은 스크롤 영역이다. 없으면 안쪽 길이가 그대로 창을 민다."""
+    from PySide6 import QtWidgets
+
+    assert isinstance(win.run_dock.widget(), QtWidgets.QScrollArea)
+    assert win.run_dock.widget().widgetResizable()
+    assert win.run_dock.minimumHeight() <= 200, "도크가 자리를 너무 많이 요구한다"
+
+
+def test_scrolling_still_works_after_a_run(win):
+    """실행이 끝난 뒤에도 아래로 내려갈 수 있어야 한다."""
+    from PySide6 import QtWidgets
+
+    app = _shown(win)
+    win.canvas.fit()
+    win.canvas.zoom_to(1.5)          # 전체가 안 들어가게
+    for _ in range(6):
+        app.processEvents()
+
+    win.run_dock.show()
+    for i in range(12):
+        tall = QtWidgets.QLabel("x")
+        tall.setMinimumHeight(180)
+        win.run_dock._pv_lay.addWidget(tall)
+    win.run_dock.previews.setVisible(True)
+    win.set_running(False)
+    for _ in range(8):
+        app.processEvents()
+
+    vb = win.canvas.verticalScrollBar()
+    win.hide()
+    assert vb.maximum() > vb.minimum(), "세로로 스크롤할 수 없다 — 아래쪽 노드에 못 간다"
