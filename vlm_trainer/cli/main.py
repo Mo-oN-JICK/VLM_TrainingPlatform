@@ -37,7 +37,7 @@ from ..train import contract as contract_mod
 # 명령 본문은 주제별 모듈에 있다. 파서는 그것을 가리키기만 한다.
 from .cmd_graph import cmd_backbones, cmd_compile, cmd_expand, cmd_decompile, cmd_infer_graph, cmd_nodes, cmd_show, cmd_view
 from .cmd_execute import cmd_budget, cmd_dryrun, cmd_export, cmd_materialize, cmd_pipeline, cmd_preview, cmd_run, cmd_sweep, cmd_train
-from .cmd_project import cmd_schema_rows, cmd_schema_build, cmd_table_template, cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
+from .cmd_project import cmd_schema_rows, cmd_schema_build, cmd_judge, cmd_judgments, cmd_new_line, cmd_table_template, cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -140,6 +140,13 @@ def build_parser() -> argparse.ArgumentParser:
     nw.add_argument("--edit", action="store_true", help="만든 뒤 편집기를 연다")
     nw.set_defaults(func=cmd_new)
 
+    nl = sub.add_parser("new-line", help="빈 5노드 프로젝트 폴더를 만든다")
+    nl.add_argument("dir", help="만들 폴더")
+    nl.add_argument("--id", default="", help="프로젝트 id (기본: 폴더 이름)")
+    nl.add_argument("--name", default="", help="화면에 보일 이름")
+    nl.add_argument("--edit", action="store_true", help="만든 뒤 편집기를 연다")
+    nl.set_defaults(func=cmd_new_line)
+
     tt = sub.add_parser("table-template", help="사용자가 채울 빈 표(CSV)의 첫 줄을 만든다")
     tt.add_argument("--out", required=True)
     tt.add_argument("--key", default="sample_id", help="건 구분 열")
@@ -162,6 +169,16 @@ def build_parser() -> argparse.ArgumentParser:
     sr.add_argument("schema")
     sr.add_argument("--out", default="")
     sr.set_defaults(func=cmd_schema_rows)
+
+    jg = sub.add_parser("judge", help="검증 건 하나에 사람 판정(ok | ng | none)을 남긴다")
+    jg.add_argument("run", help="실행 id(runs/ 아래) 또는 폴더")
+    jg.add_argument("sample_id")
+    jg.add_argument("verdict", choices=("ok", "ng", "none"))
+    jg.set_defaults(func=cmd_judge)
+
+    jl = sub.add_parser("judgments", help="검증 건마다 항목별 O/X 와 사람 판정을 보인다")
+    jl.add_argument("run", help="실행 id(runs/ 아래) 또는 폴더")
+    jl.set_defaults(func=cmd_judgments)
 
     nn = sub.add_parser(
         "new-node", help="새 노드의 뼈대와 그 테스트 파일을 만든다 (Custom Node)")

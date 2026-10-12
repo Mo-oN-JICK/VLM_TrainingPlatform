@@ -200,6 +200,9 @@ class LineWindow(QtWidgets.QMainWindow):
         tb = QtWidgets.QToolBar("실행")
         tb.setMovable(False)
         self.addToolBar(tb)
+        self.act_new = tb.addAction("새 5노드…", self._new_line)
+        self.act_new.setToolTip("빈 폴더를 골라 새 5노드 프로젝트를 만듭니다. 표는 `데이터` 에서 넣습니다.")
+        tb.addSeparator()
         self.act_run = tb.addAction("실행", self._run)
         self.act_run.setToolTip("준비 → 사전 준비 → 학습 → 검증 순으로 끝까지 갑니다.")
         self.act_stop = tb.addAction("중단", self._stop)
@@ -211,6 +214,8 @@ class LineWindow(QtWidgets.QMainWindow):
         self.act_data.setToolTip("표 파일, 열 지정, 정답 항목, 학습/검증 나누기를 정합니다.")
         self.act_reread = tb.addAction("다시 읽기", lambda: self.reload())
         self.act_reread.setToolTip("표(CSV)와 Line 파일을 다시 읽습니다. 표를 고쳤다면 눌러 주세요.")
+        self.act_verdict = tb.addAction("검증 결과", self._open_verdict)
+        self.act_verdict.setToolTip("검증 사진에 모델이 낸 답을 정답과 나란히 보고 OK / NG 를 정합니다.")
         tb.addSeparator()
         self.act_expert = tb.addAction("전문가 모드")
         self.act_expert.setCheckable(True)
@@ -333,6 +338,11 @@ class LineWindow(QtWidgets.QMainWindow):
     def refresh(self) -> None:
         cg = self.editor.compiled
         if cg is None:
+            # 새 프로젝트는 표가 없어 컴파일되지 않는다. 이유를 보이고, 실행은 막는다.
+            self.act_run.setEnabled(False)
+            self.act_save.setEnabled(False)
+            self.detail.setPlainText("아직 실행할 수 없습니다. 위의 `데이터` 에서 사진·질문·정답 표를 넣으세요."
+                                     + chr(10) * 2 + "지금 막힌 이유:" + chr(10) + self.editor.error)
             return
         run = self.editor.run_state()
         snap = self.editor._read_progress()
@@ -526,6 +536,30 @@ class LineWindow(QtWidgets.QMainWindow):
             self._show_settings(self.picked)
             self.statusBar().showMessage("데이터 설정을 적용했습니다 — 저장하면 파일에 남습니다", 6000)
 
+    def _new_line(self) -> None:
+        from ...spec import scaffold
+
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "새 프로젝트를 만들 폴더(없으면 만들어 두세요)")
+        if not folder:
+            return
+        try:
+            path, _made = scaffold.new_line(folder)
+        except Exception as exc:
+            self._refuse(str(exc).splitlines()[0])
+            self.detail.setPlainText(str(exc))
+            return
+        ed = Editor.open_line(path)
+        ed.extra_modules = self.editor.extra_modules
+        win = LineWindow(ed)
+        self._others = getattr(self, "_others", []) + [win]  # 닫히지 않게 붙들어 둔다
+        win.show()
+        QtCore.QTimer.singleShot(0, win._open_data)
+
+    def _open_verdict(self) -> None:
+        from .verdict_dialog import VerdictDialog
+
+        VerdictDialog(self.thumbs, getattr(self.editor, "run_id", "") or "", self).exec()
+
     def _open_inner(self, cid: str) -> None:
         st = self._station(cid or "")
         if st is None:
@@ -619,4 +653,6 @@ def launch_line(path: str, extra_modules: tuple = ()) -> int:
     editor.extra_modules = tuple(extra_modules)
     win = LineWindow(editor)
     win.show()
+    if editor.compiled is None:  # 새 프로젝트: 표부터 넣게 한다
+        QtCore.QTimer.singleShot(0, win._open_data)
     return app.exec()

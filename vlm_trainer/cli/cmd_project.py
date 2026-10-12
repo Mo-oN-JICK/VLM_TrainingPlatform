@@ -45,6 +45,21 @@ def cmd_new(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_new_line(a: argparse.Namespace) -> int:
+    """빈 5노드 프로젝트를 만든다. 표와 정답 항목은 화면의 `데이터` 에서 넣는다."""
+    from ..spec import scaffold
+
+    path, made = scaffold.new_line(a.dir, line_id=a.id, name=a.name)
+    for f in made:
+        print(f"  만듦: {f}")
+    print(f"\n  편집기: vlmt edit {path}   (열면 `데이터` 가 먼저 뜬다)")
+    if a.edit:
+        from ..ui import app as app_mod
+
+        return app_mod.launch(path)
+    return 0
+
+
 def cmd_edit(a: argparse.Namespace) -> int:
     """그래프 편집기를 연다. 창 하나로 뜨는 네이티브 앱이다.
 
@@ -195,3 +210,31 @@ def cmd_recipe(a: argparse.Namespace) -> int:
     raise SystemExit(f"알 수 없는 action: {a.action}")
 
 
+
+
+def _run_dir(run: str) -> str:
+    """실행 id 또는 폴더 경로."""
+    return run if os.path.isdir(run) else os.path.join("runs", run)
+
+
+def cmd_judge(a: argparse.Namespace) -> int:
+    """검증 건 하나에 사람 판정(ok | ng | none)을 남긴다."""
+    from ..answer import judge
+
+    judge.judge(_run_dir(a.run), a.sample_id, a.verdict)
+    print(f"{a.sample_id}: {a.verdict}")
+    return 0
+
+
+def cmd_judgments(a: argparse.Namespace) -> int:
+    """검증 건마다 항목별 O/X 와 사람 판정을 보인다. 점수 합계는 내지 않는다."""
+    from ..answer import judge
+
+    got = judge.review(_run_dir(a.run))
+    for it in got["items"]:
+        mark = "".join("O" if f["match"] else "X" for f in it["fields"])
+        flag = " 빈 답" if it["empty"] else (" 형식 어긋남" if it["broken"] else "")
+        print(f"{it['id']}	{mark}	{it['verdict']}{flag}")
+    c = got["count"]
+    print(f"OK {c['ok']} · NG {c['ng']} · 미판정 {c['none']}  (항목 순서: {', '.join(got['steps'])})")
+    return 0

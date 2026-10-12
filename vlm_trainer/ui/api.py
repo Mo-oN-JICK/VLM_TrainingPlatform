@@ -182,8 +182,13 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin, LineMixin):
 
         e = Editor(path=os.path.abspath(path), readonly=True)
         e.line_data = _read_yaml(e.path)
-        e.graph = load_project(e.path)
-        e._recompile()
+        try:
+            e.graph = load_project(e.path)
+            e._recompile()
+        except Exception as exc:
+            # 표나 정답 항목이 아직 없는 새 프로젝트도 열려야 `데이터` 에서 채울 수 있다.
+            # 컴파일된 것이 없으니 실행·저장은 막혀 있고, 이유는 error 에 남는다.
+            e.compiled, e.error, e.valid = None, _msg(exc), False
         return e
 
     # ── 내부 ────────────────────────────────────────────────────────────
