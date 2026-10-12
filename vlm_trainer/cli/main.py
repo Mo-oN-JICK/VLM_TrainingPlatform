@@ -37,7 +37,7 @@ from ..train import contract as contract_mod
 # 명령 본문은 주제별 모듈에 있다. 파서는 그것을 가리키기만 한다.
 from .cmd_graph import cmd_backbones, cmd_compile, cmd_expand, cmd_decompile, cmd_infer_graph, cmd_nodes, cmd_show, cmd_view
 from .cmd_execute import cmd_budget, cmd_dryrun, cmd_export, cmd_materialize, cmd_pipeline, cmd_preview, cmd_run, cmd_sweep, cmd_train
-from .cmd_project import cmd_schema_build, cmd_table_template, cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
+from .cmd_project import cmd_schema_rows, cmd_schema_build, cmd_table_template, cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -157,6 +157,11 @@ def build_parser() -> argparse.ArgumentParser:
     sb.add_argument("--max-tokens", type=int, default=320)
     sb.add_argument("--out", default="")
     sb.set_defaults(func=cmd_schema_build)
+
+    sr = sub.add_parser("schema-rows", help="스키마 파일을 정답 형태 표(CSV)로 되돌린다")
+    sr.add_argument("schema")
+    sr.add_argument("--out", default="")
+    sr.set_defaults(func=cmd_schema_rows)
 
     nn = sub.add_parser(
         "new-node", help="새 노드의 뼈대와 그 테스트 파일을 만든다 (Custom Node)")

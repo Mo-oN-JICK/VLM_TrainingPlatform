@@ -86,6 +86,23 @@ def cmd_schema_build(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_schema_rows(a: argparse.Namespace) -> int:
+    """스키마 파일을 정답 형태 표(CSV)로 되돌린다. 표로 나타낼 수 없는 항목이 있으면 알린다."""
+    from ..answer import table
+
+    got = table.rows_from_schema(a.schema)
+    data = table.rows_csv(got["rows"])
+    if a.out:
+        with open(a.out, "wb") as fh:
+            fh.write(data)
+        print(f"정답 형태 표 -> {a.out} (항목 {len(got['rows'])}개)")
+    else:
+        sys.stdout.write(data.decode("utf-8-sig"))
+    if got["unsupported"]:
+        print("표로 나타낼 수 없는 것: " + ", ".join(got["unsupported"]) + " — 표로 고쳐 저장하면 사라진다", file=sys.stderr)
+    return 0
+
+
 def cmd_new_node(a: argparse.Namespace) -> int:
     """노드 하나의 뼈대. 빈 파일부터 시작하면 대부분 한두 가지를 빠뜨린다."""
     from ..spec import node_scaffold as ns

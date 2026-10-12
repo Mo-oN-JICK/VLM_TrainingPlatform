@@ -41,7 +41,7 @@ def read_rows(path: str) -> List[Dict[str, str]]:
 
 
 def build(rows: Sequence[Dict[str, str]], *, schema_id: str, render: str = "tagged",
-          max_tokens: int = 320) -> Dict[str, Any]:
+          max_tokens: int = 320, step_order: str = "strict", vocabulary: str = "closed") -> Dict[str, Any]:
     """행 목록을 스키마 매핑으로. 어긋나면 SpecError 로 **어느 행**인지 말한다."""
     if not schema_id.strip():
         raise SpecError("정답 형태의 id 가 비었다 — 추론 계약과 캐시에 이 이름이 쓰인다.")
@@ -88,9 +88,60 @@ def build(rows: Sequence[Dict[str, str]], *, schema_id: str, render: str = "tagg
         "render": render,
         "locale": "ko",
         "steps": steps,
-        "constraints": {"max_tokens": int(max_tokens), "step_order": "strict", "vocabulary": "closed"},
+        "constraints": {"max_tokens": int(max_tokens), "step_order": step_order, "vocabulary": vocabulary},
     }
 
 
 def dump(schema: Dict[str, Any]) -> str:
     return yaml.safe_dump(schema, allow_unicode=True, sort_keys=False, width=100)
+
+
+# ── 되돌리기: 스키마 → 표 ───────────────────────────────────────────────
+_BACK = {"enum": "목록", "float": "숫자", "text": "문장"}
+
+
+def rows_from_schema(path: str) -> Dict[str, Any]:
+    """스키마 파일을 표의 행으로. 표로 나타낼 수 없는 것이 있으면 `unsupported` 에 이유를 담는다.
+
+    표는 항목 이름·종류·허용값만 담는다. 근거 문장(evidence)·의존·규칙·object 필드·int 는 표에서
+    사라지므로, 있는데도 표로 고쳐 저장하면 **조용히 지워진다** — 그래서 편집을 막는 근거로 쓴다.
+    """
+    with open(path, "r", encoding="utf-8") as fh:
+        d = yaml.safe_load(fh) or {}
+    if d.get("kind") != "AnswerSchema":
+        raise SpecError(f"{path}: kind는 AnswerSchema여야 한다")
+    rows: List[Dict[str, str]] = []
+    bad: List[str] = []
+    for s in d.get("steps") or []:
+        sid = str(s.get("id"))
+        why = []
+        if s.get("type", "enum") not in _BACK:
+            why.append(f"종류 {s.get('type')!r}")
+        if str(s.get("evidence", "none")) != "none":
+            why.append("근거 문장")
+        if s.get("depends_on"):
+            why.append("의존")
+        if s.get("rules"):
+            why.append("규칙")
+        if s.get("fields"):
+            why.append("필드")
+        if why:
+            bad.append(f"{sid}({', '.join(why)})")
+        rows.append({"항목": sid, "이름": str(s.get("label", sid)), "종류": _BACK.get(s.get("type", "enum"), "문장"),
+                     "허용값": SEP.join(str(v) for v in s.get("values") or [])})
+    c = d.get("constraints") or {}
+    return {"rows": rows, "unsupported": bad, "id": str(d.get("id", "")), "render": str(d.get("render", "tagged")),
+            "max_tokens": int(c.get("max_tokens", 320)), "step_order": str(c.get("step_order", "strict")),
+            "vocabulary": str(c.get("vocabulary", "closed"))}
+
+
+def rows_csv(rows: Sequence[Dict[str, str]]) -> bytes:
+    """`read_rows` 가 읽는 CSV. 엑셀에서 열 수 있게 BOM 과 CRLF 로 쓴다."""
+    import io
+
+    buf = io.StringIO(newline="")
+    w = csv.writer(buf, lineterminator="\r\n")
+    w.writerow(HEADER)
+    for r in rows:
+        w.writerow([r.get(h, "") for h in HEADER])
+    return ("﻿" + buf.getvalue()).encode("utf-8")

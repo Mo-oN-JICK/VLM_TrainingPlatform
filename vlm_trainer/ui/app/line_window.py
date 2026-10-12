@@ -207,6 +207,8 @@ class LineWindow(QtWidgets.QMainWindow):
         tb.addSeparator()
         self.act_save = tb.addAction("저장", self._save)
         self.act_save.setShortcut(QtGui.QKeySequence.Save)
+        self.act_data = tb.addAction("데이터", self._open_data)
+        self.act_data.setToolTip("표 파일, 열 지정, 정답 항목, 학습/검증 나누기를 정합니다.")
         self.act_reread = tb.addAction("다시 읽기", lambda: self.reload())
         self.act_reread.setToolTip("표(CSV)와 Line 파일을 다시 읽습니다. 표를 고쳤다면 눌러 주세요.")
         tb.addSeparator()
@@ -348,6 +350,7 @@ class LineWindow(QtWidgets.QMainWindow):
         # 둘이 갈라지면 화면과 다른 것이 돌아간다.
         self.tbl_settings.setEnabled(not running)
         self.act_save.setEnabled(not running)
+        self.act_data.setEnabled(not running)
         head = str((run.get("pipeline") or {}).get("headline") or "")
         self.lbl_run.setText(f"{run.get('run_id', '')} {head}".strip())
         if running and not self._poll.isActive():
@@ -509,6 +512,19 @@ class LineWindow(QtWidgets.QMainWindow):
             self._refuse(res.get("reason", "저장하지 못했다"))
             self.detail.setPlainText(str(res.get("detail") or ""))
         self._title()
+
+    def _open_data(self) -> None:
+        from .data_dialog import DataDialog
+
+        dlg = DataDialog(self.editor, self)
+        if dlg.exec() == QtWidgets.QDialog.Accepted:
+            self.desc = self.editor.line_describe()
+            self.lbl_refuse.setText("")
+            self._title()
+            self._load_thumbs()
+            self.refresh()
+            self._show_settings(self.picked)
+            self.statusBar().showMessage("데이터 설정을 적용했습니다 — 저장하면 파일에 남습니다", 6000)
 
     def _open_inner(self, cid: str) -> None:
         st = self._station(cid or "")

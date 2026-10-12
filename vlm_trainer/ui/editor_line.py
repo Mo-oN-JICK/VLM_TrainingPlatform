@@ -14,11 +14,15 @@ import copy
 import os
 from typing import Any, Dict, List
 
+import string
+
+from ..answer import table as answer_table
 from ..core.compiler import compile_graph
 from ..core.graph import GraphModel
 from ..spec.decompile import dump_yaml
 from ..spec.line import expand_data, expand_file
 from ..spec.loader import build_project
+from . import line_data as LD
 from .editor_common import _msg, _short
 
 
@@ -102,6 +106,69 @@ class LineMixin:
                 d.pop("overrides")
 
         return self._line_try(mut)
+
+    def line_apply_data(self, f: Dict[str, Any], schema: Any = None) -> Dict[str, Any]:
+        """데이터 대화상자의 적용. 여러 값을 **한 번에** 고친다 — 표 파일 하나를 바꾸면 열 이름이
+        전부 어긋나므로, 하나씩 고치면 중간 상태가 거부된다.
+
+        `schema` 가 있으면 정답 항목 표를 이 프로젝트 전용 파일로 먼저 쓴다. 컴파일이 그 파일을 읽기
+        때문이다. 거부되면 파일을 원래대로 되돌린다.
+        """
+        if getattr(self, "line_data", None) is None:
+            return self._line_refuse("5노드(Line) 파일이 아니다")
+        d = os.path.dirname(self.path)
+        wrote = None
+        path = f.get("schema_path", "")
+        try:
+            if schema is not None:
+                built = answer_table.build(
+                    schema["rows"], schema_id=schema.get("id") or str(self.line_data.get("id") or "answer"),
+                    render=schema.get("render", "tagged"), max_tokens=schema.get("max_tokens", 320),
+                    step_order=schema.get("step_order", "strict"), vocabulary=schema.get("vocabulary", "closed"))
+                path = LD.owned_schema_path(path, str(self.line_data.get("id") or ""))
+                full = LD.resolve(d, path)
+                before = None
+                if os.path.exists(full):
+                    with open(full, "rb") as fh:
+                        before = fh.read()
+                os.makedirs(os.path.dirname(full) or ".", exist_ok=True)
+                with open(full, "w", encoding="utf-8") as fh:
+                    fh.write(answer_table.dump(built))
+                wrote = (full, before)
+        except Exception as exc:
+            return self._line_refuse(_short(_msg(exc)), _msg(exc))
+
+        def mut(data: Dict[str, Any]) -> None:
+            ss = data.setdefault("sample_space", {})
+            ss["index"], ss["key"], ss["splits"] = f["index"], f["key"], f["splits"]
+            img, qst, ans = (LD.station(data, n) for n in ("image", "question", "answer"))
+            missing = [n for n, s in (("이미지", img), ("질문 형태", qst), ("정답 형태", ans)) if s is None]
+            if missing:
+                raise ValueError(f"이 Line 에 {', '.join(missing)} 스테이션이 없어 열을 지정할 수 없다")
+            for st in (img, qst, ans):
+                st.setdefault("params", {})
+            if f.get("question_column"):
+                qst["params"]["template"] = "{" + f["question_column"] + "}"
+            fields = [x for _, x, _, _ in string.Formatter().parse(str(qst["params"].get("template", ""))) if x]
+            cols: List[str] = []
+            for c in [*fields, *f["answers"].values()]:
+                if c and c not in cols:
+                    cols.append(c)
+            img["params"]["image_column"] = f["image_column"]
+            img["params"]["columns"] = cols
+            ans["params"]["mapping"] = dict(f["answers"])
+            if path:
+                ans["params"]["schema_path"] = path
+
+        res = self._line_try(mut)
+        if not res.get("ok") and wrote is not None:
+            full, before = wrote
+            if before is None:
+                os.remove(full)
+            else:
+                with open(full, "wb") as fh:
+                    fh.write(before)
+        return res
 
     # ── 저장·내보내기 ───────────────────────────────────────────────────
     def line_save(self) -> Dict[str, Any]:
