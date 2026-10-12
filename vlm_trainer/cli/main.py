@@ -37,7 +37,7 @@ from ..train import contract as contract_mod
 # 명령 본문은 주제별 모듈에 있다. 파서는 그것을 가리키기만 한다.
 from .cmd_graph import cmd_backbones, cmd_compile, cmd_expand, cmd_decompile, cmd_infer_graph, cmd_nodes, cmd_show, cmd_view
 from .cmd_execute import cmd_budget, cmd_dryrun, cmd_export, cmd_materialize, cmd_pipeline, cmd_preview, cmd_run, cmd_sweep, cmd_train
-from .cmd_project import cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
+from .cmd_project import cmd_schema_build, cmd_table_template, cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -139,6 +139,24 @@ def build_parser() -> argparse.ArgumentParser:
                     help="실행 프로파일 (windows_single_gpu | linux_multi_gpu)")
     nw.add_argument("--edit", action="store_true", help="만든 뒤 편집기를 연다")
     nw.set_defaults(func=cmd_new)
+
+    tt = sub.add_parser("table-template", help="사용자가 채울 빈 표(CSV)의 첫 줄을 만든다")
+    tt.add_argument("--out", required=True)
+    tt.add_argument("--key", default="sample_id", help="건 구분 열")
+    tt.add_argument("--image", default="image_path", help="사진 열")
+    tt.add_argument("--question", default="question", help="질문 열")
+    tt.add_argument("--answers", required=True, help="정답 열들, 쉼표로 구분 (예: part_type,orientation)")
+    tt.add_argument("--split", default="", help="학습/검증 구분 열 (구분 열 사용 모드일 때)")
+    tt.add_argument("--group", default="", help="그룹 열 (그룹 기준 자동 나누기일 때)")
+    tt.set_defaults(func=cmd_table_template)
+
+    sb = sub.add_parser("schema-build", help="정답 형태 표(CSV)에서 스키마 파일을 만든다")
+    sb.add_argument("rows", help="첫 줄이 항목,이름,종류,허용값 인 CSV")
+    sb.add_argument("--id", required=True, help="정답 형태 이름")
+    sb.add_argument("--render", default="tagged", choices=("tagged", "json"))
+    sb.add_argument("--max-tokens", type=int, default=320)
+    sb.add_argument("--out", default="")
+    sb.set_defaults(func=cmd_schema_build)
 
     nn = sub.add_parser(
         "new-node", help="새 노드의 뼈대와 그 테스트 파일을 만든다 (Custom Node)")

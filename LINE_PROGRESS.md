@@ -11,7 +11,7 @@
 
 ## 현재 위치
 
-> **단계 2 진행 중** (2026-10-12 시작). 다음 할 일: §3 단계 2의 첫 `[ ]`.
+> **단계 2 구현 끝, 보고·승인 대기.** 승인되면 단계 3a 시작.
 
 ---
 
@@ -85,11 +85,12 @@ O/X 보조 표시와 사람 OK/NG 판정 / 용어집 / 오류 메시지 형식
 ### 단계 2 — 입력과 정답 형태
 확인 기준: CLI로 같은 입력이 같은 결과. ③에서 정답 노출 NG가 계속 배출된다.
 - [x] CSV 읽기(`samples.read_table`, BOM·따옴표·문자열 그대로) + 열 지정 검사(`spec/table_check.py`, Line 펼칠 때)
-- [ ] 표 양식 생성(CLI `table-template`)
+- [x] 표 양식 생성(CLI `table-template`, 화면 버튼은 3b에서 같은 `spec/table.py`를 부른다)
 - [x] 분할: 자동(행 단위 / 그룹 열) / 구분 열 사용. `splits.strategy`를 Line이 명시해야 함. column 모드 빈 칸·group 열 없음·빈 쪽 거부
-- [ ] 정답 형태 표 편집 데이터 → `AnswerSchema` 생성 (CLI로도 같은 결과) + 숫자 종류 검증
+- [x] 정답 형태 표 데이터 → `AnswerSchema` 생성(`answer/table.py`, CLI `schema-build`) + 숫자 항목 검증(`number:<id>`)
 - [x] 노출 검사·형식 검사가 ③에서 항상 도는지 테스트 (`tests/test_line_table.py`)
-- [ ] 테스트, STATUS.md 갱신, 보고
+- [x] 테스트 (517 passed, 1 skipped)
+- [ ] STATUS.md 갱신, 보고, 사용자 승인
 
 ### 단계 3a — 읽기 전용 5노드 화면
 확인 기준: `Line`을 열어 5노드가 보이고 실행 상태와 NG 카운터·목록이 표시된다.
@@ -117,6 +118,7 @@ O/X 보조 표시와 사람 OK/NG 판정 / 용어집 / 오류 메시지 형식
 
 형식: `날짜 · 단계 · 시작|끝|멈춤 · 한 일 / 막힌 것 / 사용자에게 물은 것`
 
+- 2026-10-12 · 단계 2 · 끝 · 표 양식·정답 형태 표→스키마·숫자 검증 추가(CLI 2개, 명령 25개). 517 passed. 승인 대기
 - 2026-10-12 · 단계 2 · 진행 · 완료: CSV 읽기, 표 검사, 분할 검증, ③ 검사 테스트(16개). 남음: 표 양식 CLI, 정답 형태 표→스키마. 발견: 스키마 같은 자산 경로는 스펙 폴더 기준, 사진은 표 폴더 기준(STATUS 함정 줄 고침). 기존 engine/samples.py 변경: column 빈 칸 거부·group_by 열 없으면 거부(기존 테스트 전부 통과)
 - 2026-10-12 · 단계 2 · 시작 · 승인 받음. 코드 읽기부터(`engine/samples.py`, `nodes/source.py`, `nodes/dataset.py`, `answer/schema.py`)
 - 2026-10-12 · 단계 1 · 후속 · Q22 (a) 노출 검사 `quarantine`→`fail` 수정(스펙 4곳+노드 검증+테스트 3개), Q23 (a) 시드 미룸. 490 passed

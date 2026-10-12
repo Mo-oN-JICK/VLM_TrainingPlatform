@@ -154,6 +154,8 @@ class AnswerSchema:
             val = values[s.id]
             if s.type == "enum" and s.values and val not in s.values:
                 v.append(f"enum_domain:{s.id}")
+            if s.type in ("int", "float") and (isinstance(val, bool) or not isinstance(val, (int, float))):
+                v.append(f"number:{s.id}")  # 숫자 항목에 글자가 들어간 답
             if s.type == "object":
                 if not isinstance(val, dict):
                     v.append(f"object_shape:{s.id}")

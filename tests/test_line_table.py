@@ -243,3 +243,119 @@ def test_an_answer_outside_the_allowed_values_is_ejected_by_the_format_check(tre
 def test_clean_rows_all_pass(tree):
     rep = _run(tree)
     assert not rep.quarantine and rep.processed == len(ROWS)
+
+
+# ── 표 양식과 정답 형태 표 ──────────────────────────────────────────────
+def _rows():
+    return [
+        {"항목": "part_type", "이름": "부품", "종류": "목록", "허용값": "기어|나사|너트"},
+        {"항목": "orientation", "이름": "화면", "종류": "목록", "허용값": "가로|세로"},
+        {"항목": "count", "이름": "개수", "종류": "숫자", "허용값": ""},
+        {"항목": "memo", "이름": "메모", "종류": "문장", "허용값": ""},
+    ]
+
+
+def test_the_answer_table_builds_the_same_shape_as_a_hand_written_schema(tmp_path):
+    from vlm_trainer.answer import table
+    from vlm_trainer.answer.schema import AnswerSchema
+
+    d = table.build(_rows(), schema_id="t1")
+    p = tmp_path / "s.yaml"
+    p.write_text(table.dump(d), encoding="utf-8")
+    sc = AnswerSchema.load(str(p))
+    assert [(s.id, s.type, s.values) for s in sc.steps] == [
+        ("part_type", "enum", ("기어", "나사", "너트")), ("orientation", "enum", ("가로", "세로")),
+        ("count", "float", ()), ("memo", "text", ())]
+    ok = sc.render_answer({"part_type": "기어", "orientation": "가로", "count": 3, "memo": "양호"}, {})
+    assert sc.validate(ok) == []
+    assert sc.vocabulary_terms() == ["기어", "나사", "너트", "가로", "세로"]
+
+
+def test_a_number_item_rejects_a_word_and_a_list_item_rejects_an_unlisted_value(tmp_path):
+    from vlm_trainer.answer import table
+    from vlm_trainer.answer.schema import AnswerSchema
+
+    p = tmp_path / "s.yaml"
+    p.write_text(table.dump(table.build(_rows(), schema_id="t1")), encoding="utf-8")
+    sc = AnswerSchema.load(str(p))
+    bad = sc.render_answer({"part_type": "톱니", "orientation": "가로", "count": "많음", "memo": ""}, {})
+    got = sc.validate(bad)
+    assert "enum_domain:part_type" in got and "number:count" in got
+
+
+@pytest.mark.parametrize("edit,match", [
+    (lambda r: r[0].update({"허용값": ""}), "허용값이 없다"),
+    (lambda r: r[0].update({"허용값": "기어|기어"}), "겹친다"),
+    (lambda r: r[2].update({"허용값": "1|2"}), "허용값"),
+    (lambda r: r[1].update({"항목": "part_type"}), "앞에서도"),
+    (lambda r: r[1].update({"항목": "1번 항목"}), "태그 이름"),
+    (lambda r: r[1].update({"종류": "정수"}), "없는 값"),
+])
+def test_a_bad_answer_row_names_the_row_and_the_fix(edit, match):
+    from vlm_trainer.answer import table
+
+    rows = _rows()
+    edit(rows)
+    with pytest.raises(SpecError, match=match) as e:
+        table.build(rows, schema_id="t1")
+    assert "번째 행" in str(e.value) and "안 잡혔다면" in str(e.value)
+
+
+def test_an_empty_answer_table_is_refused():
+    from vlm_trainer.answer import table
+
+    with pytest.raises(SpecError, match="하나도 없다"):
+        table.build([], schema_id="t1")
+
+
+def test_the_cli_builds_a_schema_from_a_csv_and_a_blank_table_template(tmp_path):
+    import subprocess
+    import sys
+
+    env = dict(os.environ, PYTHONPATH=ROOT, PYTHONIOENCODING="utf-8")
+    csv_in = tmp_path / "rows.csv"
+    csv_in.write_bytes("﻿항목,이름,종류,허용값\r\npart_type,부품,목록,기어|나사\r\n".encode("utf-8"))
+    out = tmp_path / "s.yaml"
+    r = subprocess.run([sys.executable, "-m", "vlm_trainer.cli.main", "schema-build", str(csv_in),
+                        "--id", "x", "--out", str(out)], env=env, capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    assert yaml.safe_load(out.read_text(encoding="utf-8"))["steps"][0]["values"] == ["기어", "나사"]
+
+    t = tmp_path / "t.csv"
+    r = subprocess.run([sys.executable, "-m", "vlm_trainer.cli.main", "table-template", "--out", str(t),
+                        "--answers", "part_type,orientation", "--group", "lot"],
+                       env=env, capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    raw = t.read_bytes()
+    assert raw.startswith("﻿".encode("utf-8")) and raw.endswith(b"\r\n")
+    assert raw.decode("utf-8-sig").strip() == "sample_id,image_path,question,part_type,orientation,lot"
+    # 양식은 표로 읽힌다(빈 표) — 열 이름이 그대로 들어온다
+    assert samples_mod.read_table(str(t)) == []
+
+
+def test_a_template_with_a_repeated_column_is_refused():
+    from vlm_trainer.spec import table
+
+    with pytest.raises(SpecError, match="열 이름"):
+        table.header(key="id", image="id", question="q", answers=["a"])
+
+
+def test_the_same_table_as_csv_and_as_jsonl_gives_the_same_rows_and_splits(tmp_path):
+    """실제 예제 표(JSONL)를 CSV 로 옮겨도 행과 학습/검증 배정이 같다 — 형식만 바뀐다."""
+    import csv
+    import json
+
+    src = os.path.join(SOL, "vlm_open", "data", "open_parts", "index.jsonl")
+    if not os.path.exists(src):
+        pytest.skip("vlm_open 데이터가 없다")
+    rows = [json.loads(x) for x in open(src, encoding="utf-8") if x.strip()]
+    out = tmp_path / "index.csv"
+    with open(out, "w", encoding="utf-8-sig", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    spec = {"index": str(out), "key": "sample_id", "filter": "",
+            "splits": {"strategy": "column", "column": "split_hint"}}
+    a = samples_mod.load(spec, str(tmp_path)).rows
+    b = samples_mod.load(dict(spec, index=src), str(tmp_path)).rows
+    assert a == b and {r["_split"] for r in a} == {"train", "val"}

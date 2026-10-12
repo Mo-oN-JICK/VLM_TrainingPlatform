@@ -57,6 +57,35 @@ def cmd_edit(a: argparse.Namespace) -> int:
     return app_mod.launch(a.spec, extra_modules=tuple(a.nodes))
 
 
+def cmd_table_template(a: argparse.Namespace) -> int:
+    """사용자가 채울 빈 표(CSV)의 첫 줄을 만든다."""
+    from ..spec import table
+
+    cols = table.header(key=a.key, image=a.image, question=a.question,
+                        answers=[c.strip() for c in a.answers.split(",") if c.strip()],
+                        split=a.split, group=a.group)
+    with open(a.out, "wb") as fh:
+        fh.write(table.template_csv(cols))
+    print(f"표 양식 -> {a.out}")
+    print(f"  열: {', '.join(cols)}")
+    return 0
+
+
+def cmd_schema_build(a: argparse.Namespace) -> int:
+    """정답 형태 표(CSV: 항목,이름,종류,허용값)에서 스키마 파일을 만든다."""
+    from ..answer import table
+
+    schema = table.build(table.read_rows(a.rows), schema_id=a.id, render=a.render, max_tokens=a.max_tokens)
+    text = table.dump(schema)
+    if a.out:
+        with open(a.out, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        print(f"정답 형태 -> {a.out} (항목 {len(schema['steps'])}개)")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
 def cmd_new_node(a: argparse.Namespace) -> int:
     """노드 하나의 뼈대. 빈 파일부터 시작하면 대부분 한두 가지를 빠뜨린다."""
     from ..spec import node_scaffold as ns
