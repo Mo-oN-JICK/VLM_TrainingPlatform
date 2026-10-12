@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.errors import SpecError
 from .loader import _read_yaml
@@ -55,7 +55,8 @@ def _set_param(inst: Dict[str, Dict[str, Any]], st: str, exposed: Dict[str, Any]
     inst[str(tgt["node"])].setdefault("params", {})[str(tgt["param"])] = value
 
 
-def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line", *, check: bool = True) -> Dict[str, Any]:
+def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line", *, check: bool = True,
+                info: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Line 매핑 -> Project 매핑. 읽는 파일은 Station 정의와, `check` 일 때 표(첫 줄과 split)다."""
     if data.get("kind") != "Line":
         raise SpecError(f"{where}: kind는 Line이어야 한다 (현재 {data.get('kind')!r})")
@@ -108,6 +109,19 @@ def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line", *, c
         for cell, port in (st.get("writes") or {}).items():
             writer[str(cell)] = (sid, str(port))
 
+        if info is not None:
+            shown = {}
+            for name, tgt in (st.get("exposed_params") or {}).items():
+                shown[str(name)] = {
+                    "label": str(tgt.get("label") or name),
+                    "value": inst[str(tgt["node"])].get("params", {}).get(str(tgt["param"]), None),
+                }
+            info.append({
+                "id": sid, "number": si + 1, "ref": str(sref["ref"]), "name": str(st.get("name")),
+                "label": label, "hint": str(st.get("hint") or ""), "members": list(inst),
+                "settings": shown,
+            })
+
         nodes += sn
         procs += sp
         edges += [{"from": str(e["from"]), "to": str(e["to"])} for e in st.get("edges") or []]
@@ -146,3 +160,15 @@ def is_line(path: str) -> bool:
 def expand_file(path: str) -> Dict[str, Any]:
     path = os.path.abspath(path)
     return expand_data(_read_yaml(path), os.path.dirname(path), os.path.basename(path))
+
+
+def describe_file(path: str) -> Dict[str, Any]:
+    """화면이 그리는 Line 의 요약: 스테이션 목록(안쪽 id, 설정)과 표 설정. 표는 읽지 않는다."""
+    path = os.path.abspath(path)
+    data = _read_yaml(path)
+    stations: List[Dict[str, Any]] = []
+    expand_data(data, os.path.dirname(path), os.path.basename(path), check=False, info=stations)
+    ss = data.get("sample_space") or {}
+    return {"id": str(data.get("id", "")), "name": str(data.get("name", "")), "stations": stations,
+            "table": {"index": str(ss.get("index", "")), "key": str(ss.get("key", "")),
+                      "splits": dict(ss.get("splits") or {})}}

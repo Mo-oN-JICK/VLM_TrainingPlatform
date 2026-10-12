@@ -145,6 +145,9 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin):
     finished_at: float = 0.0   # 끝난 시각. 끝난 뒤에도 얼마 걸렸는지는 남아야 한다
     expanded: set = field(default_factory=set)  # 펼쳐 둔 Procedure. 화면 상태일 뿐이다
     layout: Dict[str, Any] = field(default_factory=dict)  # 상자 id -> (x, y)
+    # 5노드(Line) 파일을 여는 화면용. 원본은 Line 이고 여기 있는 그래프는 펼친 파생물이라,
+    # 고쳐 저장하면 원본이 Project 로 덮인다 — 그래서 편집·저장을 전부 거부한다.
+    readonly: bool = False
 
     @staticmethod
     def open(path: str) -> "Editor":
@@ -164,6 +167,18 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin):
         if not (e.history and e.compiled is not None
                 and e.history[-1].spec_hash == e.compiled.spec_hash):
             e._record("열기")
+        return e
+
+    @staticmethod
+    def open_line(path: str) -> "Editor":
+        """5노드(Line) 파일을 읽기 전용으로 연다. 실행은 `vlmt pipeline <line.yaml>` 그대로다.
+
+        이력(`edit_history.jsonl`)과 배치(`layout.yaml`)도 만들지 않는다 — 열기만 했는데
+        폴더에 파일이 생기면 읽기 전용이 아니다.
+        """
+        e = Editor(path=os.path.abspath(path), readonly=True)
+        e.graph = load_project(e.path)
+        e._recompile()
         return e
 
     # ── 내부 ────────────────────────────────────────────────────────────
@@ -209,6 +224,9 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin):
         `check`는 컴파일 뒤·기록 전에 도는 추가 검사다. 이 자리여야 하는 이유가 있다 —
         기록한 뒤에 되돌리면 저널에는 이미 줄이 들어간 뒤라 거부된 편집이 History에 남는다.
         """
+        if self.readonly:
+            return {"ok": False, "reason": "5노드(Line) 화면은 읽기 전용이다",
+                    "detail": "설정 편집은 아직 없다. Line 파일을 직접 고치거나 `vlmt expand` 로 11노드로 펼쳐 편집한다."}
         before_nodes = [NodeInstance(n.id, n.type, dict(n.params)) for n in self.graph.nodes]
         before_edges = list(self.graph.edges)
         # Procedure 인스턴스도 되돌린다. 빠져 있으면 거부된 노출 파라미터 편집이

@@ -12,11 +12,11 @@ writes:
   meta: "n_cols:meta"
 
 exposed_params:
-  image_column: {node: n_img, param: column}
-  columns: {node: n_cols, param: columns}
-  size: {node: p_prep, param: size}
-  keep_aspect: {node: p_prep, param: keep_aspect}
-  mode: {node: p_prep, param: mode}
+  image_column: {node: n_img, param: column, label: "사진 열"}
+  columns: {node: n_cols, param: columns, label: "표에서 읽을 열"}
+  size: {node: p_prep, param: size, label: "사진 크기"}
+  keep_aspect: {node: p_prep, param: keep_aspect, label: "가로세로 비 유지"}
+  mode: {node: p_prep, param: mode, label: "크기 맞추는 방식"}
 
 nodes:
   - {id: n_img, type: "source.image@1.0.0", params: {column: image_path}}

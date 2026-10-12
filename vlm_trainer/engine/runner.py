@@ -134,7 +134,7 @@ def snapshot(rep: RunReport, *, run_id: str, total: int, phase: str) -> Dict[str
         "aborted": rep.aborted,
         "quarantine": [
             {"sample_key": q.sample_key, "node_id": q.node_id, "cause": q.cause, "hint": q.hint}
-            for q in rep.quarantine[:20]
+            for q in rep.quarantine[:200]
         ],
         "quarantine_total": len(rep.quarantine),
         # 미리보기는 토글이 켜졌을 때만 존재한다. 긴 텍스트는 잘라서 싣는다 —

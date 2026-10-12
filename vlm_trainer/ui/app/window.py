@@ -537,6 +537,12 @@ def launch(project_path: str, extra_modules: tuple = ()) -> int:
     """창을 띄운다. `vlmt app`이 부르는 자리다."""
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     app.setApplicationName("VLM Trainer")
+    from ...spec.line import is_line
+
+    if is_line(project_path):  # 5노드는 전용 화면이 연다
+        from .line_window import launch_line
+
+        return launch_line(project_path, extra_modules)
     editor = Editor.open(project_path)
     editor.extra_modules = tuple(extra_modules)
     win = EditorWindow(editor)

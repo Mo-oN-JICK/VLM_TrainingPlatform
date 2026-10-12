@@ -17,8 +17,8 @@ writes:
 boundary: [n_sample]
 
 exposed_params:
-  config_path: {node: n_train, param: config_path}
-  out_dir: {node: n_train, param: out_dir}
+  config_path: {node: n_train, param: config_path, label: "학습 설정 파일"}
+  out_dir: {node: n_train, param: out_dir, label: "학습 결과 폴더"}
 
 nodes:
   - {id: n_sample, type: "sample.assemble@1.0.0", params: {require_validated: true}}
