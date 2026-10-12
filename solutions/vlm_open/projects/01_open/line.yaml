@@ -31,7 +31,7 @@ stations:
       mapping: {part_type: "part_type", orientation: "orientation"}
       render: tagged
       guard_mode: exact
-      on_leak: quarantine
+      on_leak: fail
   - id: s4
     ref: "train@1.0.0"
     params: {config_path: "trainer.yaml", out_dir: "runs/{run_id}/train"}

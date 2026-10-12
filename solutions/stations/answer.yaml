@@ -23,7 +23,7 @@ exposed_params:
 
 nodes:
   - {id: n_schema, type: "schema.define@1.0.0", params: {path: ""}}
-  - {id: n_guard, type: "answer.leakage_guard@1.0.0", params: {mode: exact, on_leak: quarantine}}
+  - {id: n_guard, type: "answer.leakage_guard@1.0.0", params: {mode: exact, on_leak: fail}}
 
 procedures:
   - {id: p_answer, ref: "answer_build@1.0.0", params: {mapping: {}, render: tagged}}

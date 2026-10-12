@@ -115,3 +115,48 @@ def test_both_forms_bake_the_same_data_and_ask_the_same_questions(tmp_path):
     with open(rec, encoding="utf-8") as fh:
         assert compile_project(NEW).spec_hash in fh.readline()
     assert not os.path.exists(os.path.join(old, "expanded_project.yaml"))
+
+
+# ── 정답 노출 검사는 모르는 값으로 꺼지지 않는다 ───────────────────────────────
+class _Vocab:
+    def vocabulary_terms(self):
+        return ["기어"]
+
+
+def _guard(on_leak, mode="exact"):
+    from types import SimpleNamespace
+
+    from vlm_trainer.nodes.answer import GuardParams, LeakageGuard
+
+    return LeakageGuard().run(
+        SimpleNamespace(node_id="n_guard", sample_key="k"),
+        GuardParams(mode=mode, on_leak=on_leak),
+        prompt="이 기어 사진을 보고 판정하시오", answer="x", schema=_Vocab())
+
+
+def test_an_unknown_on_leak_value_is_refused_not_silently_passed():
+    """`quarantine` 이 이 검사를 통째로 끈 채 통과했었다."""
+    from vlm_trainer.core.node import NodeError
+
+    with pytest.raises(NodeError, match="없는 값"):
+        _guard("quarantine")
+    with pytest.raises(NodeError, match="없는 값"):
+        _guard("fail", mode="regex")
+
+
+def test_a_leaking_prompt_is_stopped_with_fail_and_masked_with_mask():
+    from vlm_trainer.core.node import NodeError
+
+    with pytest.raises(NodeError, match="기어"):
+        _guard("fail")
+    assert "[MASKED]" in _guard("mask")["prompt"]
+
+
+def test_no_shipped_spec_uses_a_value_the_guard_does_not_know():
+    for rel in (("vlm_open", "projects", "01_open", "project.yaml"),
+                ("vlm_open", "projects", "01_open", "line.yaml"),
+                ("vlm_parts", "projects", "01_parts", "project.yaml")):
+        with open(os.path.join(ROOT, "solutions", *rel), encoding="utf-8") as fh:
+            assert "on_leak: quarantine" not in fh.read(), rel
+    with open(os.path.join(ROOT, "solutions", "stations", "answer.yaml"), encoding="utf-8") as fh:
+        assert "on_leak: quarantine" not in fh.read()

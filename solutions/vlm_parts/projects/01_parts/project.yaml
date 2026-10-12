@@ -21,7 +21,7 @@ nodes:
   - {id: n_schema, type: "schema.define@1.0.0", params: {path: "../../schemas/answer.yaml"}}
 
   # ── 조립과 종결 ────────────────────────────────────────────────────
-  - {id: n_guard, type: "answer.leakage_guard@1.0.0", params: {mode: exact, on_leak: quarantine}}
+  - {id: n_guard, type: "answer.leakage_guard@1.0.0", params: {mode: exact, on_leak: fail}}
   - {id: n_sample, type: "sample.assemble@1.0.0", params: {require_validated: true}}
   - {id: n_train, type: "train.vlm_trainer@0.1.0",
      params: {config_path: "trainer.yaml", out_dir: "runs/{run_id}/train"}}

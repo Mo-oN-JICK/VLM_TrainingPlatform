@@ -214,6 +214,15 @@ class GuardParams:
 )
 class LeakageGuard(Node):
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
+        # 모르는 값은 "검사했는데 아무것도 안 한다"가 된다 — 예전에 `quarantine` 이 그렇게
+        # 정답 낱말이 든 질문을 조용히 통과시켰다. 이진으로 막는다.
+        if params.on_leak not in ("fail", "mask"):
+            raise NodeError(ctx.node_id, f"on_leak {params.on_leak!r}는 없는 값이다 (fail | mask)",
+                            sample_key=ctx.sample_key,
+                            hint="fail 이면 정답이 섞인 샘플을 격리하고, mask 면 그 낱말을 가려 통과시킨다")
+        if params.mode not in ("exact", "normalized"):
+            raise NodeError(ctx.node_id, f"mode {params.mode!r}는 없는 값이다 (exact | normalized)",
+                            sample_key=ctx.sample_key, hint="exact 또는 normalized 로 적는다")
         prompt = str(inputs["prompt"])
         schema: Optional[AnswerSchema] = inputs.get("schema")
         terms = list(params.extra_terms or ())
