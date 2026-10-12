@@ -11,7 +11,7 @@
 
 ## 현재 위치
 
-> **단계 1 진행 전.** 다음 할 일: §3 단계 1의 첫 체크박스.
+> **단계 1 구현 끝, 사용자 보고·승인 대기.** 승인되면 단계 2 시작. 아래 §6의 열린 문제 2건도 사용자에게 물어야 함.
 
 ---
 
@@ -50,6 +50,7 @@
 | Q15 | 오류 | 한 줄 요약(어느 노드 ①~⑤인지 항상 포함, 평어체 "~합니다/~하세요") + 접힌 상세에 `CLAUDE.md`의 네 가지(불일치 필드 / 안 잡혔다면 언제 어디서 / 추정 낭비 / 해결 배선) |
 | Q17 | 화면 | 파일 종류로 갈린다. `Line` 파일을 열면 5노드 화면, `project.yaml`을 열면 기존 화면. 기존 `01_open` 예제는 **동등성 기준으로 그대로 둔다** |
 | Q18 | CLI | `pipeline line.yaml`이 내부에서 자동으로 펼쳐 돌린다. 실행 기록 폴더에 펼친 스펙과 해시를 남긴다. `expand` 명령도 따로 |
+| Q21 | 팔레트 구현 | **5노드 층의 약속으로만 둔다(런타임 포트 타입 아님).** 스테이션이 `reads`/`writes`로 칸을 선언하고, 펼칠 때 칸이 비었는지 검사한 뒤 안쪽 포트끼리 직접 배선한다. 펼친 그래프에 새 노드가 안 끼므로 `spec_hash`가 `01_open`과 같아야 한다. **Q11 수정**: 커스텀 노드는 꺼내기/넣기 노드 없이 칸이 가리키는 포트에 직접 꽂는다(필요해지면 사용자에게 물어 (c)로) |
 | Q19 | 범위 | 아래 §2 표 그대로 |
 | Q20 | 순서 | 단계 5개(1 / 2 / 3a / 3b / 4), 각 단계 끝에 멈추고 승인 |
 | 기본값 | — | 사람 판정은 `runs/<id>/infer/` 옆 파일에 기록, 사용자는 화면에서만 다룬다 / 팔레트 칸 이름은 내부 영문 식별자, 화면엔 현장어만 / 센서 칸은 이번에 안 만든다 |
@@ -69,15 +70,16 @@ O/X 보조 표시와 사람 OK/NG 판정 / 용어집 / 오류 메시지 형식
 
 ### 단계 1 — 펼치기 코어
 확인 기준: `01_open`과 동등한 `Line`을 펼친 `spec_hash`가 기존 `project.yaml`과 같고, tiny-vlm으로 돌린 `answers.jsonl`이 같다.
-- [ ] 코드 읽기: 로더(`spec/loader.py`), Procedure 펼치기(`spec/decompile.py`), 컴파일러(`core/compiler.py`), 타입(`core/types.py`)
-- [ ] 팔레트 `PortType` 설계 확정(칸 목록, 비었을 때의 거부 규칙). **새 결정이 필요하면 사용자에게 질문**
-- [ ] `Station` / `Line` 스키마와 로더
-- [ ] `expand` (Line → 기존 Project 스펙) + CLI `expand`
-- [ ] 팔레트 꺼내기 / 넣기 노드
-- [ ] `pipeline`이 `Line` 파일을 받아 자동으로 펼침, 실행 기록에 펼친 스펙·해시 저장
-- [ ] `solutions/vlm_open`에 `01_open`과 동등한 `Line` 작성
-- [ ] 동등성 테스트: `spec_hash` 일치 + `answers.jsonl` 일치(tiny-vlm)
-- [ ] 전체 테스트 통과, STATUS.md 갱신, 사용자에게 보고
+- [x] 코드 읽기: 로더(`spec/loader.py`), Procedure 펼치기(`spec/decompile.py`), 컴파일러(`core/compiler.py`), 타입(`core/types.py`)
+- [x] 팔레트는 Line 층 약속으로 확정(Q21)(칸 목록, 비었을 때의 거부 규칙). **새 결정이 필요하면 사용자에게 질문**
+- [x] `Station` / `Line` 스키마와 로더
+- [x] `expand` (Line → 기존 Project 스펙) + CLI `expand`
+- [x] ~~팔레트 꺼내기 / 넣기 노드~~ — Q21로 불필요(칸에 직접 배선)
+- [x] `pipeline`이 `Line` 파일을 받아 자동으로 펼침, 실행 기록에 펼친 스펙·해시 저장
+- [x] `solutions/vlm_open`에 `01_open`과 동등한 `Line` 작성
+- [x] 동등성 테스트: `spec_hash` 일치 + `answers.jsonl` 일치(tiny-vlm)
+- [x] 전체 테스트 통과 (487 passed, 1 skipped)
+- [ ] STATUS.md 갱신, 사용자에게 보고·승인
 
 ### 단계 2 — 입력과 정답 형태
 확인 기준: CLI로 같은 입력이 같은 결과. ③에서 정답 노출 NG가 계속 배출된다.
@@ -113,6 +115,10 @@ O/X 보조 표시와 사람 OK/NG 판정 / 용어집 / 오류 메시지 형식
 
 형식: `날짜 · 단계 · 시작|끝|멈춤 · 한 일 / 막힌 것 / 사용자에게 물은 것`
 
+- 2026-10-12 · 단계 1 · 끝 · 구현·테스트 끝. `line.py`, `solutions/stations/*.yaml`(5개), `01_open/line.yaml`, `vlmt expand`, 파이프라인이 `runs/<id>/expanded_project.yaml` 기록, Editor가 Line 열기 거부(단계 3a 전까지). `spec_hash` 일치. 열린 문제 2건은 §6
+- 2026-10-12 · 단계 1 · 재개 · Q21 답 (a). 설계: `spec/line.py`(expand), `solutions/stations/*.yaml`, `projects/01_open/line.yaml`(id 01_open, project.yaml 옆). `load_project`가 `kind: Line`이면 펼침
+- 2026-10-12 · 단계 1 · 멈춤 · 로더·graph·canonical·compiler 읽음. **새 결정 필요(Q21)**: 팔레트를 런타임 포트 타입으로 만들면 펼친 그래프에 pack/unpack 노드가 끼어 `spec_hash`가 `01_open`과 달라진다(해시는 인라인된 컴파일 결과 기준, `compiler.py:555`). 팔레트를 Line 층 계약으로 둘지 사용자에게 물음. 답 오기 전 코드 수정 없음
+- 2026-10-12 · 단계 1 · 시작 · 코드 읽기부터(로더, decompile, compiler, types)
 - 2026-10-12 · 준비 · 끝 · 설계 인터뷰(Q1~Q20) 완료, 사용자 승인. 이 파일 작성. 코드는 아직 안 건드림
 
 ## 5. 용어 초안 (Q14, 최종 확정 전)
@@ -129,3 +135,12 @@ O/X 보조 표시와 사람 OK/NG 판정 / 용어집 / 오류 메시지 형식
 | 검증 | 인라인 검증 |
 | 격리 | NG 배출 |
 | LoRA, 프로젝터, 토큰 | 전문가 모드에서만 표시 |
+
+## 6. 열린 문제 (사용자에게 물을 것)
+
+1. **정답 노출 검사가 `01_open`에서 사실상 꺼져 있다.** `answer.leakage_guard`의 `on_leak`은 `fail | mask`만 처리하는데
+   `project.yaml`과 `line.yaml`은 `quarantine`을 쓴다. 실측: `quarantine`이면 정답 낱말이 질문에 있어도
+   `report.ok=False`만 남기고 질문을 그대로 통과시킨다(`fail`은 `NodeError`로 해당 샘플 격리). 고정 결정 4번 위반.
+   고치려면 `fail`로 바꾸고(두 스펙 모두 → `spec_hash`가 바뀜) 모르는 값은 컴파일/실행에서 거부해야 한다. **사용자 승인 전엔 안 고침.**
+2. **학습이 시드를 안 쥔다.** 같은 11노드 스펙을 5번 돌리면 1~2번은 답 문장이 달라진다(cpu에서도). 5노드와 무관한 기존
+   동작. 그래서 동등성 e2e 테스트는 사전 준비 묶음(바이트 동일)과 검증 건·정답만 비교한다. 시드 고정은 엔진 변경이라 별도 결정.

@@ -1,0 +1,23 @@
+kind: Station
+name: verify
+version: "1.0.0"
+label: "검증"
+hint: "학습한 모델로 검증용 사진에만 답하게 하고 정답과 나란히 남깁니다."
+
+reads:
+  model: ["n_infer:model"]
+  prompt: ["n_infer:prompt"]
+  images: ["n_infer:images"]
+  answer: ["n_answers:expected"]
+
+exposed_params:
+  max_new_tokens: {node: n_infer, param: max_new_tokens}
+  only_split: {node: n_infer, param: only_split}
+  out_dir: {node: n_answers, param: out_dir}
+
+nodes:
+  - {id: n_infer, type: "infer.vlm@1.0.0", params: {max_new_tokens: 48, only_split: val}}
+  - {id: n_answers, type: "io.answer_report@1.0.0", params: {out_dir: "runs/{run_id}/infer"}}
+
+edges:
+  - {from: "n_infer:answer", to: "n_answers:answer"}

@@ -1,0 +1,40 @@
+spec_version: 1
+kind: Line
+id: "01_open"
+name: "공개 데이터 부품 분류"
+
+# project.yaml 과 같은 일을 5노드로 적은 것이다. 펼치면 project.yaml 과 같은 그래프가 된다.
+sample_space:
+  index: "../../data/open_parts/index.jsonl"
+  key: sample_id
+  filter: ""
+  splits:
+    strategy: column
+    column: split_hint
+    seed: 20260921
+
+stations:
+  - id: s1
+    ref: "image@1.0.0"
+    params:
+      image_column: image_path
+      columns: [question, part_type, orientation, split_hint]
+      size: [448, 448]
+      keep_aspect: true
+  - id: s2
+    ref: "question@1.0.0"
+    params: {template: "{question}", placeholder: "<image>", policy: prepend}
+  - id: s3
+    ref: "answer@1.0.0"
+    params:
+      schema_path: "../../schemas/answer.yaml"
+      mapping: {part_type: "part_type", orientation: "orientation"}
+      render: tagged
+      guard_mode: exact
+      on_leak: quarantine
+  - id: s4
+    ref: "train@1.0.0"
+    params: {config_path: "trainer.yaml", out_dir: "runs/{run_id}/train"}
+  - id: s5
+    ref: "verify@1.0.0"
+    params: {max_new_tokens: 48, only_split: val, out_dir: "runs/{run_id}/infer"}

@@ -65,7 +65,7 @@ vlm_trainer/
     contract.py        inference_contract.json / inference_graph.yaml 생성(6.5)
 
   cli/
-    main.py            인자 정의와 진입점. 하위 명령 22개
+    main.py            인자 정의와 진입점. 하위 명령 23개
     cmd_graph.py       compile decompile nodes show view infer-graph
     cmd_execute.py     dryrun run materialize train budget preview sweep
                        pipeline export

@@ -148,6 +148,13 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin):
 
     @staticmethod
     def open(path: str) -> "Editor":
+        # 5노드 Line 은 단계 3에서 전용 화면이 생긴다. 지금 이 화면이 열면 펼친 11노드를 보여 주고,
+        # 저장이 Line 파일을 Project 로 덮어쓴다 — 원본이 조용히 바뀌므로 열지 않는다.
+        from ..spec.line import is_line
+
+        if is_line(path):
+            raise ValueError(f"{os.path.basename(path)}는 5노드(Line) 파일이다 — 이 편집기는 아직 열지 못한다. "
+                             "`vlmt expand` 로 11노드로 펼쳐 열 수 있다.")
         e = Editor(path=os.path.abspath(path))
         e.graph = load_project(e.path)
         e.book = recipe_mod.load(e.path)

@@ -1,0 +1,34 @@
+kind: Station
+name: answer
+version: "1.0.0"
+label: "정답 형태"
+hint: "정답을 정해진 형태로 쓰고, 형식과 정답 노출을 검사합니다."
+
+# 정답 노출 검사(n_guard)는 이 스테이션 안에 있고 노출한 설정에 끄는 스위치가 없다.
+# 질문 칸을 읽어 검사한 뒤 같은 칸에 다시 쓴다 — 아래 스테이션은 검사를 통과한 질문만 본다.
+reads:
+  meta: ["p_answer:fields"]
+  prompt: ["n_guard:prompt"]
+writes:
+  prompt: "n_guard:prompt"
+  answer: "p_answer:answer"
+  schema: "n_schema:schema"
+
+exposed_params:
+  schema_path: {node: n_schema, param: path}
+  mapping: {node: p_answer, param: mapping}
+  render: {node: p_answer, param: render}
+  guard_mode: {node: n_guard, param: mode}
+  on_leak: {node: n_guard, param: on_leak}
+
+nodes:
+  - {id: n_schema, type: "schema.define@1.0.0", params: {path: ""}}
+  - {id: n_guard, type: "answer.leakage_guard@1.0.0", params: {mode: exact, on_leak: quarantine}}
+
+procedures:
+  - {id: p_answer, ref: "answer_build@1.0.0", params: {mapping: {}, render: tagged}}
+
+edges:
+  - {from: "n_schema:schema", to: "p_answer:schema"}
+  - {from: "n_schema:schema", to: "n_guard:schema"}
+  - {from: "p_answer:answer", to: "n_guard:answer"}

@@ -131,7 +131,13 @@ def _nodes(raw: Any, where: str) -> List[NodeInstance]:
 
 def load_project(path: str) -> GraphModel:
     path = os.path.abspath(path)
-    g = build_project(_read_yaml(path), os.path.dirname(path), os.path.basename(path))
+    data = _read_yaml(path)
+    if data.get("kind") == "Line":
+        # 5노드 한 줄은 여기서 기존 Project 로 펼친다. 이 뒤로는 11노드와 같은 길이다.
+        from .line import expand_data
+
+        data = expand_data(data, os.path.dirname(path), os.path.basename(path))
+    g = build_project(data, os.path.dirname(path), os.path.basename(path))
     # 스펙이 선언한 노드 모듈을 **여기서** 임포트한다. 이 한 줄이 CLI·편집기·테스트를
     # 같은 길에 올린다 — 부르는 쪽마다 따로 챙기면 챙기지 않은 곳이 생긴다.
     import_node_modules(g)

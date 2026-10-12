@@ -1,0 +1,28 @@
+kind: Station
+name: train
+version: "1.0.0"
+label: "모델 학습"
+hint: "사진, 질문, 정답을 한 건으로 묶어 사전 준비를 하고 모델을 학습합니다."
+
+reads:
+  prompt: ["n_sample:prompt"]
+  answer: ["n_sample:answer"]
+  images: ["n_sample:images"]
+  meta: ["n_sample:meta"]
+  schema: ["n_train:schema"]
+writes:
+  model: "n_train:model"
+
+# 사전 준비 경계는 한 건 묶기 바로 뒤다. 학습은 그 결과만 읽는다.
+boundary: [n_sample]
+
+exposed_params:
+  config_path: {node: n_train, param: config_path}
+  out_dir: {node: n_train, param: out_dir}
+
+nodes:
+  - {id: n_sample, type: "sample.assemble@1.0.0", params: {require_validated: true}}
+  - {id: n_train, type: "train.vlm_trainer@0.1.0", params: {config_path: "trainer.yaml", out_dir: "runs/{run_id}/train"}}
+
+edges:
+  - {from: "n_sample:sample", to: "n_train:sample"}

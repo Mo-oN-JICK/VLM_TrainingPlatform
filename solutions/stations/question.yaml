@@ -1,0 +1,19 @@
+kind: Station
+name: question
+version: "1.0.0"
+label: "질문 형태"
+hint: "표의 질문을 모델에게 건넬 문장으로 만들고 사진 자리를 넣습니다."
+
+reads:
+  images: ["p_prompt:images"]
+  meta: ["p_prompt:context"]
+writes:
+  prompt: "p_prompt:prompt"
+
+exposed_params:
+  template: {node: p_prompt, param: template}
+  placeholder: {node: p_prompt, param: placeholder}
+  policy: {node: p_prompt, param: policy}
+
+procedures:
+  - {id: p_prompt, ref: "prompt_build@1.0.0", params: {template: "{question}", placeholder: "<image>", policy: prepend}}

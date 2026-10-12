@@ -65,6 +65,20 @@ def cmd_decompile(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_expand(a: argparse.Namespace) -> int:
+    """Line(5노드)을 11노드 Project 스펙으로 펼쳐 보여 준다. 실행 때 쓰는 것과 같은 펼침이다."""
+    from ..spec.line import expand_file
+
+    text = dump_yaml(expand_file(a.spec))
+    if a.out:
+        with open(a.out, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        print(f"expand -> {a.out}")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
 def cmd_nodes(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
     cats = registry.categories()

@@ -1,0 +1,29 @@
+kind: Station
+name: image
+version: "1.0.0"
+label: "이미지"
+hint: "사진과 표를 읽고 모델이 받는 크기로 맞춥니다."
+
+# 칸: 이 스테이션이 채우는 것(writes)과 읽는 것(reads). 값은 실행 때 흐르지 않는다 —
+# 펼칠 때 안쪽 포트끼리 곧바로 배선된다.
+reads: {}
+writes:
+  images: "p_prep:images"
+  meta: "n_cols:meta"
+
+exposed_params:
+  image_column: {node: n_img, param: column}
+  columns: {node: n_cols, param: columns}
+  size: {node: p_prep, param: size}
+  keep_aspect: {node: p_prep, param: keep_aspect}
+  mode: {node: p_prep, param: mode}
+
+nodes:
+  - {id: n_img, type: "source.image@1.0.0", params: {column: image_path}}
+  - {id: n_cols, type: "source.metadata@1.0.0", params: {columns: []}}
+
+procedures:
+  - {id: p_prep, ref: "image_prep_resize@1.0.0", params: {size: [448, 448], keep_aspect: true}}
+
+edges:
+  - {from: "n_img:image", to: "p_prep:image"}

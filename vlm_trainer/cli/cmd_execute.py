@@ -280,6 +280,23 @@ def cmd_sweep(a: argparse.Namespace) -> int:
 STAGE_SET_ARGS = frozenset({"split", "run_id", "resume", "skip_budget"})
 
 
+def _record_expanded(spec: str, cg, run_id: str) -> None:
+    """Line 으로 돌렸다면 **실제로 돈 11노드 스펙과 해시**를 실행 기록에 남긴다.
+
+    5노드 파일만 남으면 나중에 펼침 규칙이 바뀌었을 때 그 실행이 무엇이었는지 재현할 수 없다.
+    """
+    from ..spec.decompile import dump_yaml
+    from ..spec.line import expand_file, is_line
+
+    if not is_line(spec):
+        return
+    out = os.path.join("runs", run_id)
+    os.makedirs(out, exist_ok=True)
+    head = f"# {os.path.basename(spec)} 를 펼친 것 · spec_hash {cg.spec_hash}\n"
+    with open(os.path.join(out, "expanded_project.yaml"), "w", encoding="utf-8") as fh:
+        fh.write(head + dump_yaml(expand_file(spec)))
+
+
 def cmd_pipeline(a: argparse.Namespace) -> int:
     """준비 → 굽기 → 학습 → 추론을 한 번에.
 
@@ -296,6 +313,7 @@ def cmd_pipeline(a: argparse.Namespace) -> int:
     cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     run_id = _run_id(a)
     snap = pipe.snapshot_path(run_id)
+    _record_expanded(a.spec, cg, run_id)
 
     # 굽다 만 것부터 판단한다. 멈출 자리라면 아무것도 계산하지 않고 멈춘다.
     left = pipe.leftover(run_id)

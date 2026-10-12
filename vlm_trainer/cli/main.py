@@ -35,7 +35,7 @@ from ..train import contract as contract_mod
 # 여러 명령이 함께 쓰는 헬퍼. main 에 두면 명령 모듈이 main 을 되불러 순환이 된다.
 
 # 명령 본문은 주제별 모듈에 있다. 파서는 그것을 가리키기만 한다.
-from .cmd_graph import cmd_backbones, cmd_compile, cmd_decompile, cmd_infer_graph, cmd_nodes, cmd_show, cmd_view
+from .cmd_graph import cmd_backbones, cmd_compile, cmd_expand, cmd_decompile, cmd_infer_graph, cmd_nodes, cmd_show, cmd_view
 from .cmd_execute import cmd_budget, cmd_dryrun, cmd_export, cmd_materialize, cmd_pipeline, cmd_preview, cmd_run, cmd_sweep, cmd_train
 from .cmd_project import cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
 
@@ -57,6 +57,11 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--flatten", action="store_true", help="Procedure를 펼친 채로 출력")
     d.add_argument("--out")
     d.set_defaults(func=cmd_decompile)
+
+    ex0 = sub.add_parser("expand", help="Line(5노드) 파일을 11노드 Project 스펙으로 펼친다")
+    ex0.add_argument("spec")
+    ex0.add_argument("--out")
+    ex0.set_defaults(func=cmd_expand)
 
     n = sub.add_parser("nodes", help="노드 라이브러리를 카테고리별로 나열한다")
     n.set_defaults(func=cmd_nodes)
