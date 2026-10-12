@@ -69,7 +69,7 @@ class CardWidget(QtWidgets.QFrame):
         self.set_selected(False)
 
     def update_card(self, c: M.Card) -> None:
-        self.title.setText(f"{c.number}  {c.label}")
+        self.title.setText(f"{M.mark(c.number)}  {c.label}")
         color = LAMP_COLOR[c.lamp]
         # 색만으로 구분하지 않는다 — 램프 옆에 글자가 있다.
         self.lamp.setText(f'<span style="color:{color}">●</span> {c.lamp_text}')
@@ -162,6 +162,11 @@ class InnerView(QtWidgets.QDialog):
             if card is not None:
                 card.setSelected(True)
         QtCore.QTimer.singleShot(0, self.canvas.fit)
+
+
+def _short_line(text: str) -> str:
+    lines = [x.strip() for x in str(text).splitlines() if x.strip()]
+    return lines[0] if lines else ""
 
 
 class LineWindow(QtWidgets.QMainWindow):
@@ -273,10 +278,21 @@ class LineWindow(QtWidgets.QMainWindow):
         self.tbl_ng.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.tbl_ng.itemSelectionChanged.connect(self._show_detail)
         bl.addWidget(self.tbl_ng, 1)
+        # 오류는 한 줄 요약(몇 번 스테이션인지 포함)이 먼저 보이고, 네 가지 상세는 접혀 있다.
+        self.lbl_sum = QtWidgets.QLabel("")
+        self.lbl_sum.setWordWrap(True)
+        self.lbl_sum.setStyleSheet(f"color:{T.STATE['failed']};")
+        bl.addWidget(self.lbl_sum)
+        self.btn_more = QtWidgets.QToolButton()
+        self.btn_more.setText("상세 보기")
+        self.btn_more.setCheckable(True)
+        self.btn_more.setVisible(False)
+        self.btn_more.toggled.connect(lambda on: (self.detail.setVisible(on), self.btn_more.setText("상세 접기" if on else "상세 보기")))
+        bl.addWidget(self.btn_more)
         self.detail = QtWidgets.QPlainTextEdit()
         self.detail.setReadOnly(True)
         self.detail.setMaximumHeight(150)
-        self.detail.setPlaceholderText("NG 건을 누르면 원인과 고치는 방법이 보입니다.")
+        self.detail.setVisible(False)
         bl.addWidget(self.detail)
         self.lbl_fix = QtWidgets.QLabel("고치려면 표(CSV)를 고치고 `다시 읽기` 를 누르세요.")
         self.lbl_fix.setStyleSheet(MUTED)
@@ -305,7 +321,7 @@ class LineWindow(QtWidgets.QMainWindow):
             self.desc = self.editor.line_describe()
         except Exception as exc:  # 스펙이 어긋난 채 열린 창이 죽지 않게 한다
             self.lbl_info.setText("읽지 못했다: " + str(exc).splitlines()[0])
-            self.detail.setPlainText(str(exc))
+            self._set_detail(str(exc))
             return
         self._title()
         self._load_thumbs()
@@ -341,7 +357,7 @@ class LineWindow(QtWidgets.QMainWindow):
             # 새 프로젝트는 표가 없어 컴파일되지 않는다. 이유를 보이고, 실행은 막는다.
             self.act_run.setEnabled(False)
             self.act_save.setEnabled(False)
-            self.detail.setPlainText("아직 실행할 수 없습니다. 위의 `데이터` 에서 사진·질문·정답 표를 넣으세요."
+            self._set_detail("아직 실행할 수 없습니다. 위의 `데이터` 에서 사진·질문·정답 표를 넣으세요."
                                      + chr(10) * 2 + "지금 막힌 이유:" + chr(10) + self.editor.error)
             return
         run = self.editor.run_state()
@@ -374,7 +390,7 @@ class LineWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage(f"중단: {run['aborted']}", 10000)
         elif run.get("exit") and not run.get("stopped"):
             self.statusBar().showMessage(f"실패 (exit {run['exit']})", 10000)
-            self.detail.setPlainText(str(run.get("console") or ""))
+            self._set_detail(str(run.get("console") or ""))
         elif run.get("stopped"):
             self.statusBar().showMessage("중지", 5000)
         else:
@@ -414,7 +430,7 @@ class LineWindow(QtWidgets.QMainWindow):
             self.tbl_ng.setCellWidget(i, 0, pic)
             self.tbl_ng.setItem(i, 1, QtWidgets.QTableWidgetItem(r.sample_key))
             self.tbl_ng.setItem(i, 2, QtWidgets.QTableWidgetItem(
-                f"{r.card_number} {r.card_label}" if r.card_number else r.node_id))
+                f"{M.mark(r.card_number)} {r.card_label}" if r.card_number else r.node_id))
             self.tbl_ng.setItem(i, 3, QtWidgets.QTableWidgetItem(r.one_line))
         self.tbl_ng.setColumnWidth(0, 56)
         if 0 <= keep < len(rows):
@@ -456,7 +472,7 @@ class LineWindow(QtWidgets.QMainWindow):
                     rows.append(("param", pname, pval, [],
                                  lambda v, nid=b.id, pn=pname: self.editor.line_set_override(nid, pn, v)))
 
-        self.lbl_settings.setText(f"{st['number']}  {st['label']} — 설정" + ("  [전문가 모드]" if expert else ""))
+        self.lbl_settings.setText(f"{M.mark(st['number'])}  {st['label']} — 설정" + ("  [전문가 모드]" if expert else ""))
         t = self.tbl_settings
         # 칸 위젯은 setRowCount 로 비워야 사라진다. 그냥 덮으면 지난 그림의 입력칸이 남는다.
         t.clearSpans()
@@ -496,7 +512,7 @@ class LineWindow(QtWidgets.QMainWindow):
             self.desc = self.editor.line_describe()
         else:
             self._refuse(res.get("reason", "거부됨"))
-            self.detail.setPlainText(str(res.get("detail") or ""))
+            self._set_detail(str(res.get("detail") or ""))
         self._title()
         self.refresh()
         self._show_settings(self.picked)   # 거부됐어도 다시 그려 원래 값으로 되돌린다
@@ -504,14 +520,28 @@ class LineWindow(QtWidgets.QMainWindow):
     def _refuse(self, why: str) -> None:
         self.lbl_refuse.setText("거부: " + why)
 
+    def _set_detail(self, text: str, where: str = "") -> None:
+        """한 줄 요약은 바로 보이고 상세는 접어 둔다. `where` 가 없으면 고른 스테이션을 번호로 붙인다."""
+        text = str(text or "")
+        if not where:
+            st = self._station(self.picked or "")
+            where = f"{M.mark(st['number'])} {st['label']}" if st else ""
+        first = _short_line(text)
+        self.lbl_sum.setText(f"{where} — {first}" if where and first else first)
+        self.detail.setPlainText(text)
+        self.btn_more.setVisible(bool(text.strip()))
+        if not text.strip():
+            self.btn_more.setChecked(False)
+
     def _show_detail(self) -> None:
         i = self.tbl_ng.currentRow()
         if not (0 <= i < len(self._ng_rows)):
             return
         r = self._ng_rows[i]
-        where = f"{r.card_number} {r.card_label}" if r.card_number else r.node_id
-        self.detail.setPlainText(f"건 {r.sample_key} · {where} ({r.node_id})\n\n{r.cause}"
-                                 + (f"\n\n해결: {r.hint}" if r.hint else ""))
+        where = f"{M.mark(r.card_number)} {r.card_label}" if r.card_number else r.node_id
+        # 요약 줄에는 원인만, 건 이름과 노드는 상세 머리에 둔다.
+        nn = chr(10) * 2
+        self._set_detail(r.cause + f"{nn}건 {r.sample_key} · {r.node_id}" + (f"{nn}해결: {r.hint}" if r.hint else ""), where)
 
     # ── 저장·안쪽·내보내기 ──────────────────────────────────────────────
     def _save(self) -> None:
@@ -520,7 +550,7 @@ class LineWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage("저장했습니다", 4000)
         else:
             self._refuse(res.get("reason", "저장하지 못했다"))
-            self.detail.setPlainText(str(res.get("detail") or ""))
+            self._set_detail(str(res.get("detail") or ""))
         self._title()
 
     def _open_data(self) -> None:
@@ -546,7 +576,7 @@ class LineWindow(QtWidgets.QMainWindow):
             path, _made = scaffold.new_line(folder)
         except Exception as exc:
             self._refuse(str(exc).splitlines()[0])
-            self.detail.setPlainText(str(exc))
+            self._set_detail(str(exc))
             return
         ed = Editor.open_line(path)
         ed.extra_modules = self.editor.extra_modules
@@ -565,7 +595,7 @@ class LineWindow(QtWidgets.QMainWindow):
         if st is None:
             self.statusBar().showMessage("스테이션을 먼저 고르세요", 3000)
             return
-        dlg = InnerView(self.editor.compiled, st["members"], f"{st['number']} {st['label']}", self)
+        dlg = InnerView(self.editor.compiled, st["members"], f"{M.mark(st['number'])} {st['label']}", self)
         dlg.exec()
 
     def _export(self) -> None:
@@ -587,7 +617,7 @@ class LineWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage(f"내보냈습니다: {res['path']}", 8000)
         else:
             self._refuse(res.get("reason", "내보내지 못했다"))
-            self.detail.setPlainText(str(res.get("detail") or ""))
+            self._set_detail(str(res.get("detail") or ""))
 
     # ── 실행 ────────────────────────────────────────────────────────────
     def _run(self, resume: Optional[bool] = None) -> None:
@@ -599,7 +629,7 @@ class LineWindow(QtWidgets.QMainWindow):
         if not res.get("ok"):
             self._refuse(str(res.get("reason") or "실행하지 못했다"))
             if res.get("detail"):
-                self.detail.setPlainText(str(res["detail"]))
+                self._set_detail(str(res["detail"]))
             return
         self.lbl_refuse.setText("")
         self.statusBar().showMessage("실행 시작", 3000)

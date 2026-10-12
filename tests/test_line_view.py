@@ -251,8 +251,12 @@ def test_a_progress_file_with_ejected_samples_fills_the_ng_table_and_the_detail(
     w.refresh()
     assert w.cards[2].lamp == M.NG and w.cards[2].line2.endswith("NG 2")
     assert w.tbl_ng.rowCount() == 2 and w.lbl_ng.text().startswith("NG 2건")
-    assert w.tbl_ng.item(0, 2).text() == "3 정답 형태"
+    assert w.tbl_ng.item(0, 2).text() == "③ 정답 형태"
     w.tbl_ng.selectRow(1)
+    # 한 줄 요약은 몇 번 스테이션인지와 원인을 보이고, 네 가지 상세는 접혀 있다
+    assert w.lbl_sum.text().startswith("③ 정답 형태 — ") and not w.detail.isVisibleTo(w)
+    w.btn_more.setChecked(True)
+    assert w.detail.isVisibleTo(w)
     assert "o0102" in w.detail.toPlainText() and "해결: 템플릿에서 뺀다" in w.detail.toPlainText()
 
 
@@ -278,3 +282,19 @@ def test_pressing_run_goes_through_the_whole_line_from_the_window(app, tmp_path,
     assert [c.lamp for c in w.cards][3:] == [M.OK, M.OK], [(c.label, c.lamp, c.line2) for c in w.cards]
     assert w.cards[4].passed == 10
     assert (tmp_path / "runs" / "t_view" / "expanded_project.yaml").exists()
+
+
+def test_the_five_node_window_uses_only_the_agreed_words(app):
+    """화면 글자와 툴팁을 용어집 금지어 표로 훑는다(카드·설정 표·툴바 전부)."""
+    from PySide6 import QtGui, QtWidgets
+    from vlm_trainer.ui import words as W
+    from vlm_trainer.ui.app.line_window import LineWindow
+
+    w = LineWindow(Editor.open_line(LINE))
+    w._pick("s3")
+    found = []
+    texts = [(getattr(x, "text", lambda: "")() or "") + (x.toolTip() or "") for x in w.findChildren(QtWidgets.QWidget)]
+    texts += [a.text() + a.toolTip() for a in w.findChildren(QtGui.QAction)]
+    for t in texts:
+        found += [f"{old} → {t[:30]}" for old in W.RENAMED if old in t]
+    assert not found, found

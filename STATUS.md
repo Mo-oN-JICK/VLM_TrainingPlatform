@@ -3,12 +3,12 @@
 이 파일은 **세션이 중단되어도 다음 세션이 그대로 이어받을 수 있게** 유지한다.
 작업을 끝낼 때마다 "완료"로 옮기고, 새로 알게 된 제약은 "함정"에 적는다.
 
-- **5노드 단순화 작업 진행 중 → [`LINE_PROGRESS.md`](LINE_PROGRESS.md)** (2026-10-12~, 단계 1 끝)
-- 최종 갱신: 2026-09-26
+- **5노드 단순화 작업: 단계 1~4 구현 끝, 승인 대기 → [`LINE_PROGRESS.md`](LINE_PROGRESS.md)**. 사용법 [`docs/line-guide.md`](docs/line-guide.md)
+- 최종 갱신: 2026-10-13
 - 마지막 커밋: `9ca64ca` fix: 저장이 Procedure 사이 배선을 지웠다
 - **실물 Qwen2-VL 로 한 바퀴가 돈다** — 굽기 → 학습 → 추론 → Export → §9
 - 편집기는 Qt 네이티브 앱이다. 웹 편집기는 걷어냈다 → §8
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **381 passed, 1 skipped**
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **576 passed, 1 skipped**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -335,6 +335,19 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 **Phase 7의 3b가 이것으로 끝났다.** UI만으로 그래프를 만들고, 값을 고치고, 레시피를 씌우고,
 저장하고, 실행하고, 어제의 시점으로 되감을 수 있다.
 
+
+### 5노드 단순화 (Line/Station) ✅ — 2026-10-12~13
+
+사용자가 보는 그래프를 ① 이미지 → ② 질문 형태 → ③ 정답 형태 → ④ 모델 학습 → ⑤ 검증 한 줄로 얹었다.
+엔진·`pipeline`·`--set`·실행 기록은 그대로이고, 실행 전에 11노드로 펼친다. 결정과 이력은 `LINE_PROGRESS.md`.
+
+- [x] `spec/line.py`(펼침·Station·학습량), `solutions/stations/*.yaml`, `01_open/line.yaml`. 펼친 그래프는 11노드와 `spec_hash`·사전 준비 묶음·검증 id/정답이 같다
+- [x] 표(CSV) 입력과 정답 항목 표(`spec/table*.py`, `answer/table.py`), 학습/검증 나누기 모드 명시
+- [x] 화면: `LineWindow`(카드·NG 표·설정·안쪽 보기·내보내기), `데이터`·`검증 결과` 대화상자, 새 5노드 만들기(`vlmt new-line`)
+- [x] 검증: 항목별 O/X는 보조, 사람 OK/NG 판정을 `judgments.jsonl`에 남긴다(`vlmt judge`·`judgments`)
+- [x] 용어집 적용(노드 설명·묶음 상자·사용자 문서). 금지어 표는 `ui/words.py`, 검사는 `tests/test_glossary.py`
+- [x] 오류는 한 줄 요약(스테이션 번호 포함) + 접힌 상세. **코어 게이트·엔진 메시지의 해라체는 그대로**(별도 작업)
+- 벗어난 지점은 `README.md` 표에 기록. 이월: 학습 시드 고정(같은 스펙도 답 문장이 가끔 달라진다), 엑셀 읽기, NG 되쓰기, 센서 칸, 숫자 항목 범위, 4090 PC 실물 확인
 
 ### 설계 문서
 

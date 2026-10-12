@@ -1,6 +1,6 @@
 """Prompt Assembly.
 
-프롬프트 조립 경로는 정답 경로와 분리되어 있어야 한다. semantic 태그가 그 경계를 표시하고,
+질문 조립 경로는 정답 경로와 분리되어 있어야 한다. semantic 태그가 그 경계를 표시하고,
 컴파일러의 taint 검사가 이를 강제한다.
 """
 
@@ -40,15 +40,15 @@ class TemplateParams:
     category="Prompt Assembly",
     kind=NodeKind.PROCESSING,
     inputs={"context": Port(simple(BaseKind.TABLE), "슬롯에 채울 값")},
-    outputs={"text": Port(text("prompt"), "조립된 프롬프트")},
+    outputs={"text": Port(text("prompt"), "조립된 질문")},
     params=TemplateParams,
     recipe_overridable=["template", "max_chars"],
     preview="prompt_render",
     doc=NodeDoc(
-        label="프롬프트 템플릿",
-            hint="표의 값을 템플릿 슬롯에 채워 프롬프트를 만듭니다.",
-        summary="표의 값을 템플릿 슬롯에 채워 프롬프트를 만든다.",
-        scenario="프롬프트 문구만 바꾸는 실험은 Parameter Recipe로 template만 덮어쓰면 된다.",
+        label="질문 문장 틀",
+            hint="표의 값을 템플릿 슬롯에 채워 질문을 만듭니다.",
+        summary="표의 값을 템플릿 슬롯에 채워 질문을 만든다.",
+        scenario="질문 문구만 바꾸는 실험은 Parameter Recipe로 template만 덮어쓰면 된다.",
     ),
 )
 class TextTemplate(Node):
@@ -73,15 +73,15 @@ class KnowledgeParams:
     category="Prompt Assembly",
     kind=NodeKind.PROCESSING,
     inputs={
-        "text": Port(text("prompt"), "프롬프트"),
+        "text": Port(text("prompt"), "질문"),
         "knowledge": Port(text("domain_knowledge"), "도메인 지식 텍스트"),
     },
-    outputs={"text": Port(text("prompt"), "지식이 주입된 프롬프트")},
+    outputs={"text": Port(text("prompt"), "지식이 주입된 질문")},
     params=KnowledgeParams,
     recipe_overridable=["position", "max_chars", "header"],
     preview="prompt_render",
     doc=NodeDoc(label="참조 문서 삽입",
-            hint="도메인 지식 문서를 프롬프트 앞뒤에 붙입니다.", summary="도메인 지식 블록을 프롬프트 앞이나 뒤에 붙인다."),
+            hint="도메인 지식 문서를 질문 앞뒤에 붙입니다.", summary="도메인 지식 블록을 질문 앞이나 뒤에 붙인다."),
 )
 class KnowledgeInject(Node):
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
@@ -105,17 +105,17 @@ class ImageSlotParams:
     category="Prompt Assembly",
     kind=NodeKind.PROCESSING,
     inputs={
-        "text": Port(text("prompt"), "프롬프트"),
+        "text": Port(text("prompt"), "질문"),
         "images": Port(image(frame=ANY).as_list(1, 16), "함께 넣을 이미지들"),
     },
-    outputs={"text": Port(text("prompt"), "이미지 자리표시자가 붙은 프롬프트")},
+    outputs={"text": Port(text("prompt"), "이미지 자리표시자가 붙은 질문")},
     params=ImageSlotParams,
     recipe_overridable=["placeholder", "policy"],
     preview="prompt_render",
     doc=NodeDoc(
-        label="학습 이미지 맵핑",
+        label="사진 자리 넣기",
             hint="질문 안에 이미지가 들어갈 자리를 만듭니다.",
-        summary="이미지 개수만큼 자리표시자를 프롬프트에 넣는다.",
+        summary="이미지 개수만큼 자리표시자를 질문에 넣는다.",
         scenario="자리표시자 개수와 실제 이미지 개수가 어긋나면 이미지가 조용히 무시된다. "
         "sample.assemble이 그 개수를 실측으로 대조한다.",
     ),

@@ -237,7 +237,7 @@ class Inspector(QtWidgets.QDockWidget):
         # "아무 일도 안 일어나는" 경험을 만드느니 없는 편이 낫다.
         if self._trains(nid):
             ex = QtWidgets.QPushButton("모델 Export")
-            ex.setToolTip("LoRA 를 합쳐 한 덩어리로 내보낸다. 프롬프트 형식(계약)도 함께 넣는다")
+            ex.setToolTip("LoRA 를 합쳐 한 덩어리로 내보낸다. 질문 형식(계약)도 함께 넣는다")
             ex.clicked.connect(lambda: self.exportRequested.emit(nid))
             lay.addWidget(ex)
         return box

@@ -189,7 +189,7 @@ class AssembleParams:
     kind=NodeKind.PROCESSING,
     inputs={
         "images": Port(image(frame=ANY).as_list(1, 16).as_optional(), "학습에 들어갈 이미지들"),
-        "prompt": Port(text("prompt"), "프롬프트"),
+        "prompt": Port(text("prompt"), "질문"),
         "answer": Port(text("answer", "validated"), "검증된 정답 Text"),
         "meta": Port(simple(BaseKind.TABLE).as_optional(), "함께 남길 메타데이터"),
     },
@@ -198,9 +198,9 @@ class AssembleParams:
     recipe_overridable=["require_validated"],
     preview="sample_card",
     doc=NodeDoc(
-        label="학습 데이터 맵핑",
+        label="한 건 묶기",
         hint="이미지·질문·정답을 학습 데이터 한 건으로 묶습니다.",
-        summary="이미지·프롬프트·정답을 학습 샘플 한 건으로 묶는다.",
+        summary="이미지·질문·정답을 학습 샘플 한 건으로 묶는다.",
         scenario="자리표시자 개수와 실제 이미지 개수를 실측으로 대조한다 — "
         "어긋나면 이미지가 조용히 무시된 채 텍스트만 학습된다.",
     ),
@@ -249,7 +249,7 @@ class ExportParams:
         label="데이터셋 내보내기",
             hint="생성된 학습 데이터를 디스크에 저장합니다.",
         summary="샘플을 디스크로 내보낸다. 부작용을 일으키는 Output 노드.",
-        scenario="물질화 경계 뒤의 학습은 이 산출물만 읽는다.",
+        scenario="사전 준비 뒤의 학습은 이 산출물만 읽는다.",
     ),
 )
 class DatasetExport(Node):
@@ -289,17 +289,17 @@ class PromptExportParams:
     category="File",
     kind=NodeKind.OUTPUT,
     inputs={
-        "prompt": Port(text("prompt"), "최종 프롬프트"),
+        "prompt": Port(text("prompt"), "최종 질문"),
         "images": Port(image(frame=ANY).as_list(1, 16).as_optional(), "함께 넣을 이미지들"),
     },
     params=PromptExportParams,
     recipe_overridable=["out_dir"],
     preview="dry_summary",
     doc=NodeDoc(
-        label="프롬프트 내보내기",
-            hint="프롬프트를 파일로 저장합니다. 추론 그래프의 종결점입니다.",
-        summary="프롬프트를 그대로 내보낸다. 추론 그래프의 종결점.",
-        scenario="추론 계약이 실제로 재현되는지 확인하는 수단 — 학습 때의 프롬프트와 바이트 단위로 대조한다.",
+        label="질문 내보내기",
+            hint="질문을 파일로 저장합니다. 추론 그래프의 종결점입니다.",
+        summary="질문을 그대로 내보낸다. 추론 그래프의 종결점.",
+        scenario="추론 계약이 실제로 재현되는지 확인하는 수단 — 학습 때의 질문과 바이트 단위로 대조한다.",
     ),
 )
 class PromptExport(Node):
@@ -332,7 +332,7 @@ class TrainerParams:
     kind=NodeKind.OUTPUT,
     inputs={
         "sample": Port(simple(BaseKind.SAMPLE), "학습 샘플"),
-        "schema": Port(simple(BaseKind.SCHEMA), "정답 스키마"),
+        "schema": Port(simple(BaseKind.SCHEMA), "정답 형태"),
     },
     # 학습은 체크포인트를 디스크에 쓴다 — 부작용이므로 Output 이 맞다. 그러면서
     # **산출물이 어디 있는지**를 내보내 `모델 추론` 이 받는다. Output 이 그래프의 끝이어야
@@ -344,9 +344,9 @@ class TrainerParams:
     preview="budget_table",
     doc=NodeDoc(
         label="모델 학습",
-        hint="준비된 학습 데이터로 모델을 파인튜닝합니다.",
+        hint="준비된 학습 데이터로 모델을 모델 학습합니다.",
         summary="학습 실행. 산출물이 어디 있는지를 내보내 추론이 받는다.",
-        scenario="굽기가 끝난 뒤에 한 번 돈다. 샘플마다가 아니다.",
+        scenario="사전 준비 실행이 끝난 뒤에 한 번 돈다. 샘플마다가 아니다.",
     ),
 )
 class VlmTrainer(Node):

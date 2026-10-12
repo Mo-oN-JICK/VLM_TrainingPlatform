@@ -25,6 +25,13 @@ vlm_trainer/
     decompile.py       CompiledGraph/GraphModel → Spec, Procedure 되접기
     lock.py            graph.lock 읽기/쓰기, 버전 해소
     recipe.py          Parameter Recipe 오버레이 적용, 화이트리스트 검사, 스윕 전개
+    line.py            5노드(Line) → 11노드 펼침, Station 해소, 학습량·overrides
+    table.py           표 양식(CSV 첫 줄) 만들기          table_check.py  표 열·split·정답 열 대조
+    scaffold.py        빈 Solution/Project, 빈 5노드(new-line)
+
+  answer/
+    schema.py          정답 형태(AnswerSchema) 렌더·파싱·검증
+    table.py           정답 항목 표 ↔ 스키마     judge.py   검증 결과 O/X·사람 판정(judgments.jsonl)
 
   engine/
     scheduler.py       위상 실행, 3분류별 정책, 노드 상태 머신
@@ -79,8 +86,12 @@ vlm_trainer/
     layout.py          배치와 상태 계산. 앱과 `vlmt view`가 이 좌표를 공유한다
     tokens.py          색 팔레트(문서 12)
     render.py          `vlmt view`의 단독 HTML. 읽기 전용이다
+    line_model.py      5노드 카드 램프·카운터·NG 행 계산(Qt 없음)
+    line_data.py       데이터 대화상자 계산(열 목록, 나누기 미리보기)
+    words.py           화면 용어 금지어 표
     app/               PySide6 — window / canvas / library / inspector /
-                       history / progress
+                       history / progress / line_window(5노드) /
+                       data_dialog / verdict_dialog
 ```
 
 ### 9.1.1 설계에서 바뀐 것

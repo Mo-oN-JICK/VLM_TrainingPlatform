@@ -147,7 +147,7 @@ class TextAssetParams:
     recipe_overridable=["path", "max_chars"],
     preview="text",
     doc=NodeDoc(label="참조 문서 업로드",
-            hint="프롬프트에 함께 넣을 도메인 지식 문서를 불러옵니다.", summary="프롬프트에 넣을 도메인 지식 텍스트 자산을 읽는다."),
+            hint="질문에 함께 넣을 도메인 지식 문서를 불러옵니다.", summary="질문에 넣을 도메인 지식 텍스트 자산을 읽는다."),
 )
 class TextAssetSource(Node):
     def fingerprint(self, ctx: RunCtx, params: Any) -> str:
@@ -178,7 +178,7 @@ class FieldParams:
         label="단일 열 업로드",
             hint="데이터셋의 열 하나를 텍스트로 불러옵니다.",
         summary="sample_space의 컬럼 하나를 텍스트로 주입한다.",
-        scenario="정답 라벨이나 메타데이터를 그래프로 들여올 때. semantic 태그가 누설 검사의 기준이 된다.",
+        scenario="정답 라벨이나 메타데이터를 그래프로 들여올 때. semantic 태그가 정답 노출 검사의 기준이 된다.",
     ),
 )
 class FieldSource(Node):
@@ -207,7 +207,7 @@ class MetadataParams:
     params=MetadataParams,
     preview="table",
     doc=NodeDoc(label="메타데이터 업로드",
-            hint="데이터셋의 열들을 표로 불러옵니다. 프롬프트와 정답이 이 값을 참조합니다.", summary="인덱스의 여러 컬럼을 한 표로 묶어 주입한다."),
+            hint="데이터셋의 열들을 표로 불러옵니다. 질문과 정답이 이 값을 참조합니다.", summary="인덱스의 여러 컬럼을 한 표로 묶어 주입한다."),
 )
 class MetadataSource(Node):
     def fingerprint(self, ctx: RunCtx, params: Any) -> str:
@@ -232,7 +232,7 @@ class SchemaParams:
     params=SchemaParams,
     preview="schema",
     doc=NodeDoc(
-        label="답변 형식 정하기",
+        label="정답 형태 정하기",
             hint="모델이 어떤 형식으로 답해야 하는지 항목과 허용값을 정합니다.",
         summary="정답 Text 스키마를 읽는다. 렌더러와 파서가 모두 이 정의에서 생성된다.",
         scenario="학습에 쓴 스키마가 추론 계약에도 그대로 실린다.",

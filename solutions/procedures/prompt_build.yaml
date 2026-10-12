@@ -1,12 +1,12 @@
 kind: Procedure
 name: prompt_build
 version: "1.0.0"
-label: "프롬프트 제작"
-hint: "메타데이터를 템플릿에 채우고 이미지 슬롯을 삽입합니다."
-summary: "표의 값으로 프롬프트를 쓰고, 이미지 개수만큼 자리표시자를 넣는다."
+label: "질문 형태 만들기"
+hint: "표의 값을 질문 문장 틀에 채우고 이미지 슬롯을 삽입합니다."
+summary: "표의 값으로 질문을 쓰고, 이미지 개수만큼 자리표시자를 넣는다."
 
 # 이미지 자리표시자 개수는 실제 이미지 개수와 반드시 같아야 한다.
-# 어긋나면 학습과 추론이 다른 프롬프트를 쓰게 되므로 image_slots가 실행 시점에 대조한다.
+# 어긋나면 학습과 추론이 다른 질문을 쓰게 되므로 image_slots가 실행 시점에 대조한다.
 exposed_inputs:
   context: {port: "n_text:context"}
   images: {port: "n_slots:images"}

@@ -54,7 +54,7 @@ class RunDock(QtWidgets.QDockWidget):
 
         self.quarantine = QtWidgets.QListWidget()
         self.quarantine.setMaximumHeight(150)
-        lay.addWidget(QtWidgets.QLabel("격리된 샘플"))
+        lay.addWidget(QtWidgets.QLabel("NG 배출 샘플"))
         lay.addWidget(self.quarantine)
 
         self.previews = QtWidgets.QWidget()
@@ -223,7 +223,7 @@ class RunWatcher(QtCore.QObject):
             elif st.get("total"):
                 head += f" · {st.get('processed', 0)}/{st['total']}"
             q = st.get("quarantine_total") or 0
-            return head + (f" · 격리 {q}" if q else "")
+            return head + (f" · NG 배출 {q}" if q else "")
         if kind == "train" and train.get("step"):
             body = (f"train {train.get('stage', '')} step {train['step']} "
                     f"loss {float(train.get('loss') or 0):.4f}")
@@ -232,7 +232,7 @@ class RunWatcher(QtCore.QObject):
         else:
             body = f"{st.get('processed', 0)}/{st.get('total', 0)}"
         q = st.get("quarantine_total") or 0
-        return f"{run_id} {body}" + (f" · 격리 {q}" if q else "")
+        return f"{run_id} {body}" + (f" · NG 배출 {q}" if q else "")
 
     def _paint_clock(self) -> None:
         """폴링 사이를 메운다. 끝났으면 멈춘 값이어야 한다 — 다 끝난 작업의 숫자가

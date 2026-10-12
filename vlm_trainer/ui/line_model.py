@@ -17,6 +17,11 @@ PENDING, RUNNING, OK, NG, ERROR = "pending", "running", "ok", "ng", "error"
 LAMP_TEXT = {PENDING: "대기", RUNNING: "진행", OK: "정상", NG: "NG 있음", ERROR: "오류"}
 
 
+def mark(n: int) -> str:
+    """스테이션 번호 ①~⑳. 화면과 오류 한 줄 요약이 같은 번호로 부른다."""
+    return chr(0x2460 + n - 1) if 1 <= n <= 20 else str(n)
+
+
 @dataclass
 class Card:
     id: str

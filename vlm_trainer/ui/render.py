@@ -236,7 +236,7 @@ def render(
             f'<span class="v">@{html.escape(q.node_id)} {html.escape(q.cause[:90])}</span></div>'
             for q in report.quarantine[:12]
         )
-        quarantine = f'<h4>격리 {len(report.quarantine)}건</h4>{rows}'
+        quarantine = f'<h4>NG 배출 {len(report.quarantine)}건</h4>{rows}'
 
     counts = {
         "I": sum(1 for i in cg.order if cg.nodes[i].kind is NodeKind.INPUT),

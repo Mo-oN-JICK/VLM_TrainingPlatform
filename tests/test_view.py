@@ -447,7 +447,7 @@ def test_every_port_row_carries_its_type_colour(cg, page):
 def test_port_rows_say_what_the_port_means(cg, page):
     """`schema`, `fields` 같은 이름이 아니라 그 포트가 무엇인지를 적는다."""
     assert "원본 이미지" in page
-    assert "정답 스키마" in page
+    assert "정답 형태" in page
 
     # Procedure 상자도 안쪽 노드의 포트 설명을 들고 나온다
     from vlm_trainer.ui.layout import fold

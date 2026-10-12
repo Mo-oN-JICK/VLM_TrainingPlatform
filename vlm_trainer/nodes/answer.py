@@ -1,4 +1,4 @@
-"""Answer Design — 정답 Text 생성·검증·누설 차단. 설계 문서 06."""
+"""Answer Design — 정답 Text 생성·검증·정답 노출 차단. 설계 문서 06."""
 
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ class StepwiseParams:
     category="Answer Design",
     kind=NodeKind.PROCESSING,
     inputs={
-        "schema": Port(simple(BaseKind.SCHEMA), "정답 스키마"),
+        "schema": Port(simple(BaseKind.SCHEMA), "정답 형태"),
         "fields": Port(simple(BaseKind.TABLE), "단계 값을 뽑을 수치"),
         "evidence": Port(text("evidence").as_list(1, 32).as_optional(), "근거 문장(선택)"),
     },
@@ -93,7 +93,7 @@ class StepwiseParams:
     recipe_overridable=["render"],
     preview="answer_render",
     doc=NodeDoc(
-        label="학습용 정답 답변 생성",
+        label="정답 문장 만들기",
             hint="정한 형식대로 학습에 쓸 정답 문장을 만듭니다.",
         summary="스키마가 선언한 단계 순서대로 정답 Text를 만든다.",
         scenario="렌더러와 파서가 같은 스키마에서 생성되므로 학습과 추론이 어긋날 수 없다.",
@@ -144,7 +144,7 @@ class ValidateParams:
     kind=NodeKind.PROCESSING,
     inputs={
         "answer": Port(text("answer"), "정답 Text"),
-        "schema": Port(simple(BaseKind.SCHEMA), "정답 스키마"),
+        "schema": Port(simple(BaseKind.SCHEMA), "정답 형태"),
     },
     outputs={
         "answer": Port(text("answer", "validated"), "검증을 통과한 정답 Text"),
@@ -154,10 +154,10 @@ class ValidateParams:
     recipe_overridable=["on_violation", "max_tokens"],
     preview="answer_validated",
     doc=NodeDoc(
-        label="답변 형식 검사",
+        label="정답 형식 검사",
         hint="만들어진 답변이 정한 형식을 지키는지 검사합니다.",
         summary="정답 Text가 스키마를 지키는지 검사한다.",
-        scenario="위반 샘플은 격리된다. 위반율이 임계를 넘으면 dry-run이 학습 전에 멈춘다.",
+        scenario="위반 샘플은 NG 배출된다. 위반율이 임계를 넘으면 dry-run이 학습 전에 멈춘다.",
     ),
 )
 class Validate(Node):
@@ -193,12 +193,12 @@ class GuardParams:
     category="Answer Design",
     kind=NodeKind.PROCESSING,
     inputs={
-        "prompt": Port(text("prompt"), "프롬프트"),
+        "prompt": Port(text("prompt"), "질문"),
         "answer": Port(text("answer"), "정답 Text"),
         "schema": Port(simple(BaseKind.SCHEMA).as_optional(), "닫힌 어휘 출처(선택)"),
     },
     outputs={
-        "prompt": Port(text("prompt"), "누설 검사를 통과한 프롬프트"),
+        "prompt": Port(text("prompt"), "정답 노출 검사를 통과한 질문"),
         "report": Port(simple(BaseKind.REPORT), "검사 결과"),
     },
     params=GuardParams,
@@ -206,9 +206,9 @@ class GuardParams:
     clears_taint=["label", "answer"],
     preview="leak_report",
     doc=NodeDoc(
-        label="문제에 답이 섞였는지 검사",
+        label="정답 노출 검사",
         hint="답이 질문에 섞여 들어갔는지 봅니다. 섞이면 모델이 보고 베낍니다.",
-        summary="정답 어휘가 프롬프트에 섞였는지 검사한다. taint를 제거하는 유일한 노드.",
+        summary="정답 어휘가 질문에 섞였는지 검사한다. taint를 제거하는 유일한 노드.",
         scenario="정적 taint 검사(G2)가 경로를 막고, 이 노드가 실제 문자열을 본다.",
     ),
 )
@@ -219,7 +219,7 @@ class LeakageGuard(Node):
         if params.on_leak not in ("fail", "mask"):
             raise NodeError(ctx.node_id, f"on_leak {params.on_leak!r}는 없는 값이다 (fail | mask)",
                             sample_key=ctx.sample_key,
-                            hint="fail 이면 정답이 섞인 샘플을 격리하고, mask 면 그 낱말을 가려 통과시킨다")
+                            hint="fail 이면 정답이 섞인 샘플을 NG 배출하고, mask 면 그 낱말을 가려 통과시킨다")
         if params.mode not in ("exact", "normalized"):
             raise NodeError(ctx.node_id, f"mode {params.mode!r}는 없는 값이다 (exact | normalized)",
                             sample_key=ctx.sample_key, hint="exact 또는 normalized 로 적는다")
@@ -240,7 +240,7 @@ class LeakageGuard(Node):
         if hits and params.on_leak == "fail":
             raise NodeError(
                 ctx.node_id,
-                f"정답 어휘가 프롬프트에 있다: {hits}",
+                f"정답 어휘가 질문에 있다: {hits}",
                 sample_key=ctx.sample_key,
                 hint="템플릿에서 해당 표현을 빼거나 exclude_sections로 지식 블록을 제외하라",
             )

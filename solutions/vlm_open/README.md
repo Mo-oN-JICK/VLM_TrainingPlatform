@@ -9,7 +9,7 @@
 | | |
 |---|---|
 | 학습용 이미지 | 100장 |
-| 학습용 프롬프트 | 100개 (전부 다른 문장) |
+| 학습용 질문 | 100개 (전부 다른 문장) |
 | 검증용 이미지 | 10장 |
 | 출처 | Wikimedia Commons |
 | 라이선스 | CC0 · Public Domain · CC BY (SA/NC/ND 없음) |
@@ -25,7 +25,7 @@
 
 ## 바로 돌려 보기
 
-한 줄이면 끝까지 간다 — 준비 → 굽기 → 학습 → 추론.
+한 줄이면 끝까지 간다 — 준비 → 사전 준비 실행 → 학습 → 추론.
 
 ```
 .venv\Scripts\python.exe -m vlm_trainer.cli.main pipeline solutions\vlm_open\projects\01_open\project.yaml --run-id t1
@@ -35,7 +35,7 @@
 검증 10장의 답은 `runs\t1\infer\answers.jsonl` 에 정답과 나란히 적힌다 —
 **채점하지 않는다.** 사람이 읽고 판단할 일이다.
 
-굽기는 `train` split 만 굽는다. 검증 샘플까지 구우면 학습이 그것도 읽어서, 나중에 검증
+사전 준비 실행은 `train` split 만 만든다. 검증 샘플까지 만들면 학습이 그것도 읽어서, 나중에 검증
 답을 봐도 이미 외운 것을 다시 물어보는 셈이 된다. 전부 구우려면 `--bake-split all`.
 
 중간에 멈췄다가 같은 `--run-id` 로 다시 부르면 굽다 만 것이 있다고 **물어본다**.
@@ -82,7 +82,7 @@ RTX 3060 12GB · 20 step 실측: 학습 2m 33s · 추론 15s. 검증 10장 중 �
 ```
 
 `runs\t2\export\` 에 LoRA 를 합친 모델과 `inference_contract.json` 이 함께 나온다.
-Qwen2-VL 로 내보낸 폴더는 이 저장소 없이 `transformers` 만으로 열린다 — 프롬프트 형식과
+Qwen2-VL 로 내보낸 폴더는 이 저장소 없이 `transformers` 만으로 열린다 — 질문 형식과
 이미지 자리표시자, 답이 끝나는 태그가 전부 계약에 적혀 있다.
 
 편집기에서는 `모델 학습` 상자를 고르면 패널에 **`모델 Export`** 버튼이 생긴다.
