@@ -6,6 +6,7 @@ Input 노드는 배선 대신 여기서 값을 길어온다. split은 그룹 홀
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 from dataclasses import dataclass, field
@@ -59,16 +60,7 @@ def load(spec: Dict[str, Any], base_dir: str) -> SampleSpace:
     if not os.path.exists(path):
         raise SpecError(f"sample_space 인덱스 파일이 없다: {path}")
 
-    rows: List[Dict[str, Any]] = []
-    with open(path, "r", encoding="utf-8") as fh:
-        for ln, line in enumerate(fh, 1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError as e:
-                raise SpecError(f"{path}:{ln} JSON 파싱 실패 — {e}") from None
+    rows = read_table(path)
 
     key = str(spec.get("key") or "sample_id")
     for i, r in enumerate(rows):
@@ -81,6 +73,43 @@ def load(spec: Dict[str, Any], base_dir: str) -> SampleSpace:
 
     _assign_splits(rows, dict(spec.get("splits") or {}), key)
     return SampleSpace(root=os.path.dirname(path), key=key, rows=rows, index_path=path)
+
+
+def read_table(path: str) -> List[Dict[str, Any]]:
+    """표 한 장 = 한 행이 한 건. `.csv` 면 CSV, 아니면 JSONL 이다.
+
+    CSV 는 UTF-8 이고 BOM 이 있어도 된다(엑셀의 "CSV UTF-8" 저장). 값은 전부 문자열로 읽는다 —
+    "3" 을 숫자로 짐작해 바꾸는 것도 자동 캐스팅이다.
+    """
+    if path.lower().endswith(".csv"):
+        with open(path, "r", encoding="utf-8-sig", newline="") as fh:
+            rd = csv.DictReader(fh)
+            if not rd.fieldnames:
+                raise SpecError(f"{path}: 첫 줄(열 이름)이 비어 있다")
+            names = [str(n).strip() for n in rd.fieldnames]
+            dup = sorted({n for n in names if names.count(n) > 1})
+            if dup:
+                raise SpecError(f"{path}: 열 이름이 겹친다 {dup} — 같은 이름이 둘이면 어느 열인지 정해지지 않는다")
+            rd.fieldnames = names
+            rows = []
+            for ln, r in enumerate(rd, 2):
+                if None in r:
+                    raise SpecError(f"{path}:{ln} 행에 열 이름보다 값이 더 많다 — 값 안의 쉼표는 큰따옴표로 감싸야 한다")
+                if all(not (v or "").strip() for v in r.values()):
+                    continue  # 엑셀이 남기는 빈 줄
+                rows.append({k: (v if v is not None else "") for k, v in r.items()})
+            return rows
+    rows = []
+    with open(path, "r", encoding="utf-8") as fh:
+        for ln, line in enumerate(fh, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                raise SpecError(f"{path}:{ln} JSON 파싱 실패 — {e}") from None
+    return rows
 
 
 def _safe_filter(expr: str, row: Dict[str, Any]) -> bool:
@@ -106,11 +135,29 @@ def _assign_splits(rows: List[Dict[str, Any]], splits: Dict[str, Any], key: str)
         acc += ratios[n] / total
         bounds.append(acc)
 
+    if strategy == "column":
+        col = str(splits.get("column", "split"))
+        for i, r in enumerate(rows):
+            # 열이 없거나 칸이 비면 "첫 split 으로" 같은 짐작을 하지 않는다. 검증 건이 0이 되는 길이다.
+            if not str(r.get(col, "")).strip():
+                raise SpecError(
+                    f"split 열 {col!r}이 {i + 1}번째 행({r[key]})에서 비었거나 없다.\n"
+                    "  안 잡혔다면: 그 행이 짐작으로 한쪽에 들어가 학습과 검증이 섞이거나 검증이 0건이 되고,\n"
+                    "  결과를 본 뒤에야 알게 된다.\n"
+                    f"  표의 {col!r} 열에 모든 행의 값(예: train / val)을 채우세요.")
+            r["_split"] = str(r[col]).strip()
+        return
+    if strategy == "group_holdout":
+        missing = [r[key] for r in rows if group_by not in r]
+        if missing:
+            raise SpecError(
+                f"group_by 열 {group_by!r}이 표에 없다 (예: {missing[0]}).\n"
+                "  안 잡혔다면: 같은 그룹을 묶지 못하고 행마다 따로 나뉘어, 같은 부품·로트가 학습과 검증에\n"
+                "  양쪽으로 들어간다. 검증 점수가 부풀어도 눈치채기 어렵다.\n"
+                "  그룹 열 이름을 확인하거나, 그룹 없이 나누려면 strategy 를 random 으로 바꾸세요.")
+
     for r in rows:
         token = str(r.get(group_by, r[key])) if strategy == "group_holdout" else str(r[key])
-        if strategy == "column":
-            r["_split"] = str(r.get(str(splits.get("column", "split")), names[0]))
-            continue
         frac = (_h(token, seed) % 10_000) / 10_000.0
         for name, b in zip(names, bounds):
             if frac < b:

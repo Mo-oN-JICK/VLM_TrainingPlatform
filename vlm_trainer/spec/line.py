@@ -55,8 +55,8 @@ def _set_param(inst: Dict[str, Dict[str, Any]], st: str, exposed: Dict[str, Any]
     inst[str(tgt["node"])].setdefault("params", {})[str(tgt["param"])] = value
 
 
-def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line") -> Dict[str, Any]:
-    """Line 매핑 -> Project 매핑. 파일을 읽는 것은 Station 정의뿐이다."""
+def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line", *, check: bool = True) -> Dict[str, Any]:
+    """Line 매핑 -> Project 매핑. 읽는 파일은 Station 정의와, `check` 일 때 표(첫 줄과 split)다."""
     if data.get("kind") != "Line":
         raise SpecError(f"{where}: kind는 Line이어야 한다 (현재 {data.get('kind')!r})")
 
@@ -132,6 +132,10 @@ def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line") -> D
     for k in ("runtime_profile", "defaults", "node_modules", "debug"):
         if k in data:
             out[k] = data[k]
+    if check:
+        from .table_check import check_table
+
+        check_table(out, source_dir, where)
     return out
 
 

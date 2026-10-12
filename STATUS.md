@@ -513,7 +513,7 @@ Project Tabs·Log 패널·Toolbar 버튼 구성까지 맞출 수 있다.
 | Python | 3.14.4 (`C:\Users\wnsgu\AppData\Local\Python\pythoncore-3.14-64`) | torch 휠이 3.14를 지원하는지 미확인. 안 되면 3.12 venv를 따로 만든다 |
 | 설치된 패키지 | `yaml` `pytest` `numpy` `pydantic` `PIL` 있음 | 코어는 표준 라이브러리 + yaml만 쓴다. 새 의존성은 정말 필요할 때만 |
 | CLI 실행 | 내장 노드는 자동 등록된다. `--nodes fixture_nodes`가 필요할 때만 `PYTHONPATH`에 `tests`를 넣는다 | Git Bash의 `$PWD`는 POSIX 경로라 Windows Python이 못 읽는다. **Windows 경로로 지정할 것** |
-| 자산 경로 | 스펙 안의 파일 경로(`knowledge/`, `schemas/`)는 **sample_space 인덱스 파일이 있는 디렉터리 기준**이다 | 루트가 하나여야 Input 노드의 지문 계산이 단순해진다. 예제에서 `../../schemas/...`로 쓰는 이유 |
+| 자산 경로 | **사진 같은 데이터 경로는 sample_space 인덱스(표) 파일이 있는 디렉터리 기준, 스키마 같은 스펙 자산 경로는 스펙 파일(project.yaml/line.yaml)이 있는 디렉터리 기준**이다(`RunCtx.path` / `RunCtx.asset`) | 루트가 하나여야 Input 노드의 지문 계산이 단순해진다. 예제에서 `../../schemas/...`로 쓰는 이유 |
 | 더미 데이터 | git에 넣지 않는다(`.gitignore`) | seed 고정이라 `tools/make_dummy_dataset.py`로 언제든 같은 데이터를 다시 만든다 |
 | 경로 길이 | Windows MAX_PATH | 캐시·물질화는 서술적 이름 금지, 짧은 해시 경로 |
 | 프로세스 | spawn (fork 없음) | 노드 구현은 모듈 최상위에. 레지스트리가 등록 시점에 검사한다 |
