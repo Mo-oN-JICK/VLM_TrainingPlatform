@@ -124,3 +124,113 @@ def test_the_catalog_says_it_is_a_design_not_a_listing():
     스펙에 쓰게 된다."""
     head = _read("03-node-catalog.md")[:900]
     assert "vlmt nodes" in head, "실제 목록을 어디서 보는지 적혀 있지 않다"
+
+
+# ── 예제 그래프 설명 ────────────────────────────────────────────────────
+#
+# `editor.bat` 을 누르면 열리는 그래프를 설명하는 문서다. 거기 적힌 상자나 파라미터가
+# 실제와 다르면, 처음 보는 사람은 문서를 믿고 없는 것을 찾는다.
+
+GRAPH_DOC = os.path.join(ROOT, "solutions", "vlm_open", "GRAPH.md")
+OPEN_SPEC = os.path.join(ROOT, "solutions", "vlm_open",
+                         "projects", "01_open", "project.yaml")
+
+
+def _open_graph():
+    from vlm_trainer.core.compiler import compile_project
+
+    registry.load_builtin_nodes()
+    return compile_project(OPEN_SPEC)
+
+
+def test_the_graph_doc_describes_the_graph_that_actually_opens():
+    """`editor.bat` 의 기본 스펙이 바뀌면 이 문서가 다른 그래프를 설명하게 된다."""
+    bat = io.open(os.path.join(ROOT, "editor.bat"), encoding="ascii").read()
+    assert "vlm_open" in bat and "01_open" in bat
+
+
+def test_every_box_the_doc_names_exists():
+    """문서가 부르는 이름이 화면에 없으면, 읽는 사람은 없는 상자를 찾는다."""
+    from vlm_trainer.ui import layout as L
+
+    cg = _open_graph()
+    shown, _ = L.fold(cg, set())
+    labels = {s.label for s in shown.values() if s.label}
+    assert labels, "상자에 한국어 이름이 없다"
+
+    doc = io.open(GRAPH_DOC, encoding="utf-8").read()
+    # 흐름도의 `[이름]` 과 본문의 `**이름**` 둘 다 본다.
+    named = set(re.findall(r"\[([가-힣][가-힣 ]*)\]", doc))
+    named |= {m for m in re.findall(r"\*\*([가-힣][가-힣 ]*)\*\*", doc)
+              if m in labels or m.endswith(("업로드", "제작", "검사", "맵핑",
+                                            "학습", "추론", "저장", "생성", "전처리"))}
+    assert named, "문서가 상자를 하나도 이름으로 부르지 않는다"
+
+    missing = sorted(named - labels)
+    assert not missing, f"문서에만 있는 상자: {missing}"
+
+
+def test_the_doc_names_every_box_on_screen():
+    """거꾸로도 본다 — 화면에 있는데 문서가 설명 안 하면 그 상자는 혼자 남는다."""
+    from vlm_trainer.ui import layout as L
+
+    cg = _open_graph()
+    shown, _ = L.fold(cg, set())
+    doc = io.open(GRAPH_DOC, encoding="utf-8").read()
+
+    silent = sorted(s.label for s in shown.values() if s.label and s.label not in doc)
+    assert not silent, f"문서가 설명하지 않는 상자: {silent}"
+
+
+def test_the_counts_in_the_doc_match():
+    from vlm_trainer.ui import layout as L
+
+    cg = _open_graph()
+    shown, _ = L.fold(cg, set())
+    doc = io.open(GRAPH_DOC, encoding="utf-8").read()
+
+    m = re.search(r"상자 (\d+)개, 배선 (\d+)개", doc)
+    assert m, "문서가 규모를 적지 않는다"
+    assert int(m.group(1)) == len(shown), f"상자 {m.group(1)} vs 실제 {len(shown)}"
+    assert int(m.group(2)) == len(cg.edges), f"배선 {m.group(2)} vs 실제 {len(cg.edges)}"
+
+
+def test_every_parameter_the_doc_tells_you_to_change_exists():
+    """"여기를 고치세요" 라고 적어 두고 그 값이 없으면 따라 할 수가 없다."""
+    cg = _open_graph()
+    have = {k for n in cg.nodes.values() for k in (n.params or {})}
+    doc = io.open(GRAPH_DOC, encoding="utf-8").read()
+
+    # 백틱 **모양**이 아니라 이름이 나오는지만 본다. `only_split: val` 처럼 값까지
+    # 같이 적을 수도 있고, 그것까지 형식을 강요하면 글이 뻣뻣해진다.
+    for name in ("size", "template", "epochs", "max_new_tokens", "only_split",
+                 "keep_aspect", "config_path"):
+        assert name in doc, f"문서가 {name} 를 안 적는다"
+
+    # 거꾸로, 문서가 가리키는 파라미터는 **실재해야 한다.** `epochs` 는 그래프가 아니라
+    # `trainer.yaml` 에 있으므로 여기서 세지 않는다.
+    for name in ("size", "template", "max_new_tokens", "only_split",
+                 "keep_aspect", "config_path"):
+        assert name in have, f"문서가 가리키는 {name} 가 그래프에 없다"
+
+
+def test_the_doc_points_at_files_that_exist():
+    doc = io.open(GRAPH_DOC, encoding="utf-8").read()
+    for rel in re.findall(r"\]\(([^)]+\.md)\)", doc):
+        p = os.path.normpath(os.path.join(os.path.dirname(GRAPH_DOC), rel))
+        assert os.path.exists(p), rel
+    for rel in re.findall(r"`(schemas/[^`]+\.yaml|trainer[^`]*\.yaml)`", doc):
+        base = os.path.join(ROOT, "solutions", "vlm_open")
+        cand = [os.path.join(base, rel),
+                os.path.join(base, "projects", "01_open", rel)]
+        assert any(os.path.exists(c) for c in cand), rel
+
+
+def test_the_commands_in_the_doc_run():
+    from vlm_trainer.cli.main import build_parser
+
+    sub = build_parser()._subparsers._group_actions[0].choices
+    doc = io.open(GRAPH_DOC, encoding="utf-8").read()
+    for cmd in ("pipeline", "backbones"):
+        assert f"main {cmd}" in doc or f"main ^" in doc
+        assert cmd in sub
