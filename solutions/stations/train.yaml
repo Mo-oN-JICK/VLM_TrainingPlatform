@@ -16,9 +16,14 @@ writes:
 # 사전 준비 경계는 한 건 묶기 바로 뒤다. 학습은 그 결과만 읽는다.
 boundary: [n_sample]
 
+# 학습량: 적게/보통/많게. 보통은 설정 파일의 반복 횟수 그대로이고, 적게는 0.5배, 많게는 2배다.
+# 단계별 횟수를 직접 적으려면(전문가) amount 대신 epochs 를 쓴다 — 둘은 같이 쓸 수 없다.
+amount: {node: n_train, param: epochs, config: config_path, label: "학습량", level: basic}
+
 exposed_params:
-  config_path: {node: n_train, param: config_path, label: "학습 설정 파일"}
-  out_dir: {node: n_train, param: out_dir, label: "학습 결과 폴더"}
+  config_path: {node: n_train, param: config_path, label: "학습 설정 파일", level: expert}
+  out_dir: {node: n_train, param: out_dir, label: "학습 결과 폴더", level: expert}
+  epochs: {node: n_train, param: epochs, label: "단계별 횟수 직접 입력", level: expert}
 
 nodes:
   - {id: n_sample, type: "sample.assemble@1.0.0", params: {require_validated: true}}

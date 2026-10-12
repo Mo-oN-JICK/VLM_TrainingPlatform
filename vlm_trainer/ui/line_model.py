@@ -151,3 +151,38 @@ def ng_rows(cards_: List[Card], quarantine: List[Dict[str, Any]]) -> List[NgRow]
             card_number=c.number if c else 0, card_label=c.label if c else "",
             node_id=str(q.get("node_id", "")), cause=str(q.get("cause", "")), hint=str(q.get("hint", ""))))
     return rows
+
+
+# ── 안쪽 상자 ───────────────────────────────────────────────────────────
+@dataclass
+class Box:
+    id: str
+    label: str
+    kind: str                                  # node | procedure
+    params: List[tuple] = field(default_factory=list)   # (이름, 값)
+
+
+def boxes(station: Dict[str, Any], cg: Any, source_dir: str) -> List[Box]:
+    """스테이션 안쪽 상자와 고칠 수 있는 값. 노드는 모든 파라미터, 묶음 상자는 노출한 것만."""
+    from ..core.registry import resolve
+    from ..spec.loader import find_procedure
+    from .layout import node_label
+
+    out: List[Box] = []
+    procs = {p["id"]: p for p in cg.procedures}
+    for m in station["members"]:
+        if m in procs:
+            p = procs[m]
+            try:
+                label = find_procedure(p["ref"], source_dir).label or m
+            except Exception:
+                label = m
+            rows = []
+            for name, tgt in (p.get("exposed_params") or {}).items():
+                inner = cg.nodes.get(f"{m}/{tgt[0]}")
+                rows.append((name, inner.params.get(tgt[1]) if inner else None))
+            out.append(Box(m, label, "procedure", rows))
+        elif m in cg.nodes:
+            n = cg.nodes[m]
+            out.append(Box(m, node_label(cg, m), "node", sorted(n.params.items())))
+    return out

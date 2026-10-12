@@ -11,9 +11,9 @@ reads:
   answer: ["n_answers:expected"]
 
 exposed_params:
-  max_new_tokens: {node: n_infer, param: max_new_tokens, label: "답 최대 길이"}
-  only_split: {node: n_infer, param: only_split, label: "검증에 쓰는 구분"}
-  out_dir: {node: n_answers, param: out_dir, label: "검증 결과 폴더"}
+  max_new_tokens: {node: n_infer, param: max_new_tokens, label: "답 최대 길이", level: expert}
+  only_split: {node: n_infer, param: only_split, label: "검증에 쓰는 구분", level: expert}
+  out_dir: {node: n_answers, param: out_dir, label: "검증 결과 폴더", level: expert}
 
 nodes:
   - {id: n_infer, type: "infer.vlm@1.0.0", params: {max_new_tokens: 48, only_split: val}}

@@ -105,7 +105,8 @@ def _trainer_cfg(a: argparse.Namespace, cg) -> Optional[tuple]:
     tn = nodes[0]
     path = cg.nodes[tn].params.get("config_path") or "trainer.yaml"
     spec_dir = os.path.dirname(os.path.abspath(a.spec))
-    cfg = TrainerConfig.load(os.path.normpath(os.path.join(spec_dir, path)))
+    cfg = TrainerConfig.load(os.path.normpath(os.path.join(spec_dir, path)),
+                             epochs=cg.nodes[tn].params.get("epochs"))
     if getattr(a, "device", ""):
         cfg.budget.device = a.device
     for kv in getattr(a, "what_if", None) or []:

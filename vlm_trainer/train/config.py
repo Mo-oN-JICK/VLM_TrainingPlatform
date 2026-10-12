@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, List, Tuple
+from typing import Optional, Any, Dict, List, Tuple
 
 import yaml
 
@@ -243,14 +243,35 @@ class TrainerConfig:
         return c
 
     @staticmethod
-    def load(path: str) -> "TrainerConfig":
+    def load(path: str, epochs: Optional[Dict[str, Any]] = None) -> "TrainerConfig":
         with open(path, "r", encoding="utf-8") as fh:
             d = yaml.safe_load(fh) or {}
         if d.get("kind") not in (None, "TrainerConfig"):
             raise ValueError(f"{path}: kind는 TrainerConfig여야 한다")
         d.pop("kind", None)
         d.pop("version", None)
-        return TrainerConfig.from_dict(d, source_path=path)
+        cfg = TrainerConfig.from_dict(d, source_path=path)
+        cfg.apply_epochs(epochs or {})
+        return cfg
+
+    def apply_epochs(self, epochs: Dict[str, Any]) -> None:
+        """단계별 반복 횟수를 덮는다. 모르는 단계 이름이나 1 미만은 거부한다 —
+        짐작으로 넘기면 적은 횟수가 아무 데도 적용되지 않은 채 학습이 돈다."""
+        names = [st.name for st in self.stages]
+        for name, n in epochs.items():
+            if name not in names:
+                raise ValueError(
+                    f"학습 횟수의 단계 {name!r}이 설정 파일에 없다 (있는 단계: {names}).\n"
+                    "  안 잡혔다면: 적은 횟수가 어느 단계에도 적용되지 않고 파일의 값으로 학습이 돈다.\n"
+                    "  단계 이름을 설정 파일(trainer.yaml)의 stages 와 똑같이 적으세요.")
+            if isinstance(n, bool) or not isinstance(n, int) or n < 1:
+                raise ValueError(
+                    f"단계 {name!r}의 학습 횟수 {n!r}는 1 이상의 정수여야 한다.\n"
+                    "  안 잡혔다면: 0회면 학습 없이 끝난 모델이 나오고, 소수는 몇 번인지 정해지지 않는다.\n"
+                    "  1 이상의 정수를 적으세요.")
+        for st in self.stages:
+            if st.name in epochs:
+                st.epochs = int(epochs[st.name])
 
     def digest(self) -> Dict[str, Any]:
         """캐시 키·추론 계약에 들어가는 정규 표현."""

@@ -15,11 +15,11 @@ writes:
   schema: "n_schema:schema"
 
 exposed_params:
-  schema_path: {node: n_schema, param: path, label: "정답 형태 파일"}
-  mapping: {node: p_answer, param: mapping, label: "항목별 정답 열"}
-  render: {node: p_answer, param: render, label: "정답 표기"}
-  guard_mode: {node: n_guard, param: mode, label: "정답 노출 검사 방식"}
-  on_leak: {node: n_guard, param: on_leak, label: "노출된 건 처리"}
+  schema_path: {node: n_schema, param: path, label: "정답 형태 파일", level: basic}
+  mapping: {node: p_answer, param: mapping, label: "항목별 정답 열", level: basic}
+  render: {node: p_answer, param: render, label: "정답 표기", level: expert, choices: [tagged, json]}
+  guard_mode: {node: n_guard, param: mode, label: "정답 노출 검사 방식", level: expert, choices: [exact, normalized]}
+  on_leak: {node: n_guard, param: on_leak, label: "노출된 건 처리", level: expert, choices: [fail, mask]}
 
 nodes:
   - {id: n_schema, type: "schema.define@1.0.0", params: {path: ""}}

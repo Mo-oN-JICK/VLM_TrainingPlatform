@@ -101,7 +101,8 @@ def plan(
             continue
 
         path = trainer_config or cg.nodes[tns[0]].params.get("config_path") or "trainer.yaml"
-        cfg = TrainerConfig.load(os.path.normpath(os.path.join(spec_dir, path)))
+        cfg = TrainerConfig.load(os.path.normpath(os.path.join(spec_dir, path)),
+                                 epochs=cg.nodes[tns[0]].params.get("epochs"))
         if device:
             cfg.budget.device = device
 

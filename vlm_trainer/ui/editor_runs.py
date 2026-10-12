@@ -347,7 +347,7 @@ class RunsMixin:
 
     def save(self) -> Dict[str, Any]:
         if self.readonly:
-            return {"ok": False, "reason": "5노드(Line) 화면은 읽기 전용이라 저장하지 않는다"}
+            return {"ok": False, "reason": "5노드(Line)는 line_save 로 저장한다 — 이 저장은 Line 을 Project 로 덮는다"}
         if self.compiled is None:
             return {"ok": False, "reason": "컴파일되지 않은 그래프는 저장하지 않는다"}
         if not self.valid:

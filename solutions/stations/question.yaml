@@ -11,9 +11,9 @@ writes:
   prompt: "p_prompt:prompt"
 
 exposed_params:
-  template: {node: p_prompt, param: template, label: "질문 문장"}
-  placeholder: {node: p_prompt, param: placeholder, label: "사진 자리 표시"}
-  policy: {node: p_prompt, param: policy, label: "사진 자리 위치"}
+  template: {node: p_prompt, param: template, label: "질문 문장", level: basic}
+  placeholder: {node: p_prompt, param: placeholder, label: "사진 자리 표시", level: expert}
+  policy: {node: p_prompt, param: policy, label: "사진 자리 위치", level: expert, choices: [prepend, append]}
 
 procedures:
   - {id: p_prompt, ref: "prompt_build@1.0.0", params: {template: "{question}", placeholder: "<image>", policy: prepend}}

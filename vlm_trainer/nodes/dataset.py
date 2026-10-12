@@ -320,6 +320,9 @@ class PromptExport(Node):
 class TrainerParams:
     config_path: str = "trainer.yaml"  # project.yaml 기준. 설계 문서 07의 선언형 스키마
     out_dir: str = "runs/{run_id}/train"
+    # 단계 이름 -> 반복 횟수. 비어 있으면 설정 파일의 값을 그대로 쓴다. 파일을 고치지 않고
+    # 횟수만 바꾸는 자리다(5노드 화면의 "학습량"이 이 숫자로 바뀌어 들어온다).
+    epochs: dict = field(default_factory=dict)
 
 
 @register(
@@ -356,7 +359,7 @@ class VlmTrainer(Node):
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
         from ..train.config import TrainerConfig
 
-        cfg = TrainerConfig.load(ctx.asset(params.config_path))
+        cfg = TrainerConfig.load(ctx.asset(params.config_path), epochs=params.epochs)
         out_dir = os.path.abspath(params.out_dir.replace("{run_id}", ctx.run_id))
         os.makedirs(out_dir, exist_ok=True)
         handle = {"model": {"dir": out_dir, "backbone": cfg.backbone}}

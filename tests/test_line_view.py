@@ -44,7 +44,8 @@ def test_the_description_lists_five_stations_with_their_inner_ids():
     assert [s["number"] for s in d["stations"]] == [1, 2, 3, 4, 5]
     assert [s["label"] for s in d["stations"]] == ["이미지", "질문 형태", "정답 형태", "모델 학습", "검증"]
     assert {"n_guard", "p_answer", "n_schema"} <= set(d["stations"][2]["members"])
-    assert d["stations"][0]["settings"]["size"] == {"label": "사진 크기", "value": [448, 448]}
+    sz = d["stations"][0]["settings"]["size"]
+    assert (sz["label"], sz["value"], sz["level"]) == ("사진 크기", [448, 448], "basic")
     assert d["table"]["splits"]["strategy"] == "column"
 
 
@@ -111,7 +112,7 @@ def test_opening_a_line_changes_nothing_on_disk_and_refuses_every_edit():
     assert sorted(os.listdir(PROJ)) == before, "열기만 했는데 폴더에 파일이 생겼다"
     assert e.readonly and e.compiled is not None and e.valid
     r = e.set_param("n_guard", "mode", "normalized")
-    assert not r["ok"] and "읽기 전용" in r["reason"]
+    assert not r["ok"] and "상자와 배선" in r["reason"]
     assert not e.save()["ok"]
     with open(LINE, encoding="utf-8") as fh:
         assert "kind: Line" in fh.read()
@@ -134,16 +135,99 @@ def app():
     return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 
-def test_the_window_draws_five_cards_top_to_bottom_and_settings_are_read_only(app):
-    from PySide6 import QtWidgets
+def test_the_window_draws_five_cards_top_to_bottom(app):
     from vlm_trainer.ui.app.line_window import LineWindow
 
     w = LineWindow(Editor.open_line(LINE))
     ys = [w.widgets[c.id].mapTo(w, w.widgets[c.id].rect().topLeft()).y() for c in w.cards]
     assert len(w.cards) == 5 and ys == sorted(ys)
+
+
+def _labels(w):
+    return [w.tbl_settings.item(i, 0).text() for i in range(w.tbl_settings.rowCount())
+            if w.tbl_settings.item(i, 0) is not None]
+
+
+def test_basic_mode_shows_only_basic_settings_and_expert_mode_adds_the_rest_and_inner_boxes(app):
+    from vlm_trainer.ui.app.line_window import LineWindow
+
+    w = LineWindow(Editor.open_line(LINE))
     w._pick("s3")
-    assert w.tbl_settings.rowCount() == len(w.cards[2].settings) > 0
-    assert w.tbl_settings.editTriggers() == QtWidgets.QAbstractItemView.NoEditTriggers
+    basic = _labels(w)
+    assert basic == ["정답 형태 파일", "항목별 정답 열"], basic          # Q33: 정답 표기·노출 검사는 전문가
+    w._pick("s4")
+    assert _labels(w) == ["학습량"] and w.tbl_settings.cellWidget(0, 1).count() == 3
+
+    w.act_expert.setChecked(True)
+    ex = _labels(w)
+    assert "학습량" in ex and "단계별 횟수 직접 입력  · 전문가" in ex
+    assert any("n_train" in x for x in ex) and any("n_sample" in x for x in ex), "안쪽 상자가 안 보인다"
+    w._pick("s3")
+    assert any("n_guard" in x for x in _labels(w)) and any("정답 노출 검사 방식" in x for x in _labels(w))
+    w.act_expert.setChecked(False)
+    assert _labels(w)[:2] == ["정답 형태 파일", "항목별 정답 열"] and not any("n_guard" in x for x in _labels(w))
+
+
+def test_an_accepted_edit_shows_up_in_the_table_and_marks_the_title_a_rejected_one_does_not(app):
+    from vlm_trainer.ui.app.line_window import LineWindow
+
+    w = LineWindow(Editor.open_line(LINE))
+    w._pick("s1")
+    assert "저장 안 됨" not in w.windowTitle()
+    w._apply(lambda v: w.editor.line_set("s1", "size", v), [224, 224])
+    assert "저장 안 됨" in w.windowTitle() and w.tbl_settings.cellWidget(1, 1).text() == "[224, 224]"
+    assert w.lbl_refuse.text() == ""
+
+    w._apply(lambda v: w.editor.line_set("s1", "image_column", v), "photo")       # 표에 없는 열
+    assert w.lbl_refuse.text().startswith("거부") and "photo" in w.detail.toPlainText()
+    assert w.tbl_settings.cellWidget(0, 1).text() == "image_path", "거부됐는데 화면에 틀린 값이 남았다"
+
+
+def test_the_amount_combo_changes_the_training_epochs_and_normal_restores_the_original(app):
+    from vlm_trainer.ui.app.line_window import LineWindow
+
+    w = LineWindow(Editor.open_line(LINE))
+    base = w.editor.compiled.spec_hash
+    w._pick("s4")
+    w._apply(lambda v: w.editor.line_set_amount("s4", v), "많게")
+    assert w.editor.compiled.nodes["n_train"].params["epochs"] == {"projector_align": 8, "lora_ft": 8}
+    assert w.tbl_settings.cellWidget(0, 1).currentText() == "많게"
+    w._apply(lambda v: w.editor.line_set_amount("s4", v), "보통")
+    assert w.editor.compiled.spec_hash == base
+
+
+def test_widgets_report_only_when_the_input_is_finished_and_bad_json_is_not_sent(app):
+    from PySide6 import QtWidgets
+    from vlm_trainer.ui.app.line_window import _BAD, make_editor
+
+    got = []
+    cb = got.append
+    box = make_editor("fail", ["fail", "mask"], cb)
+    box.setCurrentIndex(1)
+    box.activated.emit(1)
+    assert got == ["mask"]
+
+    got.clear()
+    ed = make_editor([448, 448], [], cb)
+    ed.setText("[1, 2")
+    ed.editingFinished.emit()
+    ed.setText("[224, 224]")
+    ed.editingFinished.emit()
+    assert got == [_BAD, [224, 224]]
+    assert isinstance(make_editor(True, [], cb), QtWidgets.QCheckBox)
+    assert isinstance(make_editor(3, [], cb), QtWidgets.QSpinBox)
+    assert isinstance(make_editor(0.5, [], cb), QtWidgets.QDoubleSpinBox)
+
+
+def test_the_inner_view_draws_the_expanded_graph_read_only_with_the_stations_boxes_selected(app):
+    from vlm_trainer.ui.app.line_window import InnerView
+
+    ed = Editor.open_line(LINE)
+    members = describe_file(LINE)["stations"][2]["members"]
+    v = InnerView(ed.compiled, members, "3 정답 형태")
+    assert {"n_guard", "p_answer", "n_schema"} <= set(v.canvas.cards)
+    assert all(v.canvas.cards[m].isSelected() for m in members)
+    assert not v.canvas.cards["n_img"].isSelected()
 
 
 def test_a_progress_file_with_ejected_samples_fills_the_ng_table_and_the_detail(app, tmp_path):

@@ -11,6 +11,8 @@
 from __future__ import annotations
 
 import os
+
+import yaml
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.errors import SpecError
@@ -55,6 +57,65 @@ def _set_param(inst: Dict[str, Dict[str, Any]], st: str, exposed: Dict[str, Any]
     inst[str(tgt["node"])].setdefault("params", {})[str(tgt["param"])] = value
 
 
+# 학습량 단계와 반복 횟수의 배율. 보통은 설정 파일의 값을 그대로 쓴다(아무것도 덮지 않는다).
+AMOUNTS = {"적게": 0.5, "보통": 1.0, "많게": 2.0}
+
+
+def amount_of(sref: Dict[str, Any]) -> str:
+    """이 스테이션이 지금 어느 학습량인가. 직접 입력한 횟수가 있으면 단계가 아니다(빈 문자열)."""
+    p = sref.get("params") or {}
+    if p.get("epochs"):
+        return ""
+    return str(p.get("amount") or "보통")
+
+
+def _apply_amount(inst: Dict[str, Dict[str, Any]], st: Dict[str, Any], amount: str,
+                  given: Dict[str, Any], source_dir: str, where: str, sid: str, label: str) -> None:
+    spec = st.get("amount")
+    if not spec:
+        raise SpecError(f"{where}: 스테이션 {sid}({label})에는 학습량이 없다.\n"
+                        "  안 잡혔다면: 적은 값이 아무 데도 쓰이지 않는다.\n  amount 를 빼세요.")
+    if amount not in AMOUNTS:
+        raise SpecError(f"{where}: 학습량 {amount!r}는 없는 값이다 ({' | '.join(AMOUNTS)}).\n"
+                        "  안 잡혔다면: 몇 배로 학습하는지 짐작해야 한다.\n  셋 중 하나를 적으세요.")
+    target = str(spec["node"])
+    direct = inst[target].get("params", {}).get(str(spec["param"]))
+    if direct:
+        raise SpecError(f"{where}: 스테이션 {sid}({label})에 학습량 {amount!r}과 직접 입력한 횟수 {direct}가 같이 있다.\n"
+                        "  안 잡혔다면: 어느 쪽이 적용되는지 화면과 실제가 갈라진다.\n"
+                        "  둘 중 하나만 남기세요(직접 입력을 지우거나 학습량을 빼세요).")
+    if amount == "보통":
+        return
+    cfg_param = inst[target].get("params", {}).get(str(spec["config"]))
+    path = str(cfg_param or "")
+    full = path if os.path.isabs(path) else os.path.normpath(os.path.join(source_dir, path))
+    try:
+        with open(full, "r", encoding="utf-8") as fh:
+            stages = (yaml.safe_load(fh) or {}).get("stages") or []
+    except OSError as exc:
+        raise SpecError(f"{where}: 학습량을 셈하려면 학습 설정 파일이 필요한데 읽지 못했다: {full} ({exc})\n"
+                        "  안 잡혔다면: 몇 번이 기본인지 모른 채 학습이 시작된다.\n"
+                        "  학습 설정 파일 경로를 확인하세요.") from None
+    factor = AMOUNTS[amount]
+    inst[target].setdefault("params", {})[str(spec["param"])] = {
+        str(s.get("name", "default")): max(1, int(int(s.get("epochs", 1)) * factor + 0.5)) for s in stages}
+
+
+def _apply_overrides(data: Dict[str, Any], nodes: List[Dict[str, Any]], procs: List[Dict[str, Any]],
+                     where: str) -> None:
+    """안쪽 상자 값 수정. 스테이션이 노출하지 않은 값도 고칠 수 있는 길이고, 전문가 모드의 몫이다."""
+    by_id = {str(x["id"]): x for x in nodes + procs}
+    for i, o in enumerate(data.get("overrides") or []):
+        if not isinstance(o, dict) or not {"node", "param"} <= set(o) or "value" not in o:
+            raise SpecError(f"{where}: overrides[{i}]는 {{node, param, value}} 이어야 한다 — {o!r}")
+        tgt = by_id.get(str(o["node"]))
+        if tgt is None:
+            raise SpecError(f"{where}: overrides[{i}]가 없는 상자를 가리킨다: {o['node']!r} (있는 상자: {sorted(by_id)}).\n"
+                            "  안 잡혔다면: 고친 값이 어디에도 적용되지 않는데 적용된 줄 안다.\n"
+                            "  상자 id 를 확인하세요.")
+        tgt.setdefault("params", {})[str(o["param"])] = o["value"]
+
+
 def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line", *, check: bool = True,
                 info: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Line 매핑 -> Project 매핑. 읽는 파일은 Station 정의와, `check` 일 때 표(첫 줄과 split)다."""
@@ -83,8 +144,12 @@ def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line", *, c
         sp = [dict(p, params=dict(p.get("params") or {})) for p in st.get("procedures") or []]
         inst = {str(x["id"]): x for x in sn + sp}
 
-        for name, value in (sref.get("params") or {}).items():
+        given = dict(sref.get("params") or {})
+        amount = given.pop("amount", None)
+        for name, value in given.items():
             _set_param(inst, str(sref["ref"]), st.get("exposed_params") or {}, str(name), value)
+        if amount is not None:
+            _apply_amount(inst, st, str(amount), given, source_dir, where, sid, label)
 
         taken = {n["id"] for n in nodes} | {p["id"] for p in procs}
         dup = sorted(set(inst) & taken)
@@ -115,17 +180,25 @@ def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line", *, c
                 shown[str(name)] = {
                     "label": str(tgt.get("label") or name),
                     "value": inst[str(tgt["node"])].get("params", {}).get(str(tgt["param"]), None),
+                    "level": str(tgt.get("level") or "expert"),
+                    "choices": list(tgt.get("choices") or []),
+                    "target": [str(tgt["node"]), str(tgt["param"])],
                 }
+            am = st.get("amount")
             info.append({
                 "id": sid, "number": si + 1, "ref": str(sref["ref"]), "name": str(st.get("name")),
                 "label": label, "hint": str(st.get("hint") or ""), "members": list(inst),
                 "settings": shown,
+                "amount": ({"label": str(am.get("label") or "학습량"), "level": str(am.get("level") or "basic"),
+                            "value": amount_of(sref), "choices": list(AMOUNTS)} if am else None),
             })
 
         nodes += sn
         procs += sp
         edges += [{"from": str(e["from"]), "to": str(e["to"])} for e in st.get("edges") or []]
         boundary += [b for b in st.get("boundary") or [] if b not in boundary]
+
+    _apply_overrides(data, nodes, procs, where)
 
     mat = dict(data.get("materialize") or {})
     mat["boundary"] = list(mat.get("boundary") or []) + [b for b in boundary if b not in (mat.get("boundary") or [])]

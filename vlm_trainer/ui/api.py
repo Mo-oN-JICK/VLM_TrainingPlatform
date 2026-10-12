@@ -32,6 +32,7 @@ from .editor_common import HistoryEntry, _msg, _short
 # Editor 의 관심사별 믹스인. 한 클래스가 아홉 가지를 담고 있어 갈랐다 —
 # 메서드 이름과 동작은 그대로이고, 어디 적혀 있는지만 바뀐다.
 from .editor_history import HistoryMixin
+from .editor_line import LineMixin
 from .editor_project import ProjectMixin
 from .editor_recipe import RecipeMixin
 from .editor_runs import RunsMixin
@@ -109,7 +110,7 @@ def occupied_inputs(cg: CompiledGraph) -> List[str]:
 
 
 @dataclass
-class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin):
+class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin, LineMixin):
     """열려 있는 프로젝트 하나. 편집은 메모리에서, 저장은 명시적으로.
 
     관심사별 믹스인 넷을 상속한다(이력·프로젝트 설정·레시피·실행). 믹스인은 여기 있는
@@ -148,6 +149,7 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin):
     # 5노드(Line) 파일을 여는 화면용. 원본은 Line 이고 여기 있는 그래프는 펼친 파생물이라,
     # 고쳐 저장하면 원본이 Project 로 덮인다 — 그래서 편집·저장을 전부 거부한다.
     readonly: bool = False
+    line_data: Optional[Dict[str, Any]] = None   # Line 의 원본 매핑. 편집은 이것을 고친다
 
     @staticmethod
     def open(path: str) -> "Editor":
@@ -176,7 +178,10 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin):
         이력(`edit_history.jsonl`)과 배치(`layout.yaml`)도 만들지 않는다 — 열기만 했는데
         폴더에 파일이 생기면 읽기 전용이 아니다.
         """
+        from ..spec.loader import _read_yaml
+
         e = Editor(path=os.path.abspath(path), readonly=True)
+        e.line_data = _read_yaml(e.path)
         e.graph = load_project(e.path)
         e._recompile()
         return e
@@ -225,8 +230,8 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin):
         기록한 뒤에 되돌리면 저널에는 이미 줄이 들어간 뒤라 거부된 편집이 History에 남는다.
         """
         if self.readonly:
-            return {"ok": False, "reason": "5노드(Line) 화면은 읽기 전용이다",
-                    "detail": "설정 편집은 아직 없다. Line 파일을 직접 고치거나 `vlmt expand` 로 11노드로 펼쳐 편집한다."}
+            return {"ok": False, "reason": "5노드(Line)에서는 상자와 배선을 고치지 않는다 — 설정만 고친다",
+                    "detail": "상자·배선을 바꾸려면 11노드로 내보내서 편집한다. 내보낸 뒤에는 Line 과 연결이 끊긴다."}
         before_nodes = [NodeInstance(n.id, n.type, dict(n.params)) for n in self.graph.nodes]
         before_edges = list(self.graph.edges)
         # Procedure 인스턴스도 되돌린다. 빠져 있으면 거부된 노출 파라미터 편집이

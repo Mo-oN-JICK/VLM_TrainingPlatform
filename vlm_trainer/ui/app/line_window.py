@@ -1,17 +1,24 @@
-"""5노드 화면 — Line 파일을 읽기 전용으로 보여 주고 실행한다.
+"""5노드 화면 — Line 파일을 보고, 설정을 고치고, 실행한다.
 
 왼쪽은 위에서 아래로 흐르는 카드 다섯 장(스테이션), 오른쪽 위는 고른 스테이션의 설정,
 오른쪽 아래는 **항상 보이는 NG 표**다. NG 가 숨으면 라인 옆 배출함을 가린 것과 같다.
 
+고칠 수 있는 것은 **설정 값뿐**이다. 상자를 더하거나 배선을 바꾸는 길은 없고, 그것은 "11노드로
+내보내기"의 몫이다. 모든 편집은 `Editor.line_*` 가 Line 의 매핑을 고친 뒤 다시 펼쳐 컴파일하고,
+통과해야 받아들인다 — 거부되면 원래 값이 남고 이유가 상태줄에 뜬다.
+
+기본 모드는 기본 설정만, **전문가 모드**는 전부와 안쪽 상자의 값을 보여 준다. 전문가 모드는
+창을 닫으면 꺼진다.
+
 실행은 `vlmt pipeline <line.yaml>` 을 하위 프로세스로 띄우는 것이 전부다(버튼 하나가 CLI 명령 하나).
-이 창은 그 진행 파일을 읽어 그릴 뿐이고, 무엇을 그릴지의 계산은 `ui/line_model.py` 에 있다.
-설정 편집은 3b 에서 붙는다 — 지금은 읽기 전용이다.
+무엇을 그릴지의 계산은 `ui/line_model.py` 에 있다.
 """
 
 from __future__ import annotations
 
+import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -20,7 +27,7 @@ from .. import line_model as M
 from ..api import Editor
 from ...engine import runner as runner_mod
 from ...engine import samples as samples_mod
-from ...spec.line import describe_file
+from .canvas import GraphCanvas
 from .window import FONT, QSS
 
 POLL_MS = 700
@@ -34,6 +41,7 @@ MUTED = f"color:{T.NODE['muted']}; font-size:11px;"
 
 class CardWidget(QtWidgets.QFrame):
     clicked = QtCore.Signal(str)
+    opened = QtCore.Signal(str)
 
     def __init__(self, card: M.Card, parent: Any = None) -> None:
         super().__init__(parent)
@@ -67,7 +75,7 @@ class CardWidget(QtWidgets.QFrame):
         self.lamp.setText(f'<span style="color:{color}">●</span> {c.lamp_text}')
         self.line2.setText(c.line2)
         self.hint.setText(c.hint)
-        self.setToolTip(f"{c.label} — {c.hint}")
+        self.setToolTip(f"{c.label} — {c.hint}\n더블클릭: 안쪽 보기")
 
     def set_selected(self, on: bool) -> None:
         border = T.NODE["border_selected"] if on else T.NODE["border"]
@@ -78,6 +86,82 @@ class CardWidget(QtWidgets.QFrame):
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:  # noqa: N802
         self.clicked.emit(self.cid)
         super().mousePressEvent(ev)
+
+    def mouseDoubleClickEvent(self, ev: QtGui.QMouseEvent) -> None:  # noqa: N802
+        self.opened.emit(self.cid)
+
+
+_BAD = object()   # JSON 이 아닌 입력. 그대로 보내지 않고 거부로 돌린다
+
+
+def make_editor(value: Any, choices: List[str], on_done: Callable[[Any], None]) -> QtWidgets.QWidget:
+    """값의 종류에 맞는 입력 위젯. 값이 바뀌어 **입력이 끝났을 때만** 알린다 — 글자마다 알리면
+    타이핑하는 동안 컴파일이 돌고 중간 값이 전부 거부된다."""
+    if choices:
+        w = QtWidgets.QComboBox()
+        w.addItems([str(c) for c in choices])
+        if str(value) not in [str(c) for c in choices]:
+            w.insertItem(0, str(value))
+        w.setCurrentText(str(value))
+        w.activated.connect(lambda _i: on_done(w.currentText()))
+        return w
+    if isinstance(value, bool):
+        w = QtWidgets.QCheckBox()
+        w.setChecked(value)
+        w.clicked.connect(lambda on: on_done(bool(on)))
+        return w
+    if isinstance(value, int):
+        w = QtWidgets.QSpinBox()
+        w.setRange(-10**9, 10**9)
+        w.setValue(value)
+        w.editingFinished.connect(lambda: on_done(w.value()))
+        return w
+    if isinstance(value, float):
+        w = QtWidgets.QDoubleSpinBox()
+        w.setRange(-1e9, 1e9)
+        w.setDecimals(6)
+        w.setValue(value)
+        w.editingFinished.connect(lambda: on_done(w.value()))
+        return w
+    w = QtWidgets.QLineEdit()
+    if isinstance(value, str):
+        w.setText(value)
+        w.editingFinished.connect(lambda: on_done(w.text()))
+    else:  # 목록·표·비어 있음 — JSON 으로 적는다
+        w.setText(json.dumps(value, ensure_ascii=False))
+        w.setToolTip("JSON 으로 적습니다. 예: [448, 448]")
+
+        def done() -> None:
+            try:
+                on_done(json.loads(w.text()))
+            except ValueError:
+                on_done(_BAD)
+
+        w.editingFinished.connect(done)
+    return w
+
+
+class InnerView(QtWidgets.QDialog):
+    """안쪽 보기 — 펼친 11노드 그래프를 읽기 전용으로. 고른 스테이션의 상자가 선택 색으로 보인다."""
+
+    def __init__(self, cg: Any, members: List[str], title: str, parent: Any = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"안쪽 보기 — {title} (읽기 전용)")
+        self.resize(1000, 800)
+        self.setStyleSheet(QSS)
+        lay = QtWidgets.QVBoxLayout(self)
+        note = QtWidgets.QLabel("상자와 배선은 여기서 고치지 않습니다. 고치려면 `11노드로 내보내기`를 쓰세요.")
+        note.setStyleSheet(MUTED)
+        lay.addWidget(note)
+        self.canvas = GraphCanvas(self)
+        lay.addWidget(self.canvas, 1)
+        self.canvas.load(cg, set(), None, compat={}, occupied=[], boundary=[], wired_from={})
+        self.canvas.set_read_only(True)
+        for nid in members:
+            card = self.canvas.cards.get(nid)
+            if card is not None:
+                card.setSelected(True)
+        QtCore.QTimer.singleShot(0, self.canvas.fit)
 
 
 class LineWindow(QtWidgets.QMainWindow):
@@ -92,6 +176,7 @@ class LineWindow(QtWidgets.QMainWindow):
         self.picked = ""
         self.thumbs: Dict[str, str] = {}      # 건 id -> 사진 경로
         self._ng_rows: List[M.NgRow] = []
+        self._running = False
 
         self._build_toolbar()
         self._build_body()
@@ -100,12 +185,15 @@ class LineWindow(QtWidgets.QMainWindow):
         self.statusBar().addPermanentWidget(self.lbl_run)
         self.lbl_info = QtWidgets.QLabel()
         self.statusBar().addWidget(self.lbl_info, 1)
+        self.lbl_refuse = QtWidgets.QLabel()
+        self.lbl_refuse.setStyleSheet(f"color:{T.STATE['failed']}; font-size:11px;")
+        self.statusBar().addWidget(self.lbl_refuse, 2)
 
         self._poll = QtCore.QTimer(self)
         self._poll.setInterval(POLL_MS)
         self._poll.timeout.connect(self.refresh)
 
-        self.reload()
+        self.reload(confirm=False)
 
     # ── 구성 ────────────────────────────────────────────────────────────
     def _build_toolbar(self) -> None:
@@ -117,8 +205,19 @@ class LineWindow(QtWidgets.QMainWindow):
         self.act_stop = tb.addAction("중단", self._stop)
         self.act_stop.setEnabled(False)
         tb.addSeparator()
-        self.act_reread = tb.addAction("다시 읽기", self.reload)
+        self.act_save = tb.addAction("저장", self._save)
+        self.act_save.setShortcut(QtGui.QKeySequence.Save)
+        self.act_reread = tb.addAction("다시 읽기", lambda: self.reload())
         self.act_reread.setToolTip("표(CSV)와 Line 파일을 다시 읽습니다. 표를 고쳤다면 눌러 주세요.")
+        tb.addSeparator()
+        self.act_expert = tb.addAction("전문가 모드")
+        self.act_expert.setCheckable(True)
+        self.act_expert.setToolTip("켜면 모든 설정과 안쪽 상자의 값이 보입니다. 창을 닫으면 꺼집니다.")
+        self.act_expert.toggled.connect(lambda _on: self._show_settings(self.picked))
+        self.act_inner = tb.addAction("안쪽 보기", lambda: self._open_inner(self.picked))
+        self.act_inner.setToolTip("고른 스테이션 안쪽의 상자와 배선을 읽기 전용으로 봅니다(카드 더블클릭도 같습니다).")
+        self.act_export = tb.addAction("11노드로 내보내기", self._export)
+        self.act_export.setToolTip("상자와 배선을 직접 고칠 때 씁니다. 내보낸 뒤에는 5노드와 연결이 끊깁니다.")
 
     def _build_body(self) -> None:
         split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
@@ -144,9 +243,9 @@ class LineWindow(QtWidgets.QMainWindow):
         self.tbl_settings = QtWidgets.QTableWidget(0, 2)
         self.tbl_settings.setHorizontalHeaderLabels(["설정", "값"])
         self.tbl_settings.horizontalHeader().setStretchLastSection(True)
-        self.tbl_settings.setColumnWidth(0, 190)
+        self.tbl_settings.setColumnWidth(0, 200)
         self.tbl_settings.verticalHeader().setVisible(False)
-        self.tbl_settings.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)  # 읽기 전용
+        self.tbl_settings.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.tbl_settings.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         tl.addWidget(self.tbl_settings)
         right.addWidget(top)
@@ -176,11 +275,17 @@ class LineWindow(QtWidgets.QMainWindow):
         self.lbl_fix.setStyleSheet(MUTED)
         bl.addWidget(self.lbl_fix)
         right.addWidget(bottom)
-        right.setSizes([260, 560])
+        right.setSizes([320, 500])
 
     # ── 읽기 ────────────────────────────────────────────────────────────
-    def reload(self) -> None:
-        """Line 과 표를 다시 읽는다. 읽기 전용이라 디스크에 쓰는 것은 없다."""
+    def reload(self, confirm: bool = True) -> None:
+        """Line 과 표를 다시 읽는다. 저장하지 않은 변경이 있으면 사라지므로 먼저 묻는다."""
+        if confirm and self.editor.dirty:
+            ans = QtWidgets.QMessageBox.question(
+                self, "저장하지 않은 변경", "다시 읽으면 저장하지 않은 변경이 사라집니다. 계속할까요?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+            if ans != QtWidgets.QMessageBox.Yes:
+                return
         try:
             old = self.editor
             new = Editor.open_line(old.path)
@@ -190,18 +295,23 @@ class LineWindow(QtWidgets.QMainWindow):
                       "phase", "stopped", "launched_at", "finished_at", "extra_modules"):
                 setattr(new, f, getattr(old, f))
             self.editor = new
-            self.desc = describe_file(self.editor.path)
+            self.desc = self.editor.line_describe()
         except Exception as exc:  # 스펙이 어긋난 채 열린 창이 죽지 않게 한다
             self.lbl_info.setText("읽지 못했다: " + str(exc).splitlines()[0])
             self.detail.setPlainText(str(exc))
             return
-        cg = self.editor.compiled
-        self.lbl_info.setText(
-            f"{self.desc['name'] or self.desc['id']} · 스테이션 {len(self.desc['stations'])} · "
-            f"노드 {len(cg.nodes) if cg else 0} · {cg.spec_hash if cg else ''}")
-        self.setWindowTitle(f"{self.desc['name'] or self.desc['id']} — VLM Trainer (5노드)")
+        self._title()
         self._load_thumbs()
         self.refresh()
+        self._show_settings(self.picked)
+
+    def _title(self) -> None:
+        cg = self.editor.compiled
+        name = self.desc.get("name") or self.desc.get("id") or os.path.basename(self.editor.path)
+        self.setWindowTitle(f"{name} — VLM Trainer (5노드)" + ("  *저장 안 됨" if self.editor.dirty else ""))
+        self.lbl_info.setText(
+            f"{name} · 스테이션 {len(self.desc.get('stations') or [])} · "
+            f"노드 {len(cg.nodes) if cg else 0} · {cg.spec_hash if cg else ''}")
 
     def _load_thumbs(self) -> None:
         """NG 표의 사진. 건 id → 사진 경로. 표를 읽지 못하면 사진 없이 간다."""
@@ -229,12 +339,15 @@ class LineWindow(QtWidgets.QMainWindow):
         self._paint_cards()
         quarantine = list((snap or {}).get("quarantine") or [])
         self._paint_ng(M.ng_rows(self.cards, quarantine), int((snap or {}).get("quarantine_total") or len(quarantine)))
-        if self.picked:
-            self._show_settings(self.picked)
 
         running = bool(run.get("running"))
+        self._running = running
         self.act_run.setEnabled(not running)
         self.act_stop.setEnabled(running)
+        # 돌고 있는 동안은 설정을 못 고친다. 실행은 디스크의 Line 을 도는데 편집은 메모리를 바꾼다 —
+        # 둘이 갈라지면 화면과 다른 것이 돌아간다.
+        self.tbl_settings.setEnabled(not running)
+        self.act_save.setEnabled(not running)
         head = str((run.get("pipeline") or {}).get("headline") or "")
         self.lbl_run.setText(f"{run.get('run_id', '')} {head}".strip())
         if running and not self._poll.isActive():
@@ -260,6 +373,7 @@ class LineWindow(QtWidgets.QMainWindow):
             for i, c in enumerate(self.cards):
                 w = CardWidget(c)
                 w.clicked.connect(self._pick)
+                w.opened.connect(self._open_inner)
                 self.widgets[c.id] = w
                 self.left_lay.addWidget(w)
                 if i < len(self.cards) - 1:
@@ -299,16 +413,83 @@ class LineWindow(QtWidgets.QMainWindow):
             w.set_selected(k == cid)
         self._show_settings(cid)
 
+    # ── 설정 ────────────────────────────────────────────────────────────
+    def _station(self, cid: str) -> Optional[Dict[str, Any]]:
+        return next((s for s in self.desc.get("stations") or [] if s["id"] == cid), None)
+
     def _show_settings(self, cid: str) -> None:
-        c = next((x for x in self.cards if x.id == cid), None)
-        if c is None:
+        st = self._station(cid)
+        if st is None:
             return
-        self.lbl_settings.setText(f"{c.number}  {c.label} — 설정(읽기 전용)")
-        rows = list(c.settings.items())
-        self.tbl_settings.setRowCount(len(rows))
-        for i, (_, s) in enumerate(rows):
-            self.tbl_settings.setItem(i, 0, QtWidgets.QTableWidgetItem(str(s["label"])))
-            self.tbl_settings.setItem(i, 1, QtWidgets.QTableWidgetItem(_show(s["value"])))
+        expert = self.act_expert.isChecked()
+        rows: List[tuple] = []     # (종류, 이름, 값, 선택지, 적용 함수)
+
+        if st.get("amount") and (expert or st["amount"]["level"] == "basic"):
+            a = st["amount"]
+            rows.append(("amount", a["label"] + ("" if a["value"] else " (직접 입력 중)"),
+                         a["value"] or "직접 입력", a["choices"],
+                         lambda v, sid=cid: self.editor.line_set_amount(sid, v)))
+        for name, s in st["settings"].items():
+            if s["level"] != "basic" and not expert:
+                continue
+            rows.append(("setting", s["label"] + ("" if s["level"] == "basic" else "  · 전문가"),
+                         s["value"], s["choices"], lambda v, sid=cid, n=name: self.editor.line_set(sid, n, v)))
+
+        if expert:
+            cg = self.editor.compiled
+            for b in M.boxes(st, cg, os.path.dirname(self.editor.path)):
+                rows.append(("box", f"{b.label}  ({b.id})", None, [], None))
+                for pname, pval in b.params:
+                    rows.append(("param", pname, pval, [],
+                                 lambda v, nid=b.id, pn=pname: self.editor.line_set_override(nid, pn, v)))
+
+        self.lbl_settings.setText(f"{st['number']}  {st['label']} — 설정" + ("  [전문가 모드]" if expert else ""))
+        t = self.tbl_settings
+        # 칸 위젯은 setRowCount 로 비워야 사라진다. 그냥 덮으면 지난 그림의 입력칸이 남는다.
+        t.clearSpans()
+        t.setRowCount(0)
+        t.setRowCount(len(rows))
+        for i, (kind, label, value, choices, setter) in enumerate(rows):
+            if kind == "box":
+                item = QtWidgets.QTableWidgetItem(label)
+                f = item.font()
+                f.setBold(True)
+                item.setFont(f)
+                t.setItem(i, 0, item)
+                t.setSpan(i, 0, 1, 2)
+                t.removeCellWidget(i, 1)
+                continue
+            t.setItem(i, 0, QtWidgets.QTableWidgetItem(label))
+            t.setCellWidget(i, 1, make_editor(value, choices, self._edit_cb(setter, value)))
+        t.setEnabled(not self._running)
+
+    def _edit_cb(self, setter: Callable[[Any], Dict[str, Any]], old: Any) -> Callable[[Any], None]:
+        def done(v: Any) -> None:
+            if v is _BAD:
+                QtCore.QTimer.singleShot(0, lambda: (self._refuse("JSON 이 아닙니다 — 예: [448, 448]"),
+                                                     self._show_settings(self.picked)))
+                return
+            if v == old:
+                return
+            # 값을 보낸 위젯은 표를 다시 그리는 순간 지워진다. 그 위젯의 신호 처리가 끝난 뒤에 바꾼다.
+            QtCore.QTimer.singleShot(0, lambda: self._apply(setter, v))
+
+        return done
+
+    def _apply(self, setter: Callable[[Any], Dict[str, Any]], value: Any) -> None:
+        res = setter(value)
+        if res.get("ok"):
+            self.lbl_refuse.setText("")
+            self.desc = self.editor.line_describe()
+        else:
+            self._refuse(res.get("reason", "거부됨"))
+            self.detail.setPlainText(str(res.get("detail") or ""))
+        self._title()
+        self.refresh()
+        self._show_settings(self.picked)   # 거부됐어도 다시 그려 원래 값으로 되돌린다
+
+    def _refuse(self, why: str) -> None:
+        self.lbl_refuse.setText("거부: " + why)
 
     def _show_detail(self) -> None:
         i = self.tbl_ng.currentRow()
@@ -319,6 +500,45 @@ class LineWindow(QtWidgets.QMainWindow):
         self.detail.setPlainText(f"건 {r.sample_key} · {where} ({r.node_id})\n\n{r.cause}"
                                  + (f"\n\n해결: {r.hint}" if r.hint else ""))
 
+    # ── 저장·안쪽·내보내기 ──────────────────────────────────────────────
+    def _save(self) -> None:
+        res = self.editor.line_save()
+        if res.get("ok"):
+            self.statusBar().showMessage("저장했습니다", 4000)
+        else:
+            self._refuse(res.get("reason", "저장하지 못했다"))
+            self.detail.setPlainText(str(res.get("detail") or ""))
+        self._title()
+
+    def _open_inner(self, cid: str) -> None:
+        st = self._station(cid or "")
+        if st is None:
+            self.statusBar().showMessage("스테이션을 먼저 고르세요", 3000)
+            return
+        dlg = InnerView(self.editor.compiled, st["members"], f"{st['number']} {st['label']}", self)
+        dlg.exec()
+
+    def _export(self) -> None:
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("11노드로 내보내기")
+        box.setIcon(QtWidgets.QMessageBox.Warning)
+        box.setText("11노드 프로젝트로 내보냅니다.")
+        box.setInformativeText(
+            "내보낸 파일은 이 5노드 파일과 연결이 끊깁니다. 한 번 내보내면 5노드 화면으로 돌아올 수 없고, "
+            "이후에는 내보낸 파일을 직접 편집해야 합니다.\n상자와 배선을 직접 고칠 때만 쓰세요.\n\n"
+            f"만들 파일: {os.path.basename(self.editor.line_export_path())}")
+        go = box.addButton("내보내기", QtWidgets.QMessageBox.DestructiveRole)
+        box.addButton("취소", QtWidgets.QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is not go:
+            return
+        res = self.editor.line_export()
+        if res.get("ok"):
+            self.statusBar().showMessage(f"내보냈습니다: {res['path']}", 8000)
+        else:
+            self._refuse(res.get("reason", "내보내지 못했다"))
+            self.detail.setPlainText(str(res.get("detail") or ""))
+
     # ── 실행 ────────────────────────────────────────────────────────────
     def _run(self, resume: Optional[bool] = None) -> None:
         res = self.editor.pipeline_start(resume, 0.0)
@@ -327,10 +547,11 @@ class LineWindow(QtWidgets.QMainWindow):
             self._ask_resume(ask)
             return
         if not res.get("ok"):
-            self.statusBar().showMessage(str(res.get("reason") or "실행하지 못했다"), 8000)
+            self._refuse(str(res.get("reason") or "실행하지 못했다"))
             if res.get("detail"):
                 self.detail.setPlainText(str(res["detail"]))
             return
+        self.lbl_refuse.setText("")
         self.statusBar().showMessage("실행 시작", 3000)
         self._poll.start()
         self.refresh()
@@ -355,19 +576,24 @@ class LineWindow(QtWidgets.QMainWindow):
         if not res.get("ok"):
             self.statusBar().showMessage(str(res.get("reason", "")), 4000)
 
+    def closeEvent(self, ev: QtGui.QCloseEvent) -> None:  # noqa: N802
+        if self.editor.dirty:
+            ans = QtWidgets.QMessageBox.question(
+                self, "저장하지 않은 변경", "저장하지 않은 변경이 있습니다. 저장할까요?",
+                QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.Discard | QtWidgets.QMessageBox.Cancel)
+            if ans == QtWidgets.QMessageBox.Cancel:
+                ev.ignore()
+                return
+            if ans == QtWidgets.QMessageBox.Save:
+                self._save()
+                if self.editor.dirty:
+                    ev.ignore()
+                    return
+        ev.accept()
+
 
 def space_path(root: str, rel: str) -> str:
     return rel if os.path.isabs(rel) else os.path.normpath(os.path.join(root, rel))
-
-
-def _show(v: Any) -> str:
-    if v is None:
-        return "(묶음 상자의 기본값)"
-    if isinstance(v, dict):
-        return ", ".join(f"{k}={x}" for k, x in v.items()) or "-"
-    if isinstance(v, (list, tuple)):
-        return ", ".join(str(x) for x in v)
-    return str(v)
 
 
 def launch_line(path: str, extra_modules: tuple = ()) -> int:

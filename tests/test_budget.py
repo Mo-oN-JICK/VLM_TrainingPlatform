@@ -171,7 +171,7 @@ def test_run_refuses_to_start_when_over_budget(tmp_path, monkeypatch, capsys):
     over.write_text(cfg_text, encoding="utf-8")
 
     real_load = TrainerConfig.load
-    monkeypatch.setattr(TrainerConfig, "load", staticmethod(lambda p: real_load(str(over))))
+    monkeypatch.setattr(TrainerConfig, "load", staticmethod(lambda p, **kw: real_load(str(over), **kw)))
 
     args = argparse.Namespace(
         spec=PROJECT,
