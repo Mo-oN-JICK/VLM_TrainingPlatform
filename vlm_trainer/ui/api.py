@@ -365,6 +365,8 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin, LineMixin):
         게이트는 언제나 펼쳐진 그래프를 본다.
         """
         known = {p["id"] for p in (self.compiled.procedures if self.compiled else [])}
+        if self.line_data is not None:      # 5노드에서는 카드(스테이션)를 펼친다
+            known = {s["id"] for s in self.line_describe()["stations"]}
         if pid not in known:
             return {"ok": False, "reason": f"그런 Procedure가 없습니다: {pid} (있는 것: {sorted(known)})"}
         self.expanded.discard(pid) if pid in self.expanded else self.expanded.add(pid)

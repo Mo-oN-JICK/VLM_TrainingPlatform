@@ -301,6 +301,7 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         self.chips: Dict[str, PortChip] = {}
         self.wires: List[Wire] = []
         self.chains: List[Chain] = []
+        self._line = False
         self.compat: Dict[str, Dict[str, str]] = {}
         self.occupied: set = set()
         # 포트 호버 설명이 쓰는 것. "지금 무엇이 꽂혀 있나" 와 "마지막으로 흐른 값".
@@ -356,6 +357,7 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         self.chips.clear()
         self.wires.clear()
         self.chains.clear()
+        self._line = bool(line)
         self._scene.clear()
         self._scene.blockSignals(False)
         self._scene.setSceneRect(QtCore.QRectF())   # 비운 뒤 경계도 함께 비운다
@@ -365,7 +367,11 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         self.wired_from = dict(wired_from or {})
 
         # `line` 이 있으면 5노드(스테이션 카드 5장), 없으면 노드 그래프
-        shown, edges = L.fold_line(cg, line) if line else L.fold(cg, expanded)
+        chains: List[Any] = []
+        if line:
+            shown, edges, chains = L.fold_line(cg, line, expanded)
+        else:
+            shown, edges = L.fold(cg, expanded)
         placed = L._layout(shown, edges, fixed)
 
         for nid, pl in placed.items():
@@ -385,10 +391,10 @@ class GraphCanvas(QtWidgets.QGraphicsView):
             for name, cx, cy, cw in L._chips(s.outputs, 0, pl.h, pl.w):
                 self._add_chip(card, nid, name, s.outputs[name], cx, cy, cw, False)
 
-        for a, b in edges if line else ():
+        for a, b in chains:
             self.chains.append(Chain(self.cards[a], self.cards[b]))
             self._scene.addItem(self.chains[-1])
-        for a, b in () if line else edges:
+        for a, b in edges:
             src, dst = self.chips.get(f"out:{a}"), self.chips.get(f"in:{b}")
             if src is None or dst is None:
                 continue
@@ -644,7 +650,9 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         def put(text: str, fn: Any) -> None:
             acts[menu.addAction(text)] = fn
 
-        if isinstance(item, PortChip) and item.is_input and item.ref in self.occupied:
+        if self._line and not isinstance(item, NodeCard):
+            pass                 # 5노드의 배선은 끊지 않는다
+        elif isinstance(item, PortChip) and item.is_input and item.ref in self.occupied:
             put("이 배선 끊기", lambda r=item.ref: self.disconnectRequested.emit(r))
         elif isinstance(item, Wire):
             put(f"배선 끊기   {item.src.ref} → {item.dst.ref}",
@@ -652,12 +660,17 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         elif isinstance(item, (NodeCard, PortChip)):
             card = item if isinstance(item, NodeCard) else item.parentItem()
             nid, on = card.shown.id, card.boundary
-            if card.shown.inner:
-                put("펼치기 / 접기", lambda n=nid: self.expandRequested.emit(n))
-            put(f"{W.BOUNDARY} 에서 빼기" if on else f"{W.BOUNDARY} 로 지정",
-                lambda n=nid, o=on: self.boundaryRequested.emit(n, not o))
-            menu.addSeparator()
-            put("노드 삭제", lambda n=nid: self.removeRequested.emit(n))
+            if card.shown.category == L.STATION or card.shown.station:     # 5노드: 펼치고 접기만 한다
+                owner = card.shown.id if card.shown.category == L.STATION else card.shown.station
+                put("접기" if card.shown.station else "펼치기",
+                    lambda n=owner: self.expandRequested.emit(n))
+            else:
+                if card.shown.inner:
+                    put("펼치기 / 접기", lambda n=nid: self.expandRequested.emit(n))
+                put(f"{W.BOUNDARY} 에서 빼기" if on else f"{W.BOUNDARY} 로 지정",
+                    lambda n=nid, o=on: self.boundaryRequested.emit(n, not o))
+                menu.addSeparator()
+                put("노드 삭제", lambda n=nid: self.removeRequested.emit(n))
         else:
             put("전체 맞춤", self.fit)
 

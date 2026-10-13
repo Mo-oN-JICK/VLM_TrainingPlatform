@@ -183,6 +183,7 @@ class Shown:
     hint: str = ""          # 카드 본문 한 줄. 파라미터가 아니라 무슨 일을 하는지
     inner: int = 0          # 0이면 보통 노드, 1 이상이면 접힌 Procedure
     state_ids: List[str] = field(default_factory=list)      # 상태를 합쳐 볼 노드들
+    station: str = ""       # 5노드에서 펼쳐진 상자라면 어느 카드(스테이션)에서 나왔나
 
 
 def _first_port(ref: Any) -> str:
@@ -321,23 +322,54 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
     return shown, edges
 
 
-def fold_line(cg: CompiledGraph, desc: Dict[str, Any]) -> Tuple[Dict[str, Shown], List[Tuple[str, str]]]:
-    """5노드를 그린다. (그릴 것, 위 카드 → 아래 카드 사슬). 안쪽 상자는 카드 하나로 접힌다.
+def fold_line(cg: CompiledGraph, desc: Dict[str, Any], expanded: Any = ()
+              ) -> Tuple[Dict[str, Shown], List[Tuple[str, str]], List[Tuple[str, str]]]:
+    """5노드를 그린다. (그릴 것, 포트 배선, 카드 사슬).
 
-    5노드는 한 줄이고 포트가 없다 — 사진·질문·정답은 한 건 안에 함께 흐른다(Q1). 그래서 포트 칩 대신
-    카드끼리 화살표로 잇는다. 접기는 보는 방식일 뿐 게이트는 펼친 그래프를 본다.
+    접힌 스테이션은 카드 한 장이고, `expanded` 에 든 스테이션은 안쪽 상자(묶음 상자는 접힌 채)와 그 배선으로
+    펼쳐진다. 5노드는 한 줄이고 포트가 없다 — 사진·질문·정답은 한 건 안에 함께 흐른다(Q1). 그래서 카드 사이는
+    포트 칩 대신 사슬(화살표)로 잇고, 펼친 상자끼리는 실제 배선을 그린다. 접기는 보는 방식일 뿐 게이트는
+    펼친 그래프를 본다.
     """
     from .line_model import _members, mark
 
+    expanded = set(expanded or ())
+    base, wires = fold(cg, ())
+    stations = desc["stations"]
+    members = [set(_members(cg, s["members"])) for s in stations]
+    owner = {b: i for b, sh in base.items() for i, m in enumerate(members) if (sh.state_ids or [b])[0] in m}
+
     shown: Dict[str, Shown] = {}
-    for i, s in enumerate(desc["stations"]):
-        ids = _members(cg, s["members"])
-        shown[s["id"]] = Shown(
-            id=s["id"], ref=STATION, kind=NodeKind.PROCESSING, category=STATION, lane=i,
-            summary=f"안쪽 상자 {len(ids)}개", label=f"{mark(s['number'])} {s['label']}",
-            hint=s["hint"], state_ids=ids)
-    order = list(shown)
-    return shown, list(zip(order, order[1:]))
+    ends: List[Tuple[str, str]] = []        # 스테이션마다 (들어가는 쪽 상자, 나가는 쪽 상자)
+    lane = 0
+    for i, s in enumerate(stations):
+        boxes = [b for b in base if owner.get(b) == i]
+        if s["id"] in expanded and boxes:
+            lanes = sorted({base[b].lane for b in boxes})
+            remap = {old: lane + k for k, old in enumerate(lanes)}
+            lane += len(lanes)
+            for b in boxes:
+                base[b].lane, base[b].station = remap[base[b].lane], s["id"]
+                shown[b] = base[b]
+            ends.append((min(boxes, key=lambda b: shown[b].lane), max(boxes, key=lambda b: shown[b].lane)))
+        else:
+            ids = _members(cg, s["members"])
+            shown[s["id"]] = Shown(
+                id=s["id"], ref=STATION, kind=NodeKind.PROCESSING, category=STATION, lane=lane,
+                summary=f"안쪽 상자 {len(ids)}개", label=f"{mark(s['number'])} {s['label']}",
+                hint=s["hint"], state_ids=ids)
+            lane += 1
+            ends.append((s["id"], s["id"]))
+
+    drawn = [(a, b) for a, b in wires if a.split(":")[0] in shown and b.split(":")[0] in shown]
+    chains = []
+    for i in range(len(stations) - 1):
+        a, b = ends[i][1], ends[i + 1][0]
+        both = stations[i]["id"] in expanded and stations[i + 1]["id"] in expanded
+        joined = any(owner.get(x.split(":")[0]) == i and owner.get(y.split(":")[0]) == i + 1 for x, y in drawn)
+        if not (both and joined):       # 펼친 둘 사이에 실제 배선이 있으면 그것이 이미 이어 준다
+            chains.append((a, b))
+    return shown, drawn, chains
 
 
 def state_of(report: Any, nid: str) -> Tuple[str, str]:

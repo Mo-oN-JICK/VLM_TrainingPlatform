@@ -61,3 +61,37 @@ def test_wiring_and_removing_are_refused_on_a_line(app, line):
     e = Editor.open_line(line)
     EditorWindow(e)
     assert not e.disconnect("a:b")["ok"] and not e.remove_node(next(iter(e.compiled.nodes)))["ok"]
+
+
+def test_a_card_unfolds_into_its_inner_boxes_and_folds_back(app, line):
+    from vlm_trainer.ui.app.window import EditorWindow
+    from vlm_trainer.ui.line_model import _members
+
+    e = Editor.open_line(line)
+    w = EditorWindow(e)
+    st = e.line_describe()["stations"][3]                       # ④ 모델 학습
+    assert e.toggle_expand(st["id"])["ok"]
+    w.reload_graph()
+    inner = [c.shown for c in w.canvas.cards.values() if c.shown.station == st["id"]]
+    assert len(inner) >= 2 and st["id"] not in w.canvas.cards and len(w.canvas.cards) == 4 + len(inner)
+    covered = {i for s in inner for i in (s.state_ids or [s.id])}
+    assert covered == set(_members(e.compiled, st["members"]))   # 안쪽 상자가 하나도 안 빠졌다
+    assert w.canvas.wires and len(w.canvas.chains) == 4          # 이웃 카드와는 화살표로 이어진다
+    lanes = [c.shown.lane for c in w.canvas.cards.values()]
+    assert len(set(lanes)) == len(lanes) - len(inner) + len({s.lane for s in inner})   # 안쪽 상자는 레인이 겹치지 않는다
+    assert not e.disconnect(next(iter(w.canvas.wires)).dst.ref)["ok"]                   # 펼쳐도 고치지는 못한다
+    assert e.toggle_expand(st["id"])["ok"]
+    w.reload_graph()
+    assert len(w.canvas.cards) == 5 and not w.canvas.wires
+
+
+def test_expanding_every_card_keeps_all_inner_boxes_and_a_wire_or_arrow_between_cards(app, line):
+    from vlm_trainer.ui.app.window import EditorWindow
+    from vlm_trainer.ui.layout import fold
+
+    e = Editor.open_line(line)
+    for s in e.line_describe()["stations"]:
+        e.toggle_expand(s["id"])
+    w = EditorWindow(e)
+    boxes, _ = fold(e.compiled, ())
+    assert set(w.canvas.cards) == set(boxes)                     # 열한 상자 전부(소속 없는 것이 없다)
