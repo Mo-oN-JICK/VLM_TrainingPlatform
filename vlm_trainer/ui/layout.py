@@ -26,6 +26,7 @@ LANE_GAP = 52
 COL_GAP = 34
 PAD = 48
 GRID = 16       # 격자 한 칸. 상자를 옮기면 이 배수에 붙는다
+STATION = "Station"   # 5노드(Line)의 카드 하나. 포트가 없고, 안쪽 상자 여럿을 대표한다
 
 
 HEAD_H = 26     # 카드 머리줄
@@ -34,7 +35,9 @@ BODY_PAD = 10
 
 
 def _card_rows(s: "Shown") -> int:
-    """이 카드가 몇 줄을 쓰는가. 입력 + 처리 + 출력."""
+    """이 카드가 몇 줄을 쓰는가. 입력 + 처리 + 출력. 5노드 카드는 처리 한 줄이다."""
+    if s.category == STATION:
+        return 1
     return max(1, len(s.inputs)) + 1 + max(1, len(s.outputs))
 
 
@@ -57,6 +60,8 @@ def card_size(s: "Shown") -> Tuple[int, int]:
     """
     h = HEAD_H + BODY_PAD + _card_rows(s) * ROW_H
     w = CARD_W + (min(s.inner, 4) * 24 if s.inner else 0)
+    if s.category == STATION:
+        w = CARD_W + 120    # 하는 일 한 줄이 잘리지 않게
     return w, h
 
 
@@ -314,6 +319,25 @@ def fold(cg: CompiledGraph, expanded: Any = ()) -> Tuple[Dict[str, Shown], List[
     for v in shown.values():
         v.lane = dense[v.lane]
     return shown, edges
+
+
+def fold_line(cg: CompiledGraph, desc: Dict[str, Any]) -> Tuple[Dict[str, Shown], List[Tuple[str, str]]]:
+    """5노드를 그린다. (그릴 것, 위 카드 → 아래 카드 사슬). 안쪽 상자는 카드 하나로 접힌다.
+
+    5노드는 한 줄이고 포트가 없다 — 사진·질문·정답은 한 건 안에 함께 흐른다(Q1). 그래서 포트 칩 대신
+    카드끼리 화살표로 잇는다. 접기는 보는 방식일 뿐 게이트는 펼친 그래프를 본다.
+    """
+    from .line_model import _members, mark
+
+    shown: Dict[str, Shown] = {}
+    for i, s in enumerate(desc["stations"]):
+        ids = _members(cg, s["members"])
+        shown[s["id"]] = Shown(
+            id=s["id"], ref=STATION, kind=NodeKind.PROCESSING, category=STATION, lane=i,
+            summary=f"안쪽 상자 {len(ids)}개", label=f"{mark(s['number'])} {s['label']}",
+            hint=s["hint"], state_ids=ids)
+    order = list(shown)
+    return shown, list(zip(order, order[1:]))
 
 
 def state_of(report: Any, nid: str) -> Tuple[str, str]:

@@ -182,6 +182,7 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin, LineMixin):
 
         e = Editor(path=os.path.abspath(path), readonly=True)
         e.line_data = _read_yaml(e.path)
+        e._load_layout()     # 읽기만 한다. 파일은 상자를 옮길 때 처음 생긴다
         try:
             e.graph = load_project(e.path)
             e._recompile()

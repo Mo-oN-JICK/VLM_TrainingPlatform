@@ -326,6 +326,7 @@ class EditorWindow(QtWidgets.QMainWindow):
             occupied=occupied_inputs(cg),
             boundary=self.editor.graph.materialize.boundary,
             wired_from=wired,
+            line=self.editor.line_describe() if self.editor.line_data is not None else None,
         )
         warn = "" if self.editor.valid else "   ⚠ 저장·실행 불가"
         self.lbl_graph.setText(
@@ -509,7 +510,7 @@ class EditorWindow(QtWidgets.QMainWindow):
 
     def _show_inspector(self, nid: str) -> None:
         card = self.canvas.cards.get(nid)
-        if card is None or self.editor.compiled is None:
+        if card is None or self.editor.compiled is None or self.editor.line_data is not None:   # 5노드 설정은 5-C
             self.inspector.show_empty()
             return
         self.inspector.show_node(nid, card.shown, self.editor.compiled,
@@ -533,17 +534,18 @@ class EditorWindow(QtWidgets.QMainWindow):
             "       `미리보기` 는 샘플 몇 건만 돌려 중간값을 봅니다.")
 
 
-def launch(project_path: str, extra_modules: tuple = ()) -> int:
+def launch(project_path: str, extra_modules: tuple = (), canvas: bool = False) -> int:
     """창을 띄운다. `vlmt app`이 부르는 자리다."""
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     app.setApplicationName("VLM Trainer")
     from ...spec.line import is_line
 
-    if is_line(project_path):  # 5노드는 전용 화면이 연다
+    # ponytail: `canvas` 는 5-F 에서 LineWindow 와 함께 사라지는 임시 스위치다
+    if is_line(project_path) and not canvas:  # 5노드는 아직 전용 화면이 연다
         from .line_window import launch_line
 
         return launch_line(project_path, extra_modules)
-    editor = Editor.open(project_path)
+    editor = Editor.open_line(project_path) if is_line(project_path) else Editor.open(project_path)
     editor.extra_modules = tuple(extra_modules)
     win = EditorWindow(editor)
     win.show()

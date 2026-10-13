@@ -171,6 +171,14 @@ class NodeCard(QtWidgets.QGraphicsRectItem):
         """입력 / 처리 / 출력. 포트 이름이 아니라 **그 포트가 무엇인지**를 적는다."""
         y = r.top() + L.HEAD_H + 4
         s = self.shown
+        if s.category == L.STATION:      # 5노드 카드: 하는 일 한 줄. 포트가 없다
+            p.setFont(QtGui.QFont(FONT, 8))
+            p.setPen(QtGui.QPen(_c("#A8B0B6")))
+            avail = int(r.width()) - 20
+            p.drawText(QtCore.QRectF(r.left() + 10, y, avail, L.ROW_H),
+                       QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter,
+                       QtGui.QFontMetrics(p.font()).elidedText(s.hint or s.label, QtCore.Qt.ElideRight, avail))
+            return
 
         def row(kind: str, text: str, color: Optional[str]) -> None:
             nonlocal y
@@ -244,6 +252,28 @@ class Wire(QtWidgets.QGraphicsPathItem):
         return stroker.createStroke(self.path())
 
 
+class Chain(QtWidgets.QGraphicsPathItem):
+    """5노드 카드 사이의 화살표. 포트가 없으므로 칩 대신 카드의 아래 가운데에서 위 가운데로 간다."""
+
+    def __init__(self, src: NodeCard, dst: NodeCard) -> None:
+        super().__init__()
+        self.src, self.dst = src, dst
+        self.setPen(QtGui.QPen(_c(T.NODE["accent"]), 2))
+        self.setZValue(Z_WIRE)
+        self.reroute()
+
+    def reroute(self) -> None:
+        a = self.src.mapToScene(QtCore.QPointF(self.src.rect().width() / 2, self.src.rect().height()))
+        b = self.dst.mapToScene(QtCore.QPointF(self.dst.rect().width() / 2, 0))
+        path = QtGui.QPainterPath(a)
+        path.lineTo(b)
+        path.moveTo(b)                     # 화살촉
+        path.lineTo(b.x() - 5, b.y() - 9)
+        path.moveTo(b)
+        path.lineTo(b.x() + 5, b.y() - 9)
+        self.setPath(path)
+
+
 class GraphCanvas(QtWidgets.QGraphicsView):
     """팬·줌·선택·배선·이동. 바꾸는 일은 전부 시그널로 올려 보낸다."""
 
@@ -270,6 +300,7 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         self.cards: Dict[str, NodeCard] = {}
         self.chips: Dict[str, PortChip] = {}
         self.wires: List[Wire] = []
+        self.chains: List[Chain] = []
         self.compat: Dict[str, Dict[str, str]] = {}
         self.occupied: set = set()
         # 포트 호버 설명이 쓰는 것. "지금 무엇이 꽂혀 있나" 와 "마지막으로 흐른 값".
@@ -308,7 +339,8 @@ class GraphCanvas(QtWidgets.QGraphicsView):
     # ── 채우기 ──────────────────────────────────────────────────────────
     def load(self, cg: Any, expanded: Any = (), fixed: Optional[Dict] = None,
              compat: Optional[Dict] = None, occupied: Any = (),
-             boundary: Any = (), wired_from: Optional[Dict] = None) -> None:
+             boundary: Any = (), wired_from: Optional[Dict] = None,
+             line: Optional[Dict[str, Any]] = None) -> None:
         keep = self._selected_id()
         # **보던 자리와 배율을 기억한다.** 아래에서 scene 을 통째로 비우고 다시 채우는데,
         # 그대로 두면 Qt 가 경계를 다시 셈하면서 화면이 튄다 — 줌을 맞춰 놓고 노드를
@@ -323,6 +355,7 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         self.cards.clear()
         self.chips.clear()
         self.wires.clear()
+        self.chains.clear()
         self._scene.clear()
         self._scene.blockSignals(False)
         self._scene.setSceneRect(QtCore.QRectF())   # 비운 뒤 경계도 함께 비운다
@@ -331,7 +364,8 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         bset = set(boundary or ())
         self.wired_from = dict(wired_from or {})
 
-        shown, edges = L.fold(cg, expanded)
+        # `line` 이 있으면 5노드(스테이션 카드 5장), 없으면 노드 그래프
+        shown, edges = L.fold_line(cg, line) if line else L.fold(cg, expanded)
         placed = L._layout(shown, edges, fixed)
 
         for nid, pl in placed.items():
@@ -351,7 +385,10 @@ class GraphCanvas(QtWidgets.QGraphicsView):
             for name, cx, cy, cw in L._chips(s.outputs, 0, pl.h, pl.w):
                 self._add_chip(card, nid, name, s.outputs[name], cx, cy, cw, False)
 
-        for a, b in edges:
+        for a, b in edges if line else ():
+            self.chains.append(Chain(self.cards[a], self.cards[b]))
+            self._scene.addItem(self.chains[-1])
+        for a, b in () if line else edges:
             src, dst = self.chips.get(f"out:{a}"), self.chips.get(f"in:{b}")
             if src is None or dst is None:
                 continue
@@ -399,6 +436,9 @@ class GraphCanvas(QtWidgets.QGraphicsView):
         for w in self.wires:
             if nid in (w.src.node_id, w.dst.node_id):
                 w.reroute()
+        for c in self.chains:
+            if nid in (c.src.shown.id, c.dst.shown.id):
+                c.reroute()
 
     def paint_states(self, states: Dict[str, Dict[str, str]]) -> None:
         for nid, card in self.cards.items():

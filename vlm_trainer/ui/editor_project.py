@@ -70,6 +70,8 @@ class ProjectMixin:
         known = set(self.compiled.nodes if self.compiled else ()) | {
             p["id"] for p in (self.compiled.procedures if self.compiled else [])
         }
+        if self.line_data is not None:      # 5노드 카드의 id
+            known |= {s["id"] for s in self.line_describe()["stations"]}
         if node_id not in known and node_id not in self.layout:
             return {"ok": False, "reason": f"그런 상자가 없습니다: {node_id}"}
         self.layout[node_id] = (max(0, int(x)), max(0, int(y)))
