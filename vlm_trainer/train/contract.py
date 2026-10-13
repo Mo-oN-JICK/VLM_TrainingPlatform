@@ -195,6 +195,9 @@ def build_contract(
         "answer_schema": {"id": schema_id or schema.get("id", ""),
                           "render": schema.get("render", ""),
                           "steps": [st.get("id", "") for st in schema.get("steps") or ()],
+                          # 범위가 있는 항목만. 없으면 키를 만들지 않아 기존 계약은 그대로다
+                          **({"ranges": {st["id"]: st["range"] for st in schema.get("steps") or () if st.get("range")}}
+                             if any(st.get("range") for st in schema.get("steps") or ()) else {}),
                           "path": schema_node.get("path", ""),
                           "sha": _sha(schema_path) if schema_path else ""},
         "sequence": {

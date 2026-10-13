@@ -22,15 +22,27 @@ def _infer_dir(run_dir: str) -> str:
     return os.path.join(run_dir, "infer")
 
 
-def _steps(run_dir: str) -> List[str]:
-    """실행이 학습 때 쓴 정답 항목 이름들. 추론 계약에 적혀 있다."""
+def _contract(run_dir: str) -> Dict[str, Any]:
+    """실행이 학습 때 쓴 정답 형태(항목 이름들, 숫자 범위). 추론 계약에 적혀 있다."""
     path = os.path.join(run_dir, "train", "inference_contract.json")
     if not os.path.exists(path):
         raise SpecError(f"{path} 가 없습니다 — 이 실행은 학습까지 끝나지 않았습니다.\n"
                         "  안 잡혔다면: 정답 항목을 몰라 모델 답을 항목별로 나눌 수 없습니다.\n"
                         "  학습이 끝난 실행 폴더를 고르세요.")
     with open(path, "r", encoding="utf-8") as fh:
-        return [str(s) for s in (json.load(fh).get("answer_schema") or {}).get("steps") or []]
+        return json.load(fh).get("answer_schema") or {}
+
+
+def _steps(run_dir: str) -> List[str]:
+    return [str(s) for s in _contract(run_dir).get("steps") or []]
+
+
+def _out_of_range(text, rng) -> bool:
+    """범위가 정해진 항목에서 모델이 낸 숫자가 범위 밖인가. 숫자가 아니면 형식 문제라 여기서는 아니다."""
+    try:
+        return bool(rng) and not rng[0] <= float(text) <= rng[1]
+    except (TypeError, ValueError):
+        return False
 
 
 def _tag(text: str, step: str):
@@ -79,6 +91,7 @@ def read_answers(run_dir: str) -> List[Dict[str, Any]]:
 def review(run_dir: str) -> Dict[str, Any]:
     """건마다 항목별 (모델 답, 정답, O/X)와 사람 판정. 빈 답은 전부 X 이고 `empty` 로 따로 표시한다."""
     steps = _steps(run_dir)
+    ranges = _contract(run_dir).get("ranges") or {}
     judged = read_judgments(run_dir)
     items, count = [], {"ok": 0, "ng": 0, "none": 0}
     for r in read_answers(run_dir):
@@ -86,7 +99,8 @@ def review(run_dir: str) -> Dict[str, Any]:
         fields = []
         for s in steps:
             a, e = _tag(ans, s), _tag(exp, s)
-            fields.append({"step": s, "answer": a, "expected": e, "match": a is not None and a == e})
+            fields.append({"step": s, "answer": a, "expected": e, "match": a is not None and a == e,
+                           "out_of_range": _out_of_range(a, ranges.get(s))})
         v = (judged.get(str(r["id"])) or {}).get("verdict", "none")
         count[v if v in count else "none"] += 1
         items.append({"id": str(r["id"]), "split": r.get("split", ""), "empty": not ans.strip(),

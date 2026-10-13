@@ -101,7 +101,8 @@ class VerdictDialog(QtWidgets.QDialog):
             rows = []
             for f in it["fields"]:
                 mark = f"<b style='color:{GREEN}'>O 일치</b>" if f["match"] else f"<b style='color:{RED}'>X 다름</b>"
-                rows.append(f"{f['step']}: {f['answer'] if f['answer'] is not None else '(없음)'} / {f['expected']}  {mark}")
+                far = f"  <b style='color:{RED}'>범위 밖</b>" if f["out_of_range"] else ""
+                rows.append(f"{f['step']}: {f['answer'] if f['answer'] is not None else '(없음)'} / {f['expected']}  {mark}{far}")
             html = "<br>".join(rows)
             if it["broken"]:
                 html += f"<br><span style='color:{RED}'>형식 어긋남: {', '.join(it['broken'])} 항목이 답에 없습니다</span>"

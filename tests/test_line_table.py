@@ -286,7 +286,7 @@ def test_a_number_item_rejects_a_word_and_a_list_item_rejects_an_unlisted_value(
 @pytest.mark.parametrize("edit,match", [
     (lambda r: r[0].update({"허용값": ""}), "허용값이 없습니다"),
     (lambda r: r[0].update({"허용값": "기어|기어"}), "겹칩니다"),
-    (lambda r: r[2].update({"허용값": "1|2"}), "허용값"),
+    (lambda r: r[2].update({"허용값": "1|2"}), "범위"),
     (lambda r: r[1].update({"항목": "part_type"}), "앞에서도"),
     (lambda r: r[1].update({"항목": "1번 항목"}), "태그 이름"),
     (lambda r: r[1].update({"종류": "정수"}), "없는 값"),
@@ -359,3 +359,21 @@ def test_the_same_table_as_csv_and_as_jsonl_gives_the_same_rows_and_splits(tmp_p
     a = samples_mod.load(spec, str(tmp_path)).rows
     b = samples_mod.load(dict(spec, index=src), str(tmp_path)).rows
     assert a == b and {r["_split"] for r in a} == {"train", "val"}
+
+
+def test_a_number_outside_the_range_is_ejected_by_the_format_check(tree):
+    """숫자 항목에 범위를 적으면, 범위 밖 정답 행이 ③ 에서 NG 로 나간다."""
+    sch = os.path.join(os.path.dirname(os.path.dirname(tree.proj)), "schemas", "answer.yaml")
+    d = yaml.safe_load(open(sch, encoding="utf-8"))
+    d["steps"].append({"id": "tilt", "label": "기울기", "type": "float", "range": [0, 100]})
+    open(sch, "w", encoding="utf-8").write(yaml.safe_dump(d, allow_unicode=True, sort_keys=False))
+    data = os.path.join(os.path.dirname(os.path.dirname(tree.proj)), "data", "t.csv")
+    tree.write_csv(header=("sample_id", "image_path", "question", "part_type", "orientation", "group"))
+    lines = open(data, encoding="utf-8-sig").read().splitlines()
+    out = [lines[0] + ",tilt"] + [f"{ln},{500 if ln.startswith('a4,') else 50}" for ln in lines[1:]]
+    open(data, "w", encoding="utf-8-sig", newline="").write("\r\n".join(out) + "\r\n")
+    tree.line["stations"][0]["params"]["columns"] += ["tilt"]
+    tree.line["stations"][2]["params"]["mapping"]["tilt"] = "tilt"
+    rep = _run(tree)
+    assert [q.sample_key for q in rep.quarantine] == ["a4"]
+    assert rep.quarantine[0].node_id == "p_answer/n_check"

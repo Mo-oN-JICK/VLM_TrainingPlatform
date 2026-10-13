@@ -26,6 +26,8 @@ class Step:
     evidence: str = "none"  # required | optional | none
     depends_on: Tuple[str, ...] = ()
     rules: Tuple[str, ...] = ()
+    # 숫자 항목의 허용 범위(양 끝 포함). 비어 있으면 숫자이기만 하면 통과한다.
+    range: Tuple[float, ...] = ()
 
 
 @dataclass
@@ -60,6 +62,7 @@ class AnswerSchema:
                     evidence=str(s.get("evidence", "none")),
                     depends_on=tuple(s.get("depends_on") or ()),
                     rules=tuple(s.get("rules") or ()),
+                    range=_range(path, str(s["id"]), str(s.get("type", "enum")), s.get("range")),
                 )
             )
         return AnswerSchema(
@@ -89,6 +92,8 @@ class AnswerSchema:
                     "fields": s.fields,
                     "evidence": s.evidence,
                     "rules": list(s.rules),
+                    # 범위가 있을 때만 적어서, 범위 없는 기존 스키마의 해시는 그대로다
+                    **({"range": list(s.range)} if s.range else {}),
                 }
                 for s in self.steps
             ],
@@ -156,6 +161,8 @@ class AnswerSchema:
                 v.append(f"enum_domain:{s.id}")
             if s.type in ("int", "float") and (isinstance(val, bool) or not isinstance(val, (int, float))):
                 v.append(f"number:{s.id}")  # 숫자 항목에 글자가 들어간 답
+            elif s.range and not s.range[0] <= float(val) <= s.range[1]:
+                v.append(f"range:{s.id}")  # 허용 범위 밖의 숫자
             if s.type == "object":
                 if not isinstance(val, dict):
                     v.append(f"object_shape:{s.id}")
@@ -191,6 +198,18 @@ class AnswerSchema:
         for s in self.steps:
             out.extend(str(x) for x in s.values)
         return out
+
+
+def _range(path: str, sid: str, kind: str, raw: Any) -> Tuple[float, ...]:
+    if raw is None:
+        return ()
+    ok = (isinstance(raw, (list, tuple)) and len(raw) == 2
+          and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in raw) and raw[0] <= raw[1])
+    if kind not in ("int", "float") or not ok:
+        raise ValueError(f"{path}: 항목 {sid!r}의 range 가 잘못되었습니다 ({raw!r}, 종류 {kind}).\n"
+                         "  안 잡혔다면: 범위가 검사에 안 쓰이는데 쓰이는 줄 알게 됩니다.\n"
+                         "  숫자 항목에 [최소, 최대] 두 숫자로 적으세요(예: range: [0, 100]).")
+    return (float(raw[0]), float(raw[1]))
 
 
 def _fmt(v: Any) -> str:

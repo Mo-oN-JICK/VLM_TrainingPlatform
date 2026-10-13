@@ -3,7 +3,8 @@
 사용자는 표 한 장에 행마다 항목 이름 / 종류 / 허용값을 적는다. 화면의 표 편집과 CLI 가 같은 이 함수를
 쓴다 — 화면에서만 되는 입력 경로는 없다. 결과는 기존 스키마 파일(YAML)과 같은 모양이다.
 
-종류는 셋이다: **목록**(허용값 중 하나) · **숫자** · **문장**(자유). 목록만 허용값을 가진다.
+종류는 셋이다: **목록**(허용값 중 하나) · **숫자** · **문장**(자유). 목록은 허용값을 `|` 로,
+숫자는 범위를 `0~100` 으로 적을 수 있다(비우면 숫자이기만 하면 된다). 문장은 비운다.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from ..core.errors import SpecError
 
 KINDS = {"목록": "enum", "숫자": "float", "문장": "text"}
 SEP = "|"
+RANGE = "~"
 HEADER = ("항목", "이름", "종류", "허용값")
 _ID = re.compile(r"^[A-Za-z_가-힣][A-Za-z0-9_가-힣]*$")
 
@@ -76,6 +78,8 @@ def build(rows: Sequence[Dict[str, str]], *, schema_id: str, render: str = "tagg
                 raise _fail(i, f"항목 {sid!r}의 허용값이 겹칩니다 {dup}.", "한 값이 두 번 세어져 분포가 어긋납니다.",
                             "겹친 값을 하나로 줄이세요.")
             step["values"] = vals
+        elif kind == "숫자" and vals:
+            step["range"] = _parse_range(i, sid, (r.get("허용값") or "").strip())
         elif vals:
             raise _fail(i, f"항목 {sid!r}는 {kind}인데 허용값 {vals}이 적혀 있습니다.",
                         "적은 허용값이 검사에 안 쓰이는데 쓰이는 줄 알게 됩니다.",
@@ -90,6 +94,27 @@ def build(rows: Sequence[Dict[str, str]], *, schema_id: str, render: str = "tagg
         "steps": steps,
         "constraints": {"max_tokens": int(max_tokens), "step_order": step_order, "vocabulary": vocabulary},
     }
+
+
+def _num(t: str) -> float:
+    return float(t.strip())
+
+
+def _parse_range(row: int, sid: str, text: str) -> List[float]:
+    parts = text.split(RANGE)
+    try:
+        lo, hi = (_num(p) for p in parts) if len(parts) == 2 else (None, None)
+    except ValueError:
+        lo = hi = None
+    if lo is None or lo > hi:
+        raise _fail(row, f"항목 {sid!r}의 범위 {text!r}를 읽을 수 없습니다.",
+                    "범위가 검사에 안 쓰이거나 거꾸로 읽혀 정상 정답이 전부 범위 밖으로 걸립니다.",
+                    f"최소{RANGE}최대 꼴로 적으세요(예: 0{RANGE}100). 최소가 최대보다 클 수 없습니다.")
+    return [_int_if_whole(lo), _int_if_whole(hi)]
+
+
+def _int_if_whole(x: float):
+    return int(x) if x == int(x) else x
 
 
 def dump(schema: Dict[str, Any]) -> str:
@@ -128,7 +153,8 @@ def rows_from_schema(path: str) -> Dict[str, Any]:
         if why:
             bad.append(f"{sid}({', '.join(why)})")
         rows.append({"항목": sid, "이름": str(s.get("label", sid)), "종류": _BACK.get(s.get("type", "enum"), "문장"),
-                     "허용값": SEP.join(str(v) for v in s.get("values") or [])})
+                     "허용값": (RANGE.join(f"{x:g}" for x in s["range"]) if s.get("range")
+                              else SEP.join(str(v) for v in s.get("values") or []))})
     c = d.get("constraints") or {}
     return {"rows": rows, "unsupported": bad, "id": str(d.get("id", "")), "render": str(d.get("render", "tagged")),
             "max_tokens": int(c.get("max_tokens", 320)), "step_order": str(c.get("step_order", "strict")),

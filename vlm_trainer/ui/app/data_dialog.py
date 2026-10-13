@@ -25,7 +25,7 @@ from .window import QSS
 BLANK = "(고르세요)"
 KEEP_TEXT = "(직접 작성한 문장 유지)"
 KINDS = list(answer_table.KINDS)          # 목록 · 숫자 · 문장
-COLS = ["항목", "이름", "종류", "허용값 ( | 로 구분)", "표의 열"]
+COLS = ["항목", "이름", "종류", "허용값 (목록은 | 로, 숫자는 0~100)", "표의 열"]
 RED = f"color:{T.STATE['failed']};"
 MUTED = f"color:{T.NODE['muted']}; font-size:11px;"
 

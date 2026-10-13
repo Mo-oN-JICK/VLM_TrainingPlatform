@@ -8,7 +8,7 @@
 - 마지막 커밋: `9ca64ca` fix: 저장이 Procedure 사이 배선을 지웠다
 - **실물 Qwen2-VL 로 한 바퀴가 돈다** — 굽기 → 학습 → 추론 → Export → §9
 - 편집기는 Qt 네이티브 앱이다. 웹 편집기는 걷어냈다 → §8
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **576 passed, 1 skipped**
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **589 passed, 1 skipped**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)

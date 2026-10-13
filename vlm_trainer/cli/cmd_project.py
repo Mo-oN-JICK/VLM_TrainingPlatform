@@ -234,6 +234,7 @@ def cmd_judgments(a: argparse.Namespace) -> int:
     for it in got["items"]:
         mark = "".join("O" if f["match"] else "X" for f in it["fields"])
         flag = " 빈 답" if it["empty"] else (" 형식 어긋남" if it["broken"] else "")
+        flag += "".join(f" 범위 밖:{f['step']}" for f in it["fields"] if f["out_of_range"])
         print(f"{it['id']}	{mark}	{it['verdict']}{flag}")
     c = got["count"]
     print(f"OK {c['ok']} · NG {c['ng']} · 미판정 {c['none']}  (항목 순서: {', '.join(got['steps'])})")
