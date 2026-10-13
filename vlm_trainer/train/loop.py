@@ -118,8 +118,8 @@ def train(
     ds = ShardDataset(materialized_dir)
     if not len(ds):
         raise FileNotFoundError(
-            f"물질화 산출물이 비어 있다: {materialized_dir}\n"
-            "  먼저 `vlmt materialize`로 경계까지 구워야 학습이 읽을 것이 생긴다."
+            f"물질화 산출물이 비어 있습니다: {materialized_dir}\n"
+            "  먼저 `vlmt materialize`로 경계까지 구워야 학습이 읽을 것이 생깁니다."
         )
 
     rep = TrainReport(device=str(dev), samples=len(ds), out_dir=out_dir)
@@ -151,13 +151,13 @@ def train(
         res.grad_checkpointing = adapter.set_grad_checkpointing(model, stage.grad_checkpointing)
         if stage.grad_checkpointing and not res.grad_checkpointing:
             res.warnings.append(
-                f"{stage.name}: grad_checkpointing 을 켜라고 선언했는데 이 백본은 켤 줄 모른다. "
-                "예산이 깎은 활성화 메모리가 실제로는 깎이지 않는다 — OOM 이 나면 이것부터 보라.")
+                f"{stage.name}: grad_checkpointing 을 켜라고 선언했는데 이 백본은 켤 줄 모릅니다. "
+                "예산이 깎은 활성화 메모리가 실제로는 깎이지 않습니다 — OOM 이 나면 이것부터 보세요.")
 
         params = [p for p in model.parameters() if p.requires_grad]
         if not params:
             raise ValueError(
-                f'stage "{stage.name}": 학습할 파라미터가 없다. trainable 선언을 확인하라 — {stage.trainable}'
+                f'stage "{stage.name}": 학습할 파라미터가 없습니다. trainable 선언을 확인하세요 — {stage.trainable}'
             )
         opt = torch.optim.AdamW(params, lr=stage.lr, weight_decay=0.0)
 

@@ -63,10 +63,10 @@ def latest(model_dir: str) -> str:
     """마지막 단계의 체크포인트. 단계 이름을 모르므로 가장 최근 것을 고른다."""
     if not os.path.isdir(model_dir):
         raise CheckpointError(
-            f"{model_dir} 가 없다",
-            "  안 잡혔다면: 없는 모델로 답을 만들려 한다.\n"
-            "  추정 낭비: 없음(시작하지 않았다).\n"
-            "  먼저 학습을 돌려라.")
+            f"{model_dir} 가 없습니다",
+            "  안 잡혔다면: 없는 모델로 답을 만들려 합니다.\n"
+            "  추정 낭비: 없음(시작하지 않았습니다).\n"
+            "  먼저 학습을 돌리세요.")
     ckpts = [os.path.join(model_dir, d, f)
              for d in sorted(os.listdir(model_dir))
              if os.path.isdir(os.path.join(model_dir, d))
@@ -74,10 +74,10 @@ def latest(model_dir: str) -> str:
              if f.endswith(".pt")]
     if not ckpts:
         raise CheckpointError(
-            f"{model_dir} 에 체크포인트가 없다",
-            "  안 잡혔다면: 학습되지 않은 모델이 답을 내고, 그 답을 보고 판단하게 된다.\n"
-            "  추정 낭비: 없음(시작하지 않았다).\n"
-            "  먼저 학습을 돌려라.")
+            f"{model_dir} 에 체크포인트가 없습니다",
+            "  안 잡혔다면: 학습되지 않은 모델이 답을 내고, 그 답을 보고 판단하게 됩니다.\n"
+            "  추정 낭비: 없음(시작하지 않았습니다).\n"
+            "  먼저 학습을 돌리세요.")
     return max(ckpts, key=os.path.getmtime)
 
 
@@ -125,19 +125,19 @@ def _load_exported(model_dir: str, backbone: str, fmt: str) -> Tuple[Any, Any]:
     path = os.path.join(model_dir, "model.pt")
     if not os.path.exists(path):
         raise CheckpointError(
-            f"{path} 가 없다",
-            "  안 잡혔다면: 학습 전 모델이 답을 내고, 그 답을 보고 판단하게 된다.\n"
+            f"{path} 가 없습니다",
+            "  안 잡혔다면: 학습 전 모델이 답을 내고, 그 답을 보고 판단하게 됩니다.\n"
             "  추정 낭비: 추론 시간 전부 + 그 뒤의 판단.\n"
-            "  내보낸 폴더가 온전한지 확인하라.")
+            "  내보낸 폴더가 온전한지 확인하세요.")
     res = model.load_state_dict(torch.load(path, map_location="cpu", weights_only=False),
                                 strict=False)
     unexpected = list(getattr(res, "unexpected_keys", []))
     if unexpected:
         raise CheckpointError(
-            f"내보낸 가중치 {len(unexpected)}개가 모델에 들어갈 자리가 없다",
+            f"내보낸 가중치 {len(unexpected)}개가 모델에 들어갈 자리가 없습니다",
             f"  첫 몇 개: {', '.join(unexpected[:3])}\n"
-            "  안 잡혔다면: 절반만 올라간 모델이 답을 낸다.\n"
-            "  내보낼 때와 다른 백본으로 열고 있지 않은지 확인하라.")
+            "  안 잡혔다면: 절반만 올라간 모델이 답을 냅니다.\n"
+            "  내보낼 때와 다른 백본으로 열고 있지 않은지 확인하세요.")
     return adapter, model
 
 
@@ -170,13 +170,13 @@ def load(model_dir: str, backbone: str, *, to_cuda: bool = False) -> Tuple[Any, 
     unexpected = list(getattr(res, "unexpected_keys", []))
     if unexpected:
         raise CheckpointError(
-            f"체크포인트에 있는 가중치 {len(unexpected)}개가 모델에 들어갈 자리가 없다",
+            f"체크포인트에 있는 가중치 {len(unexpected)}개가 모델에 들어갈 자리가 없습니다",
             f"  첫 몇 개: {', '.join(unexpected[:3])}\n"
             "  안 잡혔다면: 학습이 안 된 모델이 답을 내놓고, 그 답을 보고 "
-            "'파인튜닝이 소용없다' 고 판단하게 된다.\n"
+            "'파인튜닝이 소용없습니다' 고 판단하게 됩니다.\n"
             "  추정 낭비: 학습 시간 전부 + 그 뒤의 모든 판단.\n"
-            "  학습 때와 같은 모듈 구조를 먼저 만들어야 한다 — 보통 LoRA 설정이 "
-            "체크포인트와 어긋난 경우다.")
+            "  학습 때와 같은 모듈 구조를 먼저 만들어야 합니다 — 보통 LoRA 설정이 "
+            "체크포인트와 어긋난 경우입니다.")
     if to_cuda and torch.cuda.is_available():
         model = model.cuda()
     return adapter, model
@@ -233,11 +233,11 @@ def export(model_dir: str, backbone: str, out_dir: str) -> ExportReport:
     src = os.path.join(model_dir, CONTRACT)
     if not os.path.exists(src):
         raise CheckpointError(
-            f"{src} 가 없다 — 계약 없이는 내보내지 않는다",
+            f"{src} 가 없습니다 — 계약 없이는 내보내지 않습니다",
             "  안 잡혔다면: 가중치만 받은 사람이 프롬프트 형식을 몰라 "
-            "아무 답도 못 얻고, 모델이 나쁘다고 결론 내린다.\n"
+            "아무 답도 못 얻고, 모델이 나쁘다고 결론 내립니다.\n"
             "  추정 낭비: 학습 시간 전부.\n"
-            "  학습을 다시 돌려라 — `vlmt train` 이 계약을 함께 남긴다.")
+            "  학습을 다시 돌려라 — `vlmt train` 이 계약을 함께 남깁니다.")
 
     adapter, model = load(model_dir, backbone)
     rep = ExportReport(out_dir=os.path.abspath(out_dir), backbone=backbone)
@@ -267,11 +267,11 @@ def export(model_dir: str, backbone: str, out_dir: str) -> ExportReport:
 def render(rep: ExportReport) -> str:
     lines = [f"Export -> {rep.out_dir}",
              f"  백본: {rep.backbone}",
-             f"  LoRA {len(rep.merged)}개 모듈을 베이스에 합쳤다"
-             if rep.merged else "  LoRA 없음 (합칠 것이 없다)"]
+             f"  LoRA {len(rep.merged)}개 모듈을 베이스에 합쳤습니다"
+             if rep.merged else "  LoRA 없음 (합칠 것이 없습니다)"]
     for f in rep.files:
         lines.append(f"  파일: {f}")
     lines.append(f"  계약: {rep.contract}")
-    lines.append("  계약에 프롬프트 형식과 이미지 자리표시자가 들어 있다 — "
-                 "가중치만으로는 쓸 수 없다.")
+    lines.append("  계약에 프롬프트 형식과 이미지 자리표시자가 들어 있습니다 — "
+                 "가중치만으로는 쓸 수 없습니다.")
     return "\n".join(lines)

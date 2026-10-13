@@ -36,8 +36,8 @@ class EvidenceParams:
     doc=NodeDoc(
         label="근거 문장 생성",
             hint="측정값에서 규칙에 따라 근거 문장을 만듭니다.",
-        summary="수치에서 단계별 근거 문장을 규칙으로 생성한다. 결정적이다.",
-        scenario="LLM 윤문은 옵션이며 기본 경로에 두지 않는다 — 재현 불가능한 데이터셋이 조용히 만들어지는 것을 막는다.",
+        summary="수치에서 단계별 근거 문장을 규칙으로 생성합니다. 결정적입니다.",
+        scenario="LLM 윤문은 옵션이며 기본 경로에 두지 않습니다 — 재현 불가능한 데이터셋이 조용히 만들어지는 것을 막습니다.",
     ),
 )
 class EvidenceRules(Node):
@@ -95,8 +95,8 @@ class StepwiseParams:
     doc=NodeDoc(
         label="정답 문장 만들기",
             hint="정한 형식대로 학습에 쓸 정답 문장을 만듭니다.",
-        summary="스키마가 선언한 단계 순서대로 정답 Text를 만든다.",
-        scenario="렌더러와 파서가 같은 스키마에서 생성되므로 학습과 추론이 어긋날 수 없다.",
+        summary="스키마가 선언한 단계 순서대로 정답 Text를 만듭니다.",
+        scenario="렌더러와 파서가 같은 스키마에서 생성되므로 학습과 추론이 어긋날 수 없습니다.",
     ),
 )
 class Stepwise(Node):
@@ -156,8 +156,8 @@ class ValidateParams:
     doc=NodeDoc(
         label="정답 형식 검사",
         hint="만들어진 답변이 정한 형식을 지키는지 검사합니다.",
-        summary="정답 Text가 스키마를 지키는지 검사한다.",
-        scenario="위반 샘플은 NG 배출된다. 위반율이 임계를 넘으면 dry-run이 학습 전에 멈춘다.",
+        summary="정답 Text가 스키마를 지키는지 검사합니다.",
+        scenario="위반 샘플은 NG 배출됩니다. 위반율이 임계를 넘으면 dry-run이 학습 전에 멈춥니다.",
     ),
 )
 class Validate(Node):
@@ -171,7 +171,7 @@ class Validate(Node):
                 ctx.node_id,
                 "스키마 위반: " + ", ".join(violations),
                 sample_key=ctx.sample_key,
-                hint="answer.stepwise의 mapping이나 스키마 규칙을 확인하라",
+                hint="answer.stepwise의 mapping이나 스키마 규칙을 확인하세요",
             )
         return {
             "answer": str(inputs["answer"]),
@@ -208,8 +208,8 @@ class GuardParams:
     doc=NodeDoc(
         label="정답 노출 검사",
         hint="답이 질문에 섞여 들어갔는지 봅니다. 섞이면 모델이 보고 베낍니다.",
-        summary="정답 어휘가 질문에 섞였는지 검사한다. taint를 제거하는 유일한 노드.",
-        scenario="정적 taint 검사(G2)가 경로를 막고, 이 노드가 실제 문자열을 본다.",
+        summary="정답 어휘가 질문에 섞였는지 검사합니다. taint를 제거하는 유일한 노드.",
+        scenario="정적 taint 검사(G2)가 경로를 막고, 이 노드가 실제 문자열을 봅니다.",
     ),
 )
 class LeakageGuard(Node):
@@ -217,12 +217,12 @@ class LeakageGuard(Node):
         # 모르는 값은 "검사했는데 아무것도 안 한다"가 된다 — 예전에 `quarantine` 이 그렇게
         # 정답 낱말이 든 질문을 조용히 통과시켰다. 이진으로 막는다.
         if params.on_leak not in ("fail", "mask"):
-            raise NodeError(ctx.node_id, f"on_leak {params.on_leak!r}는 없는 값이다 (fail | mask)",
+            raise NodeError(ctx.node_id, f"on_leak {params.on_leak!r}는 없는 값입니다 (fail | mask)",
                             sample_key=ctx.sample_key,
-                            hint="fail 이면 정답이 섞인 샘플을 NG 배출하고, mask 면 그 낱말을 가려 통과시킨다")
+                            hint="fail 이면 정답이 섞인 샘플을 NG 배출하고, mask 면 그 낱말을 가려 통과시킵니다")
         if params.mode not in ("exact", "normalized"):
-            raise NodeError(ctx.node_id, f"mode {params.mode!r}는 없는 값이다 (exact | normalized)",
-                            sample_key=ctx.sample_key, hint="exact 또는 normalized 로 적는다")
+            raise NodeError(ctx.node_id, f"mode {params.mode!r}는 없는 값입니다 (exact | normalized)",
+                            sample_key=ctx.sample_key, hint="exact 또는 normalized 로 적습니다")
         prompt = str(inputs["prompt"])
         schema: Optional[AnswerSchema] = inputs.get("schema")
         terms = list(params.extra_terms or ())
@@ -240,9 +240,9 @@ class LeakageGuard(Node):
         if hits and params.on_leak == "fail":
             raise NodeError(
                 ctx.node_id,
-                f"정답 어휘가 질문에 있다: {hits}",
+                f"정답 어휘가 질문에 있습니다: {hits}",
                 sample_key=ctx.sample_key,
-                hint="템플릿에서 해당 표현을 빼거나 exclude_sections로 지식 블록을 제외하라",
+                hint="템플릿에서 해당 표현을 빼거나 exclude_sections로 지식 블록을 제외하세요",
             )
         if hits and params.on_leak == "mask":
             for t in hits:

@@ -109,7 +109,7 @@ def test_the_trainer_config_refuses_unknown_stage_names_and_bad_counts():
     path = os.path.join(ROOT, "solutions", "vlm_open", "projects", "01_open", "trainer.yaml")
     ok = TrainerConfig.load(path, epochs={"lora_ft": 9})
     assert [s.epochs for s in ok.stages] == [4, 9]
-    with pytest.raises(ValueError, match="없다"):
+    with pytest.raises(ValueError, match="없습니다"):
         TrainerConfig.load(path, epochs={"lora": 3})
     for bad in (0, -1, 2.5, True):
         with pytest.raises(ValueError, match="정수"):

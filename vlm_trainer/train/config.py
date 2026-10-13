@@ -38,11 +38,11 @@ OPTIMIZER_BYTES = {
 PROFILE_UNSUPPORTED: Dict[str, Dict[str, str]] = {
     # 기본 프로파일. 이 표가 비지 않는 한 다중 GPU는 기본값이 되지 않는다.
     "windows_single_gpu": {
-        "attn_impl:flash_attn2": "sdpa로 바꿔라. flash-attn은 Windows 휠이 없다",
-        "optimizer:deepspeed_adam": "adamw_torch 또는 adamw_bnb_8bit를 써라. DeepSpeed는 Windows를 지원하지 않는다",
-        "optimizer:adamw_apex_fused": "adamw_torch를 써라. apex는 Windows 빌드가 없다",
-        "offload:disk": "offload를 none 또는 cpu로 두어라",
-        "distributed:true": "기본 프로파일은 단일 GPU다. 다중 GPU는 확장 지점이지 기본값이 아니다",
+        "attn_impl:flash_attn2": "sdpa로 바꾸세요. flash-attn은 Windows 휠이 없습니다",
+        "optimizer:deepspeed_adam": "adamw_torch 또는 adamw_bnb_8bit를 쓰세요. DeepSpeed는 Windows를 지원하지 않습니다",
+        "optimizer:adamw_apex_fused": "adamw_torch를 쓰세요. apex는 Windows 빌드가 없습니다",
+        "offload:disk": "offload를 none 또는 cpu로 두세요",
+        "distributed:true": "기본 프로파일은 단일 GPU입니다. 다중 GPU는 확장 지점이지 기본값이 아닙니다",
     },
     # 확장 프로파일. 프로파일을 바꾸는 것은 스펙의 한 줄이고, 그래프는 그대로다.
     # 이 표는 "그 프로파일에서 **돌지 않는** 것"만 담는다. 느린 것은 여기 들어오지 않는다 —
@@ -142,23 +142,23 @@ class Distributed:
         if not self.enabled:
             if self.world_size != 1:
                 out.append(
-                    f"distributed.enabled가 false인데 world_size가 {self.world_size}다.\n"
-                    "  둘 중 하나가 오타다. 켜지 않은 다중 GPU는 없다.\n"
-                    "  이 검사가 없었다면: 한 장으로 돌면서 유효 배치를 네 배로 적어 둔 로그가 남는다."
+                    f"distributed.enabled가 false인데 world_size가 {self.world_size}입니다.\n"
+                    "  둘 중 하나가 오타입니다. 켜지 않은 다중 GPU는 없습니다.\n"
+                    "  이 검사가 없었다면: 한 장으로 돌면서 유효 배치를 네 배로 적어 둔 로그가 남습니다."
                 )
             if self.strategy not in ("none", ""):
                 out.append(
-                    f"distributed.enabled가 false인데 strategy가 {self.strategy!r}다.\n"
-                    "  enabled를 켜거나 strategy를 none으로 두어라."
+                    f"distributed.enabled가 false인데 strategy가 {self.strategy!r}입니다.\n"
+                    "  enabled를 켜거나 strategy를 none으로 두세요."
                 )
             return out
 
         if self.strategy in self.UNMODELED:
             out.append(
-                f"distributed.strategy = {self.strategy}는 아직 예산을 계산하지 못한다.\n"
+                f"distributed.strategy = {self.strategy}는 아직 예산을 계산하지 못합니다.\n"
                 "  이 전략은 가중치와 옵티마이저를 장치에 쪼개므로 장치당 VRAM이 달라지는데,\n"
-                "  그 모델이 없다. ddp를 쓰거나, 이 전략의 예산 계산을 먼저 구현하라.\n"
-                "  이 검사가 없었다면: 단일 GPU 기준 숫자로 통과시킨 뒤 실제로는 다른 곳에서 터진다."
+                "  그 모델이 없습니다. ddp를 쓰거나, 이 전략의 예산 계산을 먼저 구현하세요.\n"
+                "  이 검사가 없었다면: 단일 GPU 기준 숫자로 통과시킨 뒤 실제로는 다른 곳에서 터집니다."
             )
         elif self.strategy not in self.KNOWN:
             out.append(
@@ -167,8 +167,8 @@ class Distributed:
             )
         if self.world_size < 2:
             out.append(
-                f"distributed.enabled가 true인데 world_size가 {self.world_size}다.\n"
-                "  다중 GPU를 켰으면 장치가 둘 이상이어야 한다."
+                f"distributed.enabled가 true인데 world_size가 {self.world_size}입니다.\n"
+                "  다중 GPU를 켰으면 장치가 둘 이상이어야 합니다."
             )
         return out
 
@@ -207,7 +207,7 @@ class TrainerConfig:
                 out.append(
                     f"실행 프로파일 {profile}가 지원하지 않는 설정: {field_name} = {value}\n"
                     f"  {table[key]}\n"
-                    "  이 검사가 없었다면: 물질화를 마치고 백본을 올린 직후 임포트 에러로 죽는다."
+                    "  이 검사가 없었다면: 물질화를 마치고 백본을 올린 직후 임포트 에러로 죽습니다."
                 )
         return out
 
@@ -247,7 +247,7 @@ class TrainerConfig:
         with open(path, "r", encoding="utf-8") as fh:
             d = yaml.safe_load(fh) or {}
         if d.get("kind") not in (None, "TrainerConfig"):
-            raise ValueError(f"{path}: kind는 TrainerConfig여야 한다")
+            raise ValueError(f"{path}: kind는 TrainerConfig여야 합니다")
         d.pop("kind", None)
         d.pop("version", None)
         cfg = TrainerConfig.from_dict(d, source_path=path)
@@ -261,13 +261,13 @@ class TrainerConfig:
         for name, n in epochs.items():
             if name not in names:
                 raise ValueError(
-                    f"학습 횟수의 단계 {name!r}이 설정 파일에 없다 (있는 단계: {names}).\n"
-                    "  안 잡혔다면: 적은 횟수가 어느 단계에도 적용되지 않고 파일의 값으로 학습이 돈다.\n"
+                    f"학습 횟수의 단계 {name!r}이 설정 파일에 없습니다 (있는 단계: {names}).\n"
+                    "  안 잡혔다면: 적은 횟수가 어느 단계에도 적용되지 않고 파일의 값으로 학습이 돕니다.\n"
                     "  단계 이름을 설정 파일(trainer.yaml)의 stages 와 똑같이 적으세요.")
             if isinstance(n, bool) or not isinstance(n, int) or n < 1:
                 raise ValueError(
-                    f"단계 {name!r}의 학습 횟수 {n!r}는 1 이상의 정수여야 한다.\n"
-                    "  안 잡혔다면: 0회면 학습 없이 끝난 모델이 나오고, 소수는 몇 번인지 정해지지 않는다.\n"
+                    f"단계 {name!r}의 학습 횟수 {n!r}는 1 이상의 정수여야 합니다.\n"
+                    "  안 잡혔다면: 0회면 학습 없이 끝난 모델이 나오고, 소수는 몇 번인지 정해지지 않습니다.\n"
                     "  1 이상의 정수를 적으세요.")
         for st in self.stages:
             if st.name in epochs:

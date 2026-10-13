@@ -47,8 +47,8 @@ class TemplateParams:
     doc=NodeDoc(
         label="질문 문장 틀",
             hint="표의 값을 템플릿 슬롯에 채워 질문을 만듭니다.",
-        summary="표의 값을 템플릿 슬롯에 채워 질문을 만든다.",
-        scenario="질문 문구만 바꾸는 실험은 Parameter Recipe로 template만 덮어쓰면 된다.",
+        summary="표의 값을 템플릿 슬롯에 채워 질문을 만듭니다.",
+        scenario="질문 문구만 바꾸는 실험은 Parameter Recipe로 template만 덮어쓰면 됩니다.",
     ),
 )
 class TextTemplate(Node):
@@ -81,7 +81,7 @@ class KnowledgeParams:
     recipe_overridable=["position", "max_chars", "header"],
     preview="prompt_render",
     doc=NodeDoc(label="참조 문서 삽입",
-            hint="도메인 지식 문서를 질문 앞뒤에 붙입니다.", summary="도메인 지식 블록을 질문 앞이나 뒤에 붙인다."),
+            hint="도메인 지식 문서를 질문 앞뒤에 붙입니다.", summary="도메인 지식 블록을 질문 앞이나 뒤에 붙입니다."),
 )
 class KnowledgeInject(Node):
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
@@ -115,9 +115,9 @@ class ImageSlotParams:
     doc=NodeDoc(
         label="사진 자리 넣기",
             hint="질문 안에 이미지가 들어갈 자리를 만듭니다.",
-        summary="이미지 개수만큼 자리표시자를 질문에 넣는다.",
-        scenario="자리표시자 개수와 실제 이미지 개수가 어긋나면 이미지가 조용히 무시된다. "
-        "sample.assemble이 그 개수를 실측으로 대조한다.",
+        summary="이미지 개수만큼 자리표시자를 질문에 넣습니다.",
+        scenario="자리표시자 개수와 실제 이미지 개수가 어긋나면 이미지가 조용히 무시됩니다. "
+        "sample.assemble이 그 개수를 실측으로 대조합니다.",
     ),
 )
 class ImageSlots(Node):

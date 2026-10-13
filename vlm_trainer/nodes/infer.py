@@ -44,12 +44,12 @@ def _load(node_id: str, model_dir: str, backbone: str) -> Any:
     if not hasattr(resolve_backbone(backbone), "generate"):
         raise NodeError(
             node_id,
-            cause=f"백본 {backbone!r} 은 답을 생성할 줄 모른다",
+            cause=f"백본 {backbone!r} 은 답을 생성할 줄 모릅니다",
             hint=(
-                "  안 잡혔다면: 학습은 끝났는데 추론에서 빈 답이 나온다.\n"
+                "  안 잡혔다면: 학습은 끝났는데 추론에서 빈 답이 나옵니다.\n"
                 "  추정 낭비: 학습 시간 전부.\n"
                 "  어댑터에 generate(model, prompt, images, max_new) 를 구현하라 — "
-                "tiny_backbone.py 가 참조 구현이다."
+                "tiny_backbone.py 가 참조 구현입니다."
             ),
         )
     try:
@@ -76,10 +76,10 @@ class ModelSourceParams:
     doc=NodeDoc(
         label="학습된 모델 불러오기",
         hint="이전에 학습하거나 Export 한 모델 폴더를 그래프에 들여옵니다.",
-        summary="학습 없이도 `모델 추론` 에 모델을 물릴 수 있게 한다.",
+        summary="학습 없이도 `모델 추론` 에 모델을 물릴 수 있게 합니다.",
         scenario=(
             "어려운 일을 단계로 쪼개 단계마다 모델을 따로 학습할 때, 1단계에서 만든 "
-            "모델을 2단계 그래프에서 쓴다. 이것이 없으면 단계마다 처음부터 다시 학습해야 한다."
+            "모델을 2단계 그래프에서 씁니다. 이것이 없으면 단계마다 처음부터 다시 학습해야 합니다."
         ),
     ),
 )
@@ -116,23 +116,23 @@ class ModelSource(Node):
         if not os.path.isdir(d):
             raise NodeError(
                 ctx.node_id,
-                cause=f"모델 폴더가 없다: {d}",
+                cause=f"모델 폴더가 없습니다: {d}",
                 hint=(
-                    "  안 잡혔다면: 없는 모델로 답을 만들려 하고, 그 답을 보고 판단하게 된다.\n"
-                    "  추정 낭비: 없음(시작하지 않았다).\n"
-                    "  먼저 학습하거나 Export 한 폴더를 dir 에 적어라."
+                    "  안 잡혔다면: 없는 모델로 답을 만들려 하고, 그 답을 보고 판단하게 됩니다.\n"
+                    "  추정 낭비: 없음(시작하지 않았습니다).\n"
+                    "  먼저 학습하거나 Export 한 폴더를 dir 에 적으세요."
                 ),
             )
         backbone = (params.backbone or "").strip() or _backbone_from_contract(d)
         if not backbone:
             raise NodeError(
                 ctx.node_id,
-                cause=f"{d} 의 백본을 알 수 없다",
+                cause=f"{d} 의 백본을 알 수 없습니다",
                 hint=(
                     "  안 잡혔다면: 아무 백본으로나 열어 보다 엉뚱한 자료형으로 얹고,\n"
-                    "  답이 조용히 나빠진다.\n"
+                    "  답이 조용히 나빠집니다.\n"
                     "  추정 낭비: 추론 시간 전부 + 그 뒤의 판단.\n"
-                    f"  {CONTRACT} 가 그 폴더에 없다면 backbone 파라미터에 직접 적어라."
+                    f"  {CONTRACT} 가 그 폴더에 없다면 backbone 파라미터에 직접 적으세요."
                 ),
             )
         return {"model": {"dir": os.path.abspath(d), "backbone": backbone}}
@@ -174,7 +174,7 @@ class AnswerReportParams:
     kind=NodeKind.OUTPUT,
     inputs={
         "answer": Port(text(), "모델이 내놓은 답"),
-        "expected": Port(text().as_optional(), "정답 (있으면 나란히 적는다)"),
+        "expected": Port(text().as_optional(), "정답 (있으면 나란히 적습니다)"),
     },
     params=AnswerReportParams,
     recipe_overridable=["out_dir"],
@@ -182,10 +182,10 @@ class AnswerReportParams:
     doc=NodeDoc(
         label="답변 결과 저장",
         hint="모델의 답을 정답과 나란히 파일로 남깁니다.",
-        summary="채점하지 않는다. 사람이 읽고 판단하도록 나란히 적을 뿐이다.",
+        summary="채점하지 않습니다. 사람이 읽고 판단하도록 나란히 적을 뿐입니다.",
         scenario=(
             "자동 채점 숫자가 나오면 그 숫자를 믿게 되는데, 라벨에 잡음이 있으면 "
-            "믿을 값이 아니다. 데이터가 정리된 뒤에 채점을 붙인다."
+            "믿을 값이 아닙니다. 데이터가 정리된 뒤에 채점을 붙입니다."
         ),
     ),
 )
@@ -235,8 +235,8 @@ class InferParams:
     doc=NodeDoc(
         label="모델 추론",
         hint="학습된 모델에 질문을 넣어 답을 받습니다.",
-        summary="학습이 끝난 뒤 검증 샘플에 실제로 어떤 답이 나오는지 본다.",
-        scenario="손실이 내려간 것만으로는 모델이 쓸 만한지 알 수 없다. 답을 읽어야 안다.",
+        summary="학습이 끝난 뒤 검증 샘플에 실제로 어떤 답이 나오는지 봅니다.",
+        scenario="손실이 내려간 것만으로는 모델이 쓸 만한지 알 수 없습니다. 답을 읽어야 압니다.",
     ),
 )
 class VlmInfer(Node):
@@ -245,8 +245,8 @@ class VlmInfer(Node):
         if not isinstance(handle, dict) or not handle.get("dir"):
             raise NodeError(
                 ctx.node_id,
-                cause=f"학습된 모델을 가리키는 값이 아니다: {handle!r}",
-                hint="  `모델 학습` 상자의 출력을 이 상자의 `model` 에 이어라.",
+                cause=f"학습된 모델을 가리키는 값이 아닙니다: {handle!r}",
+                hint="  `모델 학습` 상자의 출력을 이 상자의 `model` 에 이으세요.",
             )
 
         # 학습에 쓴 샘플에 답하게 하면 외운 것을 보게 된다. 검증 쪽만 본다.

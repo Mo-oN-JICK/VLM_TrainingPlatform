@@ -208,7 +208,7 @@ class BackboneAdapter:
     def build(cls, cfg: Any, stage: Any) -> Any:
         raise NotImplementedError(
             f"{cls.spec().id}: 이 백본 어댑터는 spec()만 제공한다(예산 계산용). "
-            "학습하려면 build/module_groups/collate를 구현하라 — tiny_backbone.py가 참조 구현이다."
+            "학습하려면 build/module_groups/collate를 구현하라 — tiny_backbone.py가 참조 구현입니다."
         )
 
 
@@ -218,7 +218,7 @@ _BACKBONES: Dict[str, Type[BackboneAdapter]] = {}
 def register_backbone(cls: Type[BackboneAdapter]) -> Type[BackboneAdapter]:
     s = cls.spec()
     if "windows" not in s.os_support:
-        raise RegistrationError(f"{s.id}: 기본 실행 프로파일(windows_single_gpu)을 지원하지 않는다")
+        raise RegistrationError(f"{s.id}: 기본 실행 프로파일(windows_single_gpu)을 지원하지 않습니다")
     _BACKBONES[s.id] = cls
     return cls
 
@@ -231,7 +231,7 @@ def resolve_backbone(backbone_id: str) -> Type[BackboneAdapter]:
         return hf_backbone.register(backbone_id)
     if backbone_id not in _BACKBONES:
         raise RegistrationError(
-            f"백본 {backbone_id!r}를 찾을 수 없다 (등록된 것: {sorted(_BACKBONES)})"
+            f"백본 {backbone_id!r}를 찾을 수 없습니다 (등록된 것: {sorted(_BACKBONES)})"
         )
     return _BACKBONES[backbone_id]
 
@@ -246,10 +246,10 @@ _EXPERTS: Dict[Tuple[str, str], Type[ExpertPlugin]] = {}
 def register_expert(cls: Type[ExpertPlugin]) -> Type[ExpertPlugin]:
     m = cls.manifest
     if m.domain not in ("image2d", "series1d"):
-        raise RegistrationError(f"{m.ref}: domain은 image2d 또는 series1d여야 한다")
+        raise RegistrationError(f"{m.ref}: domain은 image2d 또는 series1d여야 합니다")
     if "windows" not in m.os_support:
         raise RegistrationError(
-            f"{m.ref}: 기본 실행 프로파일(windows_single_gpu)을 지원하지 않는다"
+            f"{m.ref}: 기본 실행 프로파일(windows_single_gpu)을 지원하지 않습니다"
         )
     _EXPERTS[(m.id, m.version)] = cls
     return cls
@@ -257,11 +257,11 @@ def register_expert(cls: Type[ExpertPlugin]) -> Type[ExpertPlugin]:
 
 def resolve_expert(ref: str) -> Type[ExpertPlugin]:
     if "@" not in ref:
-        raise RegistrationError(f"전문가 플러그인 참조는 id@semver로 핀 고정해야 한다: {ref!r}")
+        raise RegistrationError(f"전문가 플러그인 참조는 id@semver로 핀 고정해야 합니다: {ref!r}")
     key = tuple(ref.split("@", 1))
     if key not in _EXPERTS:
         have = sorted(f"{i}@{v}" for i, v in _EXPERTS)
-        raise RegistrationError(f"전문가 플러그인 {ref}를 찾을 수 없다 (등록된 것: {have})")
+        raise RegistrationError(f"전문가 플러그인 {ref}를 찾을 수 없습니다 (등록된 것: {have})")
     return _EXPERTS[key]  # type: ignore[index]
 
 

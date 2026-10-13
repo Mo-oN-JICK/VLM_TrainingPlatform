@@ -113,9 +113,9 @@ def verify(model: nn.Module, stage: Any, adapter: Any) -> List[str]:
         any_grad = any(p.requires_grad for p in params)
         all_grad = all(p.requires_grad for p in params)
         if mode == "false" and any_grad:
-            bad.append(f"{group}: false로 선언했는데 학습 대상이 있다")
+            bad.append(f"{group}: false로 선언했는데 학습 대상이 있습니다")
         if mode == "true" and not all_grad:
-            bad.append(f"{group}: true로 선언했는데 동결된 파라미터가 있다")
+            bad.append(f"{group}: true로 선언했는데 동결된 파라미터가 있습니다")
         if mode == "lora" and any_grad:
-            bad.append(f"{group}: lora로 선언했는데 베이스 가중치가 열려 있다")
+            bad.append(f"{group}: lora로 선언했는데 베이스 가중치가 열려 있습니다")
     return bad

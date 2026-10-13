@@ -42,7 +42,7 @@ def test_missing_model_says_what_to_do():
     with pytest.raises(RegistrationError) as e:
         hfb.find_config("hf:org/does-not-exist-xyz")
     msg = str(e.value)
-    assert "config.json을 찾을 수 없다" in msg
+    assert "config.json을 찾을 수 없습니다" in msg
     assert "huggingface-cli download" in msg
     assert "로컬 경로를 직접 지정" in msg
 

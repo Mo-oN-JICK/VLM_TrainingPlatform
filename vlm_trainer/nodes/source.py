@@ -56,7 +56,7 @@ class ImageSourceParams:
     doc=NodeDoc(
         label="이미지 업로드",
             hint="데이터셋의 경로 열에서 이미지를 불러옵니다.",
-        summary="sample_space의 경로 컬럼에서 이미지를 읽어 그래프에 주입한다.",
+        summary="sample_space의 경로 컬럼에서 이미지를 읽어 그래프에 주입합니다.",
         scenario="모든 이미지 파이프라인의 시작점.",
     ),
 )
@@ -93,7 +93,7 @@ class TimeSeriesParams:
     type_affecting=["hz", "channels"],
     preview="timeseries_plot",
     doc=NodeDoc(label="센서 데이터 업로드",
-            hint="CSV/NPY 시계열을 [시간 x 채널] 배열로 불러옵니다.", summary="CSV/NPY 시계열을 읽어 [T, C] 배열로 주입한다."),
+            hint="CSV/NPY 시계열을 [시간 x 채널] 배열로 불러옵니다.", summary="CSV/NPY 시계열을 읽어 [T, C] 배열로 주입합니다."),
 )
 class TimeSeriesSource(Node):
     def infer_types(self, inputs: Dict[str, PortType], params: Any) -> Dict[str, PortType]:
@@ -125,7 +125,7 @@ class TimeSeriesSource(Node):
             arr = arr[:, None]
         if arr.shape[1] != int(params.channels):
             raise ValueError(
-                f"채널 수가 선언과 다르다: 선언 {params.channels}, 실제 {arr.shape[1]} ({path})"
+                f"채널 수가 선언과 다릅니다: 선언 {params.channels}, 실제 {arr.shape[1]} ({path})"
             )
         return {"series": arr}
 
@@ -147,7 +147,7 @@ class TextAssetParams:
     recipe_overridable=["path", "max_chars"],
     preview="text",
     doc=NodeDoc(label="참조 문서 업로드",
-            hint="질문에 함께 넣을 도메인 지식 문서를 불러옵니다.", summary="질문에 넣을 도메인 지식 텍스트 자산을 읽는다."),
+            hint="질문에 함께 넣을 도메인 지식 문서를 불러옵니다.", summary="질문에 넣을 도메인 지식 텍스트 자산을 읽습니다."),
 )
 class TextAssetSource(Node):
     def fingerprint(self, ctx: RunCtx, params: Any) -> str:
@@ -177,8 +177,8 @@ class FieldParams:
     doc=NodeDoc(
         label="단일 열 업로드",
             hint="데이터셋의 열 하나를 텍스트로 불러옵니다.",
-        summary="sample_space의 컬럼 하나를 텍스트로 주입한다.",
-        scenario="정답 라벨이나 메타데이터를 그래프로 들여올 때. semantic 태그가 정답 노출 검사의 기준이 된다.",
+        summary="sample_space의 컬럼 하나를 텍스트로 주입합니다.",
+        scenario="정답 라벨이나 메타데이터를 그래프로 들여올 때. semantic 태그가 정답 노출 검사의 기준이 됩니다.",
     ),
 )
 class FieldSource(Node):
@@ -207,7 +207,7 @@ class MetadataParams:
     params=MetadataParams,
     preview="table",
     doc=NodeDoc(label="메타데이터 업로드",
-            hint="데이터셋의 열들을 표로 불러옵니다. 질문과 정답이 이 값을 참조합니다.", summary="인덱스의 여러 컬럼을 한 표로 묶어 주입한다."),
+            hint="데이터셋의 열들을 표로 불러옵니다. 질문과 정답이 이 값을 참조합니다.", summary="인덱스의 여러 컬럼을 한 표로 묶어 주입합니다."),
 )
 class MetadataSource(Node):
     def fingerprint(self, ctx: RunCtx, params: Any) -> str:
@@ -234,8 +234,8 @@ class SchemaParams:
     doc=NodeDoc(
         label="정답 형태 정하기",
             hint="모델이 어떤 형식으로 답해야 하는지 항목과 허용값을 정합니다.",
-        summary="정답 Text 스키마를 읽는다. 렌더러와 파서가 모두 이 정의에서 생성된다.",
-        scenario="학습에 쓴 스키마가 추론 계약에도 그대로 실린다.",
+        summary="정답 Text 스키마를 읽습니다. 렌더러와 파서가 모두 이 정의에서 생성됩니다.",
+        scenario="학습에 쓴 스키마가 추론 계약에도 그대로 실립니다.",
     ),
 )
 class SchemaDefine(Node):

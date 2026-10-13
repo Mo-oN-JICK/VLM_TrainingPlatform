@@ -44,8 +44,8 @@ class ResizeParams:
     doc=NodeDoc(
         label="이미지 리사이즈",
             hint="이미지를 지정한 해상도로 맞춥니다.",
-        summary="가변 크기를 고정 크기로 바꾼다.",
-        scenario="배치 조립과 자원 예산 산정은 고정 크기를 요구한다. 가변(dyn) 차원은 여기서만 사라진다.",
+        summary="가변 크기를 고정 크기로 바꿉니다.",
+        scenario="배치 조립과 자원 예산 산정은 고정 크기를 요구합니다. 가변(dyn) 차원은 여기서만 사라집니다.",
     ),
 )
 class ImageResize(Node):
@@ -98,8 +98,8 @@ class FrameParams:
     doc=NodeDoc(
         label="영역 좌표계 변환",
             hint="영역 좌표의 기준을 바꿉니다.",
-        summary="영역의 좌표계 기준을 바꾼다.",
-        scenario="좌표계 불일치는 조용히 엉뚱한 영역을 잘라낸다. 변환은 반드시 명시적이어야 한다.",
+        summary="영역의 좌표계 기준을 바꿉니다.",
+        scenario="좌표계 불일치는 조용히 엉뚱한 영역을 잘라냅니다. 변환은 반드시 명시적이어야 합니다.",
     ),
 )
 class FrameAdapter(Node):
@@ -141,9 +141,9 @@ class ImageFrameParams:
     doc=NodeDoc(
         label="이미지 좌표계 변환",
             hint="픽셀은 그대로 두고 좌표 기준만 다시 선언합니다.",
-        summary="이미지 픽셀 격자의 좌표 기준을 다시 선언한다. 픽셀은 그대로 두고 타입만 바꾼다.",
+        summary="이미지 픽셀 격자의 좌표 기준을 다시 선언합니다. 픽셀은 그대로 두고 타입만 바꿉니다.",
         scenario="crop을 그 자체로 하나의 이미지로 취급해 원본과 한 리스트에 담을 때. "
-        "암묵 변환을 금지했으므로 이 선언도 노드로 남아 스펙에 기록된다.",
+        "암묵 변환을 금지했으므로 이 선언도 노드로 남아 스펙에 기록됩니다.",
     ),
 )
 class ImageFrameAdapter(Node):
@@ -180,7 +180,7 @@ class CropParams:
     recipe_overridable=["padding_ratio", "max_n", "square_pad"],
     preview="image_grid",
     doc=NodeDoc(label="관심영역 크롭",
-            hint="지정된 영역을 원본 이미지에서 잘라냅니다.", summary="지목된 영역을 원본에서 잘라낸다."),
+            hint="지정된 영역을 원본 이미지에서 잘라냅니다.", summary="지목된 영역을 원본에서 잘라냅니다."),
 )
 class CropByRegions(Node):
     def infer_types(self, inputs: Dict[str, PortType], params: Any) -> Dict[str, PortType]:

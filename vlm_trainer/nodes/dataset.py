@@ -41,7 +41,7 @@ class WrapParams:
     outputs={"items": Port(PortType(base=Var("T"), list_of=ListSpec(1, 1)), "원소가 하나인 리스트")},
     params=WrapParams,
     doc=NodeDoc(label="단일값 → 리스트",
-            hint="값 하나를 원소가 하나인 리스트로 만듭니다.", summary="단일 값을 리스트로 감싼다. 자동 승격이 없으므로 명시적으로 필요하다."),
+            hint="값 하나를 원소가 하나인 리스트로 만듭니다.", summary="단일 값을 리스트로 감쌉니다. 자동 승격이 없으므로 명시적으로 필요합니다."),
 )
 class ListWrap(Node):
     def infer_types(self, inputs: Dict[str, PortType], params: Any) -> Dict[str, PortType]:
@@ -72,7 +72,7 @@ class ConcatParams:
     outputs={"out": Port(PortType(base=Var("T"), list_of=ListSpec(1, 1 << 30)), "이어붙인 리스트")},
     params=ConcatParams,
     recipe_overridable=["max_n"],
-    doc=NodeDoc(label="리스트 병합", hint="같은 타입의 리스트 둘을 이어 붙입니다.", summary="같은 타입의 두 리스트를 이어붙인다."),
+    doc=NodeDoc(label="리스트 병합", hint="같은 타입의 리스트 둘을 이어 붙입니다.", summary="같은 타입의 두 리스트를 이어붙입니다."),
 )
 class ListConcat(Node):
     def infer_types(self, inputs: Dict[str, PortType], params: Any) -> Dict[str, PortType]:
@@ -88,11 +88,11 @@ class ListConcat(Node):
             from ..core.errors import PolicyError
 
             raise PolicyError(
-                "list.concat: 두 리스트의 원소 타입이 다르다.\n"
+                "list.concat: 두 리스트의 원소 타입이 다릅니다.\n"
                 f"  a: {a}\n  b: {b}\n"
                 "  불일치: " + ", ".join(str(m) for m in res.mismatches) + "\n"
                 "  이 검사가 없었다면: 서로 다른 전처리를 거친 이미지가 한 샘플에 섞여 "
-                "학습은 완주하고 성능만 나빠진다."
+                "학습은 완주하고 성능만 나빠집니다."
             )
         return {
             "out": replace(
@@ -108,9 +108,9 @@ class ListConcat(Node):
             if params.on_overflow == "fail":
                 raise NodeError(
                     ctx.node_id,
-                    f"리스트 길이 {len(out)}가 상한 {params.max_n}을 넘는다",
+                    f"리스트 길이 {len(out)}가 상한 {params.max_n}을 넘습니다",
                     sample_key=ctx.sample_key,
-                    hint="max_n을 올리거나 상류의 topk를 줄여라",
+                    hint="max_n을 올리거나 상류의 topk를 줄이세요",
                 )
             out = out[: int(params.max_n)]
         return {"out": out}
@@ -134,8 +134,8 @@ class MapParams:
     doc=NodeDoc(
         label="리스트 일괄 처리",
             hint="리스트의 원소마다 같은 노드를 적용합니다.",
-        summary="리스트의 원소마다 노드 하나를 적용한다.",
-        scenario="crop 여러 장을 한꺼번에 리사이즈할 때. 브로드캐스트가 없으므로 명시적으로 필요하다.",
+        summary="리스트의 원소마다 노드 하나를 적용합니다.",
+        scenario="crop 여러 장을 한꺼번에 리사이즈할 때. 브로드캐스트가 없으므로 명시적으로 필요합니다.",
     ),
 )
 class ListMap(Node):
@@ -147,7 +147,7 @@ class ListMap(Node):
         if not params.node:
             from ..core.errors import PolicyError
 
-            raise PolicyError("list.map: 적용할 node 파라미터가 비어 있다")
+            raise PolicyError("list.map: 적용할 node 파라미터가 비어 있습니다")
         return resolve_node(params.node)
 
     def infer_types(self, inputs: Dict[str, PortType], params: Any) -> Dict[str, PortType]:
@@ -156,7 +156,7 @@ class ListMap(Node):
         if len(d.inputs) != 1 or len(d.outputs) != 1:
             from ..core.errors import PolicyError
 
-            raise PolicyError(f"list.map: {d.ref}는 입력·출력이 각각 하나여야 한다")
+            raise PolicyError(f"list.map: {d.ref}는 입력·출력이 각각 하나여야 합니다")
         in_port = next(iter(d.inputs))
         out_port = next(iter(d.outputs))
         if src is None:
@@ -200,9 +200,9 @@ class AssembleParams:
     doc=NodeDoc(
         label="한 건 묶기",
         hint="이미지·질문·정답을 학습 데이터 한 건으로 묶습니다.",
-        summary="이미지·질문·정답을 학습 샘플 한 건으로 묶는다.",
-        scenario="자리표시자 개수와 실제 이미지 개수를 실측으로 대조한다 — "
-        "어긋나면 이미지가 조용히 무시된 채 텍스트만 학습된다.",
+        summary="이미지·질문·정답을 학습 샘플 한 건으로 묶습니다.",
+        scenario="자리표시자 개수와 실제 이미지 개수를 실측으로 대조합니다 — "
+        "어긋나면 이미지가 조용히 무시된 채 텍스트만 학습됩니다.",
     ),
 )
 class SampleAssemble(Node):
@@ -213,9 +213,9 @@ class SampleAssemble(Node):
         if n_slots != len(images):
             raise NodeError(
                 ctx.node_id,
-                f"이미지 자리표시자 {n_slots}개, 실제 이미지 {len(images)}개로 개수가 다르다",
+                f"이미지 자리표시자 {n_slots}개, 실제 이미지 {len(images)}개로 개수가 다릅니다",
                 sample_key=ctx.sample_key,
-                hint="prompt.image_slots가 같은 ImageList를 받고 있는지 확인하라",
+                hint="prompt.image_slots가 같은 ImageList를 받고 있는지 확인하세요",
             )
         return {
             "sample": {
@@ -248,8 +248,8 @@ class ExportParams:
     doc=NodeDoc(
         label="데이터셋 내보내기",
             hint="생성된 학습 데이터를 디스크에 저장합니다.",
-        summary="샘플을 디스크로 내보낸다. 부작용을 일으키는 Output 노드.",
-        scenario="사전 준비 뒤의 학습은 이 산출물만 읽는다.",
+        summary="샘플을 디스크로 내보냅니다. 부작용을 일으키는 Output 노드.",
+        scenario="사전 준비 뒤의 학습은 이 산출물만 읽습니다.",
     ),
 )
 class DatasetExport(Node):
@@ -298,8 +298,8 @@ class PromptExportParams:
     doc=NodeDoc(
         label="질문 내보내기",
             hint="질문을 파일로 저장합니다. 추론 그래프의 종결점입니다.",
-        summary="질문을 그대로 내보낸다. 추론 그래프의 종결점.",
-        scenario="추론 계약이 실제로 재현되는지 확인하는 수단 — 학습 때의 질문과 바이트 단위로 대조한다.",
+        summary="질문을 그대로 내보냅니다. 추론 그래프의 종결점.",
+        scenario="추론 계약이 실제로 재현되는지 확인하는 수단 — 학습 때의 질문과 바이트 단위로 대조합니다.",
     ),
 )
 class PromptExport(Node):
@@ -345,8 +345,8 @@ class TrainerParams:
     doc=NodeDoc(
         label="모델 학습",
         hint="준비된 학습 데이터로 모델을 모델 학습합니다.",
-        summary="학습 실행. 산출물이 어디 있는지를 내보내 추론이 받는다.",
-        scenario="사전 준비 실행이 끝난 뒤에 한 번 돈다. 샘플마다가 아니다.",
+        summary="학습 실행. 산출물이 어디 있는지를 내보내 추론이 받습니다.",
+        scenario="사전 준비 실행이 끝난 뒤에 한 번 돕니다. 샘플마다가 아닙니다.",
     ),
 )
 class VlmTrainer(Node):

@@ -108,7 +108,7 @@ def test_export_refuses_without_the_contract(tmp_path, monkeypatch):
     """프롬프트 형식을 모르면 가중치만 있어도 못 쓴다. 반쪽을 내보내느니 멈춘다."""
     monkeypatch.setattr("vlm_trainer.plugins.base.resolve_backbone", lambda ref: _Adapter)
     src = _trained(tmp_path, with_contract=False)
-    with pytest.raises(ckpt_mod.CheckpointError, match="계약 없이는 내보내지 않는다"):
+    with pytest.raises(ckpt_mod.CheckpointError, match="계약 없이는 내보내지 않습니다"):
         ckpt_mod.export(src, "fake", str(tmp_path / "out"))
     assert not os.path.isdir(tmp_path / "out"), "거부해 놓고 폴더를 만들었다"
 

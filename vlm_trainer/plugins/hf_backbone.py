@@ -90,9 +90,9 @@ def find_config(ref: str) -> str:
                 return cand
 
     raise RegistrationError(
-        f"백본 {ref!r}의 config.json을 찾을 수 없다.\n"
+        f"백본 {ref!r}의 config.json을 찾을 수 없습니다.\n"
         f"  찾아본 곳: 로컬 디렉터리, {cache}\n"
-        "  먼저 모델을 내려받아라:\n"
+        "  먼저 모델을 내려받으세요:\n"
         f'    huggingface-cli download {ref}\n'
         "  또는 로컬 경로를 직접 지정하라: backbone: hf:D:/models/<dir>"
     )
@@ -207,7 +207,7 @@ class HFBackbone(BackboneAdapter):
                 from transformers import AutoModelForVision2Seq as AutoVLM
         except ImportError as e:
             raise RegistrationError(
-                "실물 백본을 쓰려면 transformers가 필요하다:\n"
+                "실물 백본을 쓰려면 transformers가 필요합니다:\n"
                 "  python -m pip install transformers accelerate safetensors\n"
                 f"  ({e})"
             ) from None
@@ -218,7 +218,7 @@ class HFBackbone(BackboneAdapter):
                 from transformers import BitsAndBytesConfig
             except ImportError:
                 raise RegistrationError(
-                    "양자화에는 bitsandbytes가 필요하다: python -m pip install bitsandbytes"
+                    "양자화에는 bitsandbytes가 필요합니다: python -m pip install bitsandbytes"
                 ) from None
             kw["quantization_config"] = (
                 BitsAndBytesConfig(

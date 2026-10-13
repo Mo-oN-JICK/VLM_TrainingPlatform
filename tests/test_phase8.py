@@ -114,11 +114,11 @@ def test_the_extension_profile_adds_no_other_restrictions():
 @pytest.mark.parametrize(
     "dist,needle",
     [
-        (dict(enabled=False, world_size=4), "켜지 않은 다중 GPU는 없다"),
+        (dict(enabled=False, world_size=4), "켜지 않은 다중 GPU는 없습니다"),
         (dict(enabled=False, strategy="ddp"), "strategy를 none으로"),
         (dict(enabled=True, strategy="ddp", world_size=1), "장치가 둘 이상"),
-        (dict(enabled=True, strategy="fsdp", world_size=4), "아직 예산을 계산하지 못한다"),
-        (dict(enabled=True, strategy="deepspeed", world_size=8), "아직 예산을 계산하지 못한다"),
+        (dict(enabled=True, strategy="fsdp", world_size=4), "아직 예산을 계산하지 못합니다"),
+        (dict(enabled=True, strategy="deepspeed", world_size=8), "아직 예산을 계산하지 못합니다"),
         (dict(enabled=True, strategy="magic", world_size=2), "알 수 없는"),
     ],
 )

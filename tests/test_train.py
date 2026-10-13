@@ -92,7 +92,7 @@ def test_declaring_nothing_trainable_is_an_error(baked):
     cfg = _cfg()
     cfg.stages = cfg.stages[:1]
     cfg.stages[0].trainable = {"vision_tower": "false", "projector": "false", "llm": "false"}
-    with pytest.raises(ValueError, match="학습할 파라미터가 없다"):
+    with pytest.raises(ValueError, match="학습할 파라미터가 없습니다"):
         loop_mod.train(cfg, baked["materialized"], os.path.join(baked["dir"], "t_none"), device="cpu")
 
 
@@ -236,7 +236,7 @@ def test_contract_records_what_inference_needs(baked, tmp_path):
 @pytest.mark.parametrize(
     "field,value,needle",
     [
-        ("attn_impl", "flash_attn2", "flash-attn은 Windows 휠이 없다"),
+        ("attn_impl", "flash_attn2", "flash-attn은 Windows 휠이 없습니다"),
         ("offload", "disk", "offload를 none 또는 cpu"),
     ],
 )

@@ -122,7 +122,7 @@ def test_loading_a_checkpoint_that_does_not_fit_is_loud(tmp_path, monkeypatch):
 
     monkeypatch.setattr("vlm_trainer.plugins.base.resolve_backbone", lambda ref: _Adapter)
     infer_mod._LOADED.clear()
-    with pytest.raises(NodeError, match="들어갈 자리가 없다"):
+    with pytest.raises(NodeError, match="들어갈 자리가 없습니다"):
         infer_mod._load("n_infer", str(tmp_path), "아무백본")
 
 
@@ -191,7 +191,7 @@ def test_a_missing_folder_says_so_instead_of_answering_from_nothing(tmp_path):
     from vlm_trainer.core.node import RunCtx
 
     d = resolve("source.model@1.0.0")
-    with pytest.raises(NodeError, match="모델 폴더가 없다"):
+    with pytest.raises(NodeError, match="모델 폴더가 없습니다"):
         d.impl().run(RunCtx(run_id="r", node_id="n_model"),
                      d.build_params({"dir": str(tmp_path / "없음"), "backbone": ""}))
 
@@ -200,7 +200,7 @@ def test_an_unknown_backbone_is_refused_rather_than_guessed(tmp_path):
     from vlm_trainer.core.node import RunCtx
 
     d = resolve("source.model@1.0.0")
-    with pytest.raises(NodeError, match="백본을 알 수 없다"):
+    with pytest.raises(NodeError, match="백본을 알 수 없습니다"):
         d.impl().run(RunCtx(run_id="r", node_id="n_model"),
                      d.build_params({"dir": str(tmp_path), "backbone": ""}))
 

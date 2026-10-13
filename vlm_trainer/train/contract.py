@@ -38,7 +38,7 @@ def sample_node(cg: CompiledGraph) -> str:
     for nid in cg.order:
         if cg.nodes[nid].ref.startswith("sample.assemble"):
             return nid
-    raise StructureError("Sample을 만드는 노드를 찾을 수 없다. 추론 그래프를 추출할 수 없다.")
+    raise StructureError("Sample을 만드는 노드를 찾을 수 없습니다. 추론 그래프를 추출할 수 없습니다.")
 
 
 def prompt_terminus(cg: CompiledGraph) -> str:
@@ -49,7 +49,7 @@ def prompt_terminus(cg: CompiledGraph) -> str:
     """
     src = cg.nodes[sample_node(cg)].inputs.get("prompt")
     if not src:
-        raise StructureError("sample.assemble의 prompt 입력이 연결되어 있지 않다.")
+        raise StructureError("sample.assemble의 prompt 입력이 연결되어 있지 않습니다.")
     nid = src.split(":")[0]
     seen: Set[str] = set()
     while nid not in seen:
@@ -86,8 +86,8 @@ def inference_nodes(cg: CompiledGraph) -> Set[str]:
     ]
     if leaked:
         raise PolicyError(
-            f"추론 그래프에 정답 경로가 남았다: {sorted(set(leaked))}\n"
-            "  추론 시점에는 정답이 존재하지 않으므로 이 그래프는 돌 수 없다."
+            f"추론 그래프에 정답 경로가 남았습니다: {sorted(set(leaked))}\n"
+            "  추론 시점에는 정답이 존재하지 않으므로 이 그래프는 돌 수 없습니다."
         )
     return keep
 
