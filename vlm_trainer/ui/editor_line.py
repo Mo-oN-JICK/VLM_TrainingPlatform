@@ -40,7 +40,7 @@ class LineMixin:
     def _line_try(self, mutate: Any) -> Dict[str, Any]:
         """매핑에 편집을 적용해 보고, 펼쳐서 컴파일이 통과해야 받아들인다."""
         if getattr(self, "line_data", None) is None:
-            return self._line_refuse("5노드(Line) 파일이 아니다")
+            return self._line_refuse("5노드(Line) 파일이 아닙니다")
         new = copy.deepcopy(self.line_data)
         try:
             mutate(new)
@@ -59,7 +59,7 @@ class LineMixin:
             if str(s.get("id")) == sid:
                 s.setdefault("params", {})
                 return s
-        raise KeyError(f"스테이션 {sid!r}이 없다")
+        raise KeyError(f"스테이션 {sid!r}이 없습니다")
 
     # ── 편집 ────────────────────────────────────────────────────────────
     def line_set(self, sid: str, name: str, value: Any) -> Dict[str, Any]:
@@ -115,7 +115,7 @@ class LineMixin:
         때문이다. 거부되면 파일을 원래대로 되돌린다.
         """
         if getattr(self, "line_data", None) is None:
-            return self._line_refuse("5노드(Line) 파일이 아니다")
+            return self._line_refuse("5노드(Line) 파일이 아닙니다")
         d = os.path.dirname(self.path)
         wrote = None
         path = f.get("schema_path", "")
@@ -144,7 +144,7 @@ class LineMixin:
             img, qst, ans = (LD.station(data, n) for n in ("image", "question", "answer"))
             missing = [n for n, s in (("이미지", img), ("질문 형태", qst), ("정답 형태", ans)) if s is None]
             if missing:
-                raise ValueError(f"이 Line 에 {', '.join(missing)} 스테이션이 없어 열을 지정할 수 없다")
+                raise ValueError(f"이 Line 에 {', '.join(missing)} 스테이션이 없어 열을 지정할 수 없습니다")
             for st in (img, qst, ans):
                 st.setdefault("params", {})
             if f.get("question_column"):
@@ -174,7 +174,7 @@ class LineMixin:
     def line_save(self) -> Dict[str, Any]:
         """Line 파일을 다시 쓴다. 주석과 따옴표·키 순서는 보존되지 않는다(의미와 해시는 보존)."""
         if getattr(self, "line_data", None) is None:
-            return self._line_refuse("5노드(Line) 파일이 아니다")
+            return self._line_refuse("5노드(Line) 파일이 아닙니다")
         if self.compiled is None or not self.valid:
             return self._line_refuse(_short(self.error), self.error)
         tmp = self.path + ".tmp"
@@ -191,13 +191,13 @@ class LineMixin:
     def line_export(self) -> Dict[str, Any]:
         """11노드 Project 로 내보낸다. 이미 있으면 덮지 않는다 — 고친 11노드 파일을 날리는 길이다."""
         if getattr(self, "line_data", None) is None:
-            return self._line_refuse("5노드(Line) 파일이 아니다")
+            return self._line_refuse("5노드(Line) 파일이 아닙니다")
         if self.dirty:
-            return self._line_refuse("저장하지 않은 변경이 있다", "내보내는 것은 디스크의 Line 이다. 먼저 저장하세요.")
+            return self._line_refuse("저장하지 않은 변경이 있습니다", "내보내는 것은 디스크의 Line 입니다. 먼저 저장하세요.")
         out = self.line_export_path()
         if os.path.exists(out):
-            return self._line_refuse(f"이미 있다: {os.path.basename(out)}",
-                                     f"{out} 가 있다. 덮어쓰면 그 파일에서 고친 것이 사라진다. 이름을 바꾸거나 지우고 다시 하세요.")
+            return self._line_refuse(f"이미 있습니다: {os.path.basename(out)}",
+                                     f"{out} 가 있습니다. 덮어쓰면 그 파일에서 고친 것이 사라집니다. 이름을 바꾸거나 지우고 다시 하세요.")
         text = dump_yaml(expand_file(self.path))
         with open(out, "w", encoding="utf-8") as fh:
             fh.write(text)

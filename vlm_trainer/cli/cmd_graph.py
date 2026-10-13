@@ -83,7 +83,7 @@ def cmd_nodes(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
     cats = registry.categories()
     if not cats:
-        print("등록된 노드가 없다. --nodes MODULE 로 노드 모듈을 지정하라.")
+        print("등록된 노드가 없습니다. --nodes MODULE 로 노드 모듈을 지정하세요.")
         return 0
     for cat, defs in cats.items():
         print(f"\n▸ {cat}")
@@ -117,7 +117,7 @@ def cmd_show(a: argparse.Namespace) -> int:
         mark += " *type" if k in d.type_affecting else ""
         print(f"  {k} = {v!r}{mark}")
     if d.external_call:
-        print("\n외부 모델을 호출한다 — 물질화 경계 앞에 있어야 한다.")
+        print("\n외부 모델을 호출합니다 — 물질화 경계 앞에 있어야 합니다.")
     return 0
 
 
@@ -147,7 +147,7 @@ def cmd_infer_graph(a: argparse.Namespace) -> int:
             fh.write(text)
         print(f"추론 그래프 -> {a.out}")
         print(f"  프롬프트 종단: {contract_mod.prompt_terminus(cg)}")
-        print(f"  노드 {len(spec['nodes'])}개 (정답 경로는 잘라냈다)")
+        print(f"  노드 {len(spec['nodes'])}개 (정답 경로는 잘라냈습니다)")
     else:
         sys.stdout.write(text)
     return 0
@@ -163,7 +163,7 @@ def cmd_backbones(a: argparse.Namespace) -> int:
         from ..plugins.hf_backbone import fetch as fetch_weights
 
         ref = a.fetch if a.fetch.startswith("hf:") else "hf:" + a.fetch
-        print(f"내려받는 중: {ref}  (수 GB. 한 번 받으면 캐시에 남는다)")
+        print(f"내려받는 중: {ref}  (수 GB. 한 번 받으면 캐시에 남습니다)")
         where = fetch_weights(ref)
         print(f"  받음: {where}")
         a.add = a.add or a.fetch

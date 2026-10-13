@@ -220,7 +220,7 @@ class Wire(QtWidgets.QGraphicsPathItem):
         self.setPen(QtGui.QPen(self._base, 2))
         self.setZValue(Z_WIRE)
         self.setAcceptHoverEvents(True)
-        self.setToolTip(f"{src.ref}  →  {dst.ref}\n우클릭으로 끊는다")
+        self.setToolTip(f"{src.ref}  →  {dst.ref}\n우클릭으로 끊습니다")
         self.reroute()
 
     def reroute(self) -> None:
@@ -579,11 +579,11 @@ class GraphCanvas(QtWidgets.QGraphicsView):
                        if isinstance(it, PortChip) and it.is_input), None)
         if target is None:
             return
-        why = self.compat.get(src.ref, {}).get(target.ref, "호환 표에 없는 자리다")
+        why = self.compat.get(src.ref, {}).get(target.ref, "호환 표에 없는 자리입니다")
         if why:
             # 놓기 전에 막고 이유를 말한다. 게이트는 api.py 에도 있지만, 왜 안 되는지는
             # 배선을 놓는 그 순간에 필요하다 — 거부 메시지를 나중에 읽어서는 늦다.
-            QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), f"꽂을 수 없다 — {why}")
+            QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), f"꽂을 수 없습니다 — {why}")
             return
         self.connectRequested.emit(src.ref, target.ref)
 

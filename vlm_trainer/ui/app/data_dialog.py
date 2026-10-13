@@ -39,7 +39,7 @@ class DataDialog(QtWidgets.QDialog):
         self._custom = self.form["question_column"] is None and bool(self.form["template"])
         self._locked = False
         self.header: List[str] = []
-        self.setWindowTitle("데이터 — 사진, 질문, 정답을 표로 넣는다")
+        self.setWindowTitle("데이터 — 사진, 질문, 정답을 표로 넣습니다")
         self.resize(900, 860)
         # 어두운 바탕에서는 기본 라디오 버튼의 점이 안 보인다 — 어느 것이 골라졌는지 안 보이면 안 된다.
         self.setStyleSheet(QSS + "QRadioButton::indicator { width:12px; height:12px; border:1px solid #6F7478; border-radius:7px; }"
@@ -104,9 +104,9 @@ class DataDialog(QtWidgets.QDialog):
         # ③ 나누기
         g3 = QtWidgets.QGroupBox("3  학습용 / 검증용 나누기 — 검증용은 학습에 쓰지 않은 건만 씁니다")
         f3 = QtWidgets.QGridLayout(g3)
-        self.rb_random = QtWidgets.QRadioButton("자동 — 행마다 무작위로 나눈다")
+        self.rb_random = QtWidgets.QRadioButton("자동 — 행마다 무작위로 나눕니다")
         self.rb_group = QtWidgets.QRadioButton("자동 — 그룹 열이 같은 건은 같은 쪽으로")
-        self.rb_column = QtWidgets.QRadioButton("표의 구분 열을 그대로 쓴다 (값: train / val)")
+        self.rb_column = QtWidgets.QRadioButton("표의 구분 열을 그대로 씁니다 (값: train / val)")
         self.cb_group = QtWidgets.QComboBox()
         self.cb_split = QtWidgets.QComboBox()
         f3.addWidget(self.rb_random, 0, 0)
@@ -333,20 +333,20 @@ class DataDialog(QtWidgets.QDialog):
             row, col = self._row(r)
             rows.append(row)
             if not col:
-                raise SpecError(f"정답 항목 {r + 1}번째 행({row['항목'] or '이름 없음'})의 표의 열이 비었다.\n"
-                                "  안 잡혔다면: 정답 칸이 비어 학습된다.\n  표에서 이 항목의 정답이 든 열을 고르세요.")
+                raise SpecError(f"정답 항목 {r + 1}번째 행({row['항목'] or '이름 없음'})의 표의 열이 비었습니다.\n"
+                                "  안 잡혔다면: 정답 칸이 비어 학습됩니다.\n  표에서 이 항목의 정답이 든 열을 고르세요.")
             answers[row["항목"]] = col
         need = {"건 구분 열": self.cb_key, "사진 열": self.cb_image}
         if self.cb_question.currentData() is not None:
             need["질문 열"] = self.cb_question
         for name, cb in need.items():
             if not cb.currentData():
-                raise SpecError(f"{name}을 고르지 않았다.\n  안 잡혔다면: 이름이 틀린 채 첫 샘플에서 멈춘다.\n  표의 열 중에서 고르세요.")
+                raise SpecError(f"{name}을 고르지 않았습니다.\n  안 잡혔다면: 이름이 틀린 채 첫 샘플에서 멈춥니다.\n  표의 열 중에서 고르세요.")
         mode = self._mode()
         if mode == "column" and not self.cb_split.currentData():
-            raise SpecError("구분 열을 고르지 않았다.\n  안 잡혔다면: 어느 건이 검증용인지 정해지지 않는다.\n  표의 구분 열을 고르세요.")
+            raise SpecError("구분 열을 고르지 않았습니다.\n  안 잡혔다면: 어느 건이 검증용인지 정해지지 않습니다.\n  표의 구분 열을 고르세요.")
         if mode == "group" and not self.cb_group.currentData():
-            raise SpecError("그룹 열을 고르지 않았다.\n  안 잡혔다면: 같은 그룹이 학습과 검증에 나뉘어 들어간다.\n  그룹 열을 고르세요.")
+            raise SpecError("그룹 열을 고르지 않았습니다.\n  안 잡혔다면: 같은 그룹이 학습과 검증에 나뉘어 들어갑니다.\n  그룹 열을 고르세요.")
         f = dict(self.form)
         f.update({"index": self.ed_path.text().strip(), "key": self.cb_key.currentData(),
                   "image_column": self.cb_image.currentData(), "question_column": self.cb_question.currentData(),

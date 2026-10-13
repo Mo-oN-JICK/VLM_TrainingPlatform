@@ -65,7 +65,7 @@ class RecipeMixin:
             self.recipe_id = None
             return self._try_overlay({})
         if self.book is None:
-            return {"ok": False, "reason": "레시피 파일이 없다"}
+            return {"ok": False, "reason": "레시피 파일이 없습니다"}
         try:
             overrides = self.book.overrides_for(int(rid))
         except Exception as exc:
@@ -78,7 +78,7 @@ class RecipeMixin:
     def recipe_set(self, path: str, value: Any) -> Dict[str, Any]:
         """오버레이의 값 하나를 고친다. 레시피 파일은 '레시피에 담기' 전까지 그대로다."""
         if not self.overlay:
-            return {"ok": False, "reason": "레시피가 덮고 있는 값이 없다"}
+            return {"ok": False, "reason": "레시피가 덮고 있는 값이 없습니다"}
         return self._try_overlay({**self.overlay, path: value})
 
     def recipe_add_path(self, path: str) -> Dict[str, Any]:
@@ -88,13 +88,13 @@ class RecipeMixin:
         except Exception as exc:
             return {"ok": False, "reason": _short(exc), "detail": _msg(exc)}
         if path in self.overlay:
-            return {"ok": False, "reason": f"{path}는 이미 레시피가 덮고 있다"}
+            return {"ok": False, "reason": f"{path}는 이미 레시피가 덮고 있습니다"}
         value = current_value(self.base, path) if self.base else None
         return self._try_overlay({**self.overlay, path: value})
 
     def recipe_drop_path(self, path: str) -> Dict[str, Any]:
         if path not in self.overlay:
-            return {"ok": False, "reason": f"{path}는 레시피가 덮고 있지 않다"}
+            return {"ok": False, "reason": f"{path}는 레시피가 덮고 있지 않습니다"}
         rest = {k: v for k, v in self.overlay.items() if k != path}
         return self._try_overlay(rest)
 
@@ -104,9 +104,9 @@ class RecipeMixin:
         파일은 Save 때 함께 쓰인다 — 편집기에서 디스크가 바뀌는 순간은 Save 하나뿐이다.
         """
         if self.book is None:
-            return {"ok": False, "reason": "레시피 파일이 없다"}
+            return {"ok": False, "reason": "레시피 파일이 없습니다"}
         if not self.overlay:
-            return {"ok": False, "reason": "담을 값이 없다 — 먼저 파라미터를 레시피 축으로 만든다"}
+            return {"ok": False, "reason": "담을 값이 없습니다 — 먼저 파라미터를 레시피 축으로 만듭니다"}
         if rid is None:
             try:
                 rid = self.book.next_ids(1, (recipe_mod.MIN_ID, recipe_mod.MAX_ID))[0]
@@ -126,7 +126,7 @@ class RecipeMixin:
 
     def recipe_delete(self, rid: int) -> Dict[str, Any]:
         if self.book is None or int(rid) not in self.book.recipes:
-            return {"ok": False, "reason": f"레시피 {rid}번이 없다"}
+            return {"ok": False, "reason": f"레시피 {rid}번이 없습니다"}
         del self.book.recipes[int(rid)]
         if self.book.active == int(rid):
             self.book.active = None
@@ -138,9 +138,9 @@ class RecipeMixin:
     def recipe_set_active(self, rid: Optional[int]) -> Dict[str, Any]:
         """`active:`는 '프로젝트가 지금 이 레시피대로다'라는 표시다(Mech-Vision 규약)."""
         if self.book is None:
-            return {"ok": False, "reason": "레시피 파일이 없다"}
+            return {"ok": False, "reason": "레시피 파일이 없습니다"}
         if rid is not None and int(rid) not in self.book.recipes:
-            return {"ok": False, "reason": f"레시피 {rid}번이 없다"}
+            return {"ok": False, "reason": f"레시피 {rid}번이 없습니다"}
         self.book.active = None if rid is None else int(rid)
         self.book_dirty = True
         return {"ok": True}

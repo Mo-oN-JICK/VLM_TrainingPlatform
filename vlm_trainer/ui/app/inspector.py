@@ -123,11 +123,11 @@ class Inspector(QtWidgets.QDockWidget):
             marks = []
             if f"{nid}:{m['name']}" in overlaid:
                 marks.append(_Mark("레시피", T.STATE["cached"],
-                                   "레시피가 덮고 있다 — 고치면 오버레이가 바뀌고 프로젝트 스펙은 그대로다"))
+                                   "레시피가 덮고 있습니다 — 고치면 오버레이가 바뀌고 프로젝트 스펙은 그대로입니다"))
             elif m["overridable"]:
-                marks.append(_Mark("recipe", "#6F7478", "Parameter Recipe 가 덮을 수 있다"))
+                marks.append(_Mark("recipe", "#6F7478", "Parameter Recipe 가 덮을 수 있습니다"))
             if m["type_affecting"]:
-                marks.append(_Mark("type", T.NODE["accent"], "바꾸면 배선 타입이 다시 검사된다"))
+                marks.append(_Mark("type", T.NODE["accent"], "바꾸면 배선 타입이 다시 검사됩니다"))
             form.add(m["name"], self._widget(nid, m), marks)
         return form if form.count else None
 
@@ -146,7 +146,7 @@ class Inspector(QtWidgets.QDockWidget):
             meta = {"name": name, "value": value,
                     "kind": _kind_of(value), "overridable": False, "type_affecting": False}
             tip = _Mark(inner_id.split("/")[-1], "#6F7478",
-                        f"안쪽 {inner_id}.{inner_param} 로 간다")
+                        f"안쪽 {inner_id}.{inner_param} 로 갑니다")
             form.add(name, self._widget(pid, meta), [tip])
         note = QtWidgets.QLabel(
             f"안에 노드 {shown.inner}개가 들어 있습니다. "
@@ -237,7 +237,7 @@ class Inspector(QtWidgets.QDockWidget):
         # "아무 일도 안 일어나는" 경험을 만드느니 없는 편이 낫다.
         if self._trains(nid):
             ex = QtWidgets.QPushButton("모델 Export")
-            ex.setToolTip("LoRA 를 합쳐 한 덩어리로 내보낸다. 질문 형식(계약)도 함께 넣는다")
+            ex.setToolTip("LoRA 를 합쳐 한 덩어리로 내보냅니다. 질문 형식(계약)도 함께 넣습니다")
             ex.clicked.connect(lambda: self.exportRequested.emit(nid))
             lay.addWidget(ex)
         return box
@@ -328,7 +328,7 @@ class _JsonEdit(_TextEdit):
         except json.JSONDecodeError:
             QtWidgets.QToolTip.showText(
                 self.mapToGlobal(QtCore.QPoint(0, self.height())),
-                "JSON 이 아니다. 예: [448, 448]  또는  {\"a\": 1}")
+                "JSON 이 아닙니다. 예: [448, 448]  또는  {\"a\": 1}")
             self.setText(self._last)
             return
         self._last = self.text()

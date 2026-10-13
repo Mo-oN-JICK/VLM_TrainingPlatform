@@ -190,7 +190,7 @@ def test_run_refuses_to_start_when_over_budget(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert rc == 4
     assert "예산 초과" in err
-    assert "학습을 시작하지 않았다" in err
+    assert "학습을 시작하지 않았습니다" in err
     assert not (tmp_path / "dataset").exists()
 
 

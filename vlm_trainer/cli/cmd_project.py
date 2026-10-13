@@ -35,9 +35,9 @@ def cmd_new(a: argparse.Namespace) -> int:
     for f in made:
         print(f"  만듦: {f}")
     print()
-    print("그래프는 비어 있다. 노드를 놓기 전에는 컴파일되지 않는다 — Output이 하나는 있어야 한다.")
+    print("그래프는 비어 있습니다. 노드를 놓기 전에는 컴파일되지 않습니다 — Output이 하나는 있어야 합니다.")
     print(f"  편집기: vlmt edit {proj}")
-    print("  샘플 인덱스: project.yaml의 sample_space.index가 가리키는 JSONL을 먼저 만들어라")
+    print("  샘플 인덱스: project.yaml의 sample_space.index가 가리키는 JSONL을 먼저 만드세요")
     if a.edit:
         from ..ui import app as app_mod
 
@@ -52,7 +52,7 @@ def cmd_new_line(a: argparse.Namespace) -> int:
     path, made = scaffold.new_line(a.dir, line_id=a.id, name=a.name)
     for f in made:
         print(f"  만듦: {f}")
-    print(f"\n  편집기: vlmt edit {path}   (열면 `데이터` 가 먼저 뜬다)")
+    print(f"\n  편집기: vlmt edit {path}   (열면 `데이터` 가 먼저 뜹니다)")
     if a.edit:
         from ..ui import app as app_mod
 
@@ -114,7 +114,7 @@ def cmd_schema_rows(a: argparse.Namespace) -> int:
     else:
         sys.stdout.write(data.decode("utf-8-sig"))
     if got["unsupported"]:
-        print("표로 나타낼 수 없는 것: " + ", ".join(got["unsupported"]) + " — 표로 고쳐 저장하면 사라진다", file=sys.stderr)
+        print("표로 나타낼 수 없는 것: " + ", ".join(got["unsupported"]) + " — 표로 고쳐 저장하면 사라집니다", file=sys.stderr)
     return 0
 
 
@@ -124,12 +124,12 @@ def cmd_new_node(a: argparse.Namespace) -> int:
 
     made = ns.new_node(a.path, a.type, a.kind, category=a.category, label=a.label,
                        root=a.root or "")
-    print(f"만들었다: {made.module_path}")
+    print(f"만들었습니다: {made.module_path}")
     print(f"          {made.test_path}")
     print()
     print("다음 두 가지:")
-    print(f"  1) 스펙에 적는다 — node_modules: [{made.module_name}]")
-    print(f"  2) 검사한다      — vlmt check-node {made.module_name}")
+    print(f"  1) 스펙에 적습니다 — node_modules: [{made.module_name}]")
+    print(f"  2) 검사합니다      — vlmt check-node {made.module_name}")
     return 0
 
 
@@ -146,7 +146,7 @@ def cmd_recipe(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
     book = recipe_mod.load(a.spec)
     if not book.recipes and a.action != "expand":
-        print(f"레시피가 없다: {book.path}")
+        print(f"레시피가 없습니다: {book.path}")
         return 0
 
     if a.action == "list":
@@ -155,7 +155,7 @@ def cmd_recipe(a: argparse.Namespace) -> int:
         st = recipe_mod.status(book, {p: current_value(cg, p) for p in paths})
         print(f"{book.path}")
         print(f"  활성: {st if st else '없음'}"
-              + ("  (프로젝트를 직접 수정해 레시피와 어긋난다)" if st == recipe_mod.CUSTOMIZED else ""))
+              + ("  (프로젝트를 직접 수정해 레시피와 어긋납니다)" if st == recipe_mod.CUSTOMIZED else ""))
         for rid in sorted(book.recipes):
             r = book.recipes[rid]
             mark = "*" if str(rid) == st else " "

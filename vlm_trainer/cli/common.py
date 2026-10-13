@@ -56,7 +56,7 @@ def _overrides(pairs: List[str]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for p in pairs or []:
         if "=" not in p:
-            raise SystemExit(f"--set 은 경로=값 형식이어야 한다: {p!r}")
+            raise SystemExit(f"--set 은 경로=값 형식이어야 합니다: {p!r}")
         k, v = p.split("=", 1)
         try:
             out[k.strip()] = json.loads(v)

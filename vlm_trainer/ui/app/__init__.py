@@ -13,12 +13,12 @@ from __future__ import annotations
 from typing import Tuple
 
 INSTALL_HINT = (
-    "편집기를 열려면 PySide6 가 필요하다.\n"
+    "편집기를 열려면 PySide6 가 필요합니다.\n"
     "  설치: .venv\\Scripts\\python.exe -m pip install -e .[app]\n"
     "\n"
-    "  안 잡혔다면: 편집기만 못 열 뿐 나머지는 전부 동작한다 —\n"
+    "  안 잡혔다면: 편집기만 못 열 뿐 나머지는 전부 동작합니다 —\n"
     "    compile / dryrun / budget / run / materialize / train / view.\n"
-    "  추정 낭비: 없음(아무것도 시작하지 않았다).\n"
+    "  추정 낭비: 없음(아무것도 시작하지 않았습니다).\n"
     "  그래프를 보기만 하려면: vlmt view <project.yaml> --open"
 )
 

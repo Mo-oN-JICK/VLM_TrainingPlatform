@@ -34,10 +34,10 @@ def station(data: Dict[str, Any], name: str) -> Optional[Dict[str, Any]]:
 def read_header(spec_dir: str, index: str) -> Dict[str, Any]:
     """표의 열 목록과 건수. 못 읽으면 SpecError 가 그 이유를 말한다."""
     if not index.strip():
-        raise SpecError("표 파일이 정해지지 않았다.\n  안 잡혔다면: 읽을 건이 없어 학습이 빈 데이터로 시작된다.\n  표 파일을 고르세요.")
+        raise SpecError("표 파일이 정해지지 않았습니다.\n  안 잡혔다면: 읽을 건이 없어 학습이 빈 데이터로 시작됩니다.\n  표 파일을 고르세요.")
     path = resolve(spec_dir, index)
     if not os.path.exists(path):
-        raise SpecError(f"표 파일이 없다: {path}\n  안 잡혔다면: 실행 첫머리에서 멈춘다.\n  파일 경로를 확인하세요.")
+        raise SpecError(f"표 파일이 없습니다: {path}\n  안 잡혔다면: 실행 첫머리에서 멈춥니다.\n  파일 경로를 확인하세요.")
     rows = samples_mod.read_table(path)
     cols = list(rows[0]) if rows else []
     for r in rows[1:]:
@@ -64,8 +64,8 @@ def make_splits(mode: str, *, column: str = "", group: str = "", val_pct: int = 
         return {"strategy": "group_holdout", "group_by": group, "ratios": ratios, "seed": int(seed)}
     if mode == "random":
         return {"strategy": "random", "ratios": ratios, "seed": int(seed)}
-    raise SpecError(f"나누는 방법 {mode!r}는 없는 값이다 (column | random | group).\n"
-                    "  안 잡혔다면: 검증이 0건이 될 수 있다.\n  셋 중 하나를 고르세요.")
+    raise SpecError(f"나누는 방법 {mode!r}는 없는 값입니다 (column | random | group).\n"
+                    "  안 잡혔다면: 검증이 0건이 될 수 있습니다.\n  셋 중 하나를 고르세요.")
 
 
 def form(data: Dict[str, Any], spec_dir: str) -> Dict[str, Any]:

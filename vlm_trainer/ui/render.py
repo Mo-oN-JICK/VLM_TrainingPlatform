@@ -167,9 +167,9 @@ def render(
             f'<div class="hd"><span class="nm" title="{html.escape(nid)}">{html.escape(s.label)}</span>'
             + f'<span class="st"><span class="sdot" style="background:{T.STATE.get(state, "#4A4A4A")}"></span>{state}{" · " + html.escape(state_extra) if state_extra else ""}</span>'
             + f'<span class="badge b{tag}" title="{tag}">{tag}</span>'
-            + (f'<span class="fold" title="{s.inner}개 노드가 들어 있다">&#9656;{s.inner}</span>'
+            + (f'<span class="fold" title="{s.inner}개 노드가 들어 있습니다">&#9656;{s.inner}</span>'
                if s.inner else "")
-            + ('<span class="mat" title="물질화 경계 — 여기까지 미리 굽는다">&#9640;</span>'
+            + ('<span class="mat" title="물질화 경계 — 여기까지 미리 굽습니다">&#9640;</span>'
                if nid in boundary else "")
             + "</div>"
             + _pio_rows(s)
@@ -363,8 +363,8 @@ body{{margin:0;background:{T.SURFACE['chrome']};color:#D8DCDF;
 .lib .dot{{width:10px;height:10px;border-radius:2px}}
 .lib .n{{margin-left:auto;color:#6F7478;font-size:11px}}
 .canvas{{position:relative;background:{T.SURFACE['canvas']};overflow:auto}}
-/* Mech-Vision 처럼 격자를 깐다. 자리를 눈으로 맞출 기준선이 없으면
-   자유 배치는 어질러지기만 한다. 굵은 선은 5칸마다. */
+/* Mech-Vision 처럼 격자를 깝니다. 자리를 눈으로 맞출 기준선이 없으면
+   자유 배치는 어질러지기만 합니다. 굵은 선은 5칸마다. */
 .stage{{position:relative;
       background-image:
         linear-gradient({T.SURFACE['line']} 1px, transparent 1px),
@@ -399,7 +399,7 @@ svg.wires{{position:absolute;inset:0;pointer-events:none}}
 .nm{{color:{T.NODE['title']};font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap}}
 /* margin-left:auto 는 카드 머리줄에서 배지를 오른쪽으로 밀기 위한 것이었는데,
-   라이브러리 항목까지 잡아 이름 길이만큼 들쭉날쭉하게 밀리고 있었다. 카드 안으로 한정한다. */
+   라이브러리 항목까지 잡아 이름 길이만큼 들쭉날쭉하게 밀리고 있었습니다. 카드 안으로 한정합니다. */
 .badge{{font-size:10px;border:1px solid;border-radius:2px;padding:0 4px;flex:0 0 auto}}
 .hd .badge{{margin-left:auto}}
 .bI{{color:{T.PORT['Image']}}} .bP{{color:#8A9196}} .bO{{color:{T.PORT['Table']}}}
@@ -421,8 +421,8 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
 .log{{background:{T.SURFACE['panel_alt']};border-top:1px solid {T.SURFACE['line']};
      padding:6px 12px;font-size:11.5px;color:#8A9196}}
 .node.sel .card{{background:{T.NODE['bg_selected']};border-color:{T.NODE['border_selected']}}}
-/* 지금 도는 노드. 선택(sel)과는 다른 신호라 색이 아니라 '움직임'으로 구분한다 —
-   정지 화면에서 초록 테두리 하나는 완료와 헷갈리지만, 맥동하는 것은 하나뿐이다. */
+/* 지금 도는 노드. 선택(sel)과는 다른 신호라 색이 아니라 '움직임'으로 구분합니다 —
+   정지 화면에서 초록 테두리 하나는 완료와 헷갈리지만, 맥동하는 것은 하나뿐입니다. */
 .node.active{{z-index:20}}
 .node.active .card{{border-color:{T.STATE['running']};
     box-shadow:0 0 0 1px {T.STATE['running']},0 0 14px -2px {T.STATE['running']};
@@ -557,7 +557,7 @@ summary em{{color:#6F7478;font-style:normal;font-size:11px}}
      border-radius:3px;padding:3px 12px;font-size:12px;cursor:pointer}}
 .btn:hover{{background:{T.NODE['bg_selected']}}}
 .hint{{margin-left:auto;color:#79828A;font-size:11.5px}}
-/* 작업이 도는 동안에는 배선 안내를 접는다 — 그 순간 사람이 보는 것은 진행 상황이다 */
+/* 작업이 도는 동안에는 배선 안내를 접습니다 — 그 순간 사람이 보는 것은 진행 상황입니다 */
 body.busy .hint{{display:none}}
 .runline.live{{color:{T.STATE['running']};font-weight:600}}
 .banner{{background:#3A2A2A;color:#E8B0B0;padding:5px 12px;font-size:12px;cursor:pointer;

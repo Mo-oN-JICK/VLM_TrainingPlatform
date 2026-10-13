@@ -104,7 +104,7 @@ def test_run_is_refused_while_the_spec_on_disk_differs(ed):
     ed.set_param("n_stats", "z_thresh", 4.5)
     res = ed.run_start()
     assert not res["ok"] and "저장하지 않은 변경" in res["reason"]
-    assert "화면과 다른 그래프가 돈다" in res["detail"]
+    assert "화면과 다른 그래프가 돕니다" in res["detail"]
 
     assert ed.save()["ok"]
     assert ed.run_command()  # 저장한 뒤에는 막을 이유가 없다
@@ -254,7 +254,7 @@ def test_only_one_thing_runs_at_a_time(ed_with_data, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert ed.materialize_start()["ok"]
     second = ed.materialize_start()
-    assert not second["ok"] and "돌고 있다" in second["reason"]
+    assert not second["ok"] and "돌고 있습니다" in second["reason"]
     ed.run_stop()
 
 

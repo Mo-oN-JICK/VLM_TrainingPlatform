@@ -76,7 +76,7 @@ def cmd_run(a: argparse.Namespace) -> int:
         if not b.ok and cfg.budget.policy == "fail_fast":
             print(budget_mod.render(b), file=sys.stderr)
             print("", file=sys.stderr)
-            print("학습을 시작하지 않았다. Output 노드는 실행되지 않는다.", file=sys.stderr)
+            print("학습을 시작하지 않았습니다. Output 노드는 실행되지 않습니다.", file=sys.stderr)
             return 4
 
     opts.debug_output = a.debug_output
@@ -148,7 +148,7 @@ def cmd_train(a: argparse.Namespace) -> int:
     cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     got = _trainer_cfg(a, cg)
     if got is None:
-        raise SystemExit("이 그래프에는 Trainer 노드가 없다.")
+        raise SystemExit("이 그래프에는 Trainer 노드가 없습니다.")
     cfg, tn = got
     run_id = _run_id(a)
     spec_dir = os.path.dirname(os.path.abspath(a.spec))
@@ -162,7 +162,7 @@ def cmd_train(a: argparse.Namespace) -> int:
         if not b.ok and cfg.budget.policy == "fail_fast":
             print(budget_mod.render(b), file=sys.stderr)
             print("", file=sys.stderr)
-            print("학습을 시작하지 않았다.", file=sys.stderr)
+            print("학습을 시작하지 않았습니다.", file=sys.stderr)
             return 4
         measured = b.s_vision
 
@@ -193,7 +193,7 @@ def cmd_budget(a: argparse.Namespace) -> int:
     cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     got = _trainer_cfg(a, cg)
     if got is None:
-        print("이 그래프에는 Trainer 노드가 없다. 예산 검사 대상이 아니다.")
+        print("이 그래프에는 Trainer 노드가 없습니다. 예산 검사 대상이 아닙니다.")
         return 0
     cfg, tn = got
     measured, how = (0, "") if a.no_measure else _measure_tokens(a, cg, cfg)
@@ -206,15 +206,15 @@ def cmd_preview(a: argparse.Namespace) -> int:
     _load_nodes(a.nodes)
     cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     if a.node not in cg.nodes:
-        raise SystemExit(f"노드 {a.node!r}가 그래프에 없다. 가능한 id: {', '.join(cg.order)}")
+        raise SystemExit(f"노드 {a.node!r}가 그래프에 없습니다. 가능한 id: {', '.join(cg.order)}")
     node = cg.nodes[a.node]
     if node.kind is NodeKind.OUTPUT:
-        raise SystemExit(f"{a.node}는 Output 노드다. 부작용이 있으므로 미리보기하지 않는다.")
+        raise SystemExit(f"{a.node}는 Output 노드입니다. 부작용이 있으므로 미리보기하지 않습니다.")
 
     space = _space(a, cg)
     rows = [r for r in space.rows if str(r[space.key]) == a.sample] if a.sample else space.pick(1)
     if not rows:
-        raise SystemExit(f"샘플 {a.sample!r}를 찾을 수 없다")
+        raise SystemExit(f"샘플 {a.sample!r}를 찾을 수 없습니다")
 
     opts = RunOptions(run_id=_run_id(a), cache_dir=a.cache_dir, extra_modules=tuple(a.nodes),
                       use_cache=not a.no_cache, spec_dir=os.path.dirname(os.path.abspath(a.spec)))
@@ -222,7 +222,7 @@ def cmd_preview(a: argparse.Namespace) -> int:
     outs = {p: v for p, v in ((p, rep.last_values.get(f"{a.node}:{p}")) for p in node.output_types)
             if v is not None}
     if not outs:
-        print(f"{a.node}: 값이 생성되지 않았다 (상류 실패 여부를 확인하라)")
+        print(f"{a.node}: 값이 생성되지 않았습니다 (상류 실패 여부를 확인하세요)")
         for q in rep.quarantine[:5]:
             print(f"  {q.sample_key} @{q.node_id}: {q.cause}")
         return 3
@@ -251,7 +251,7 @@ def cmd_sweep(a: argparse.Namespace) -> int:
     else:
         recipes = [book.recipes[i] for i in sorted(book.recipes)]
     if not recipes:
-        raise SystemExit("돌릴 레시피가 없다.")
+        raise SystemExit("돌릴 레시피가 없습니다.")
 
     print(f"스윕 시작: 레시피 {len(recipes)}개 · 단일 GPU 순차 큐")
     rep = sweep_mod.run(
@@ -323,21 +323,21 @@ def cmd_pipeline(a: argparse.Namespace) -> int:
         # 말없이 지우면 몇 시간이 날아간다. 양쪽 다 나쁘므로 묻는다.
         answer = None
         if sys.stdin is not None and sys.stdin.isatty():
-            print(f"굽다 만 것이 있다: shard {left.shards}개 · 샘플 {left.samples}건")
+            print(f"굽다 만 것이 있습니다: shard {left.shards}개 · 샘플 {left.samples}건")
             print(f"  {left.out_dir}")
             try:
-                answer = input("  이어 받을까? [y/N] ").strip().lower().startswith("y")
+                answer = input("  이어받을까요? [y/N] ").strip().lower().startswith("y")
             except (EOFError, KeyboardInterrupt):
                 # 터미널처럼 보였지만 읽을 것이 없다. 그 경우에도 대신 고르지 않는다.
                 print()
                 answer = None
         if answer is None:
-            print(f"굽다 만 것이 있다: shard {left.shards}개 · 샘플 {left.samples}건", file=sys.stderr)
+            print(f"굽다 만 것이 있습니다: shard {left.shards}개 · 샘플 {left.samples}건", file=sys.stderr)
             print(f"  {left.out_dir}", file=sys.stderr)
-            print("  이어 받으려면 --resume, 처음부터 구우려면 --fresh 를 준다.", file=sys.stderr)
-            print("  물어볼 수 없는 자리라 대신 고르지 않는다 — 말없이 이어받으면 예전",
+            print("  이어 받으려면 --resume, 처음부터 구우려면 --fresh 를 줍니다.", file=sys.stderr)
+            print("  물어볼 수 없는 자리라 대신 고르지 않습니다 — 말없이 이어받으면 예전",
                   file=sys.stderr)
-            print("  파라미터로 구운 샘플이 섞이고, 말없이 지우면 구운 시간이 날아간다.",
+            print("  파라미터로 구운 샘플이 섞이고, 말없이 지우면 구운 시간이 날아갑니다.",
                   file=sys.stderr)
             return 8
         resume = answer
@@ -382,12 +382,12 @@ def cmd_pipeline(a: argparse.Namespace) -> int:
             for rest in p.stages:
                 if rest.state == pipe.PENDING:
                     rest.state = pipe.SKIPPED
-                    rest.note = f"{stage.label} 단계가 끝나지 않았다"
+                    rest.note = f"{stage.label} 단계가 끝나지 않았습니다"
             p.finished = time.time()
             pipe.write(p, snap)
             print()
             print(pipe.render(p))
-            print(f"  {stage.label} 단계에서 멈췄다 (종료 코드 {code})", file=sys.stderr)
+            print(f"  {stage.label} 단계에서 멈췄습니다 (종료 코드 {code})", file=sys.stderr)
             return code
 
     p.finished = time.time()
@@ -416,7 +416,7 @@ def _bake_split(a: argparse.Namespace, cg: Any) -> str:
         return want
     names = {str(r.get("_split", "")) for r in _space(a, cg).rows}
     if len(names) > 1 and "train" in names:
-        print("굽기는 train split 만 굽는다 — 검증 샘플을 구우면 학습이 그것까지 읽는다")
+        print("굽기는 train split 만 굽습니다 — 검증 샘플을 구우면 학습이 그것까지 읽습니다")
         print("  전부 구우려면 --bake-split all")
         return "train"
     return ""
@@ -442,7 +442,7 @@ def cmd_export(a: argparse.Namespace) -> int:
     cg = compile_project(a.spec, recipe_overrides=_recipe_overrides(a))
     got = _trainer_cfg(a, cg)
     if got is None:
-        raise SystemExit("이 그래프에는 Trainer 노드가 없다. 내보낼 모델이 없다.")
+        raise SystemExit("이 그래프에는 Trainer 노드가 없습니다. 내보낼 모델이 없습니다.")
     cfg, _ = got
 
     run_id = _run_id(a)

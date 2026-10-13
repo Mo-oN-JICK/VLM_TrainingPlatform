@@ -284,6 +284,6 @@ class RunWatcher(QtCore.QObject):
             box = QtWidgets.QMessageBox(self.win)
             box.setWindowTitle("실행 실패")
             box.setIcon(QtWidgets.QMessageBox.Critical)
-            box.setText(f"{st.get('kind') or '작업'} 가 exit {st['exit']} 로 끝났다")
+            box.setText(f"{st.get('kind') or '작업'} 가 exit {st['exit']} 로 끝났습니다")
             box.setDetailedText(str(st.get("console") or ""))
             box.exec()

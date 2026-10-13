@@ -411,7 +411,7 @@ def test_a_refused_sample_space_edit_leaves_no_trace(ed_with_data):
 def test_unknown_sample_space_fields_are_refused(ed_with_data):
     ed = ed_with_data
     res = ed.set_sample_space("nodes", [])
-    assert not res["ok"] and "항목은 없다" in res["reason"]
+    assert not res["ok"] and "항목은 없습니다" in res["reason"]
     res = ed.set_sample_space("splits", "문자열이 아니라 객체여야 한다")
     assert not res["ok"] and "객체" in res["reason"]
 
@@ -454,9 +454,9 @@ def test_toggling_the_boundary_is_recorded_like_any_edit(ed):
 
 def test_the_same_node_is_not_added_twice(ed):
     res = ed.set_boundary("n_sample", True)
-    assert not res["ok"] and "이미 경계에 있다" in res["reason"]
+    assert not res["ok"] and "이미 경계에 있습니다" in res["reason"]
     res = ed.set_boundary("없는노드", True)
-    assert not res["ok"] and "그런 노드가 없다" in res["reason"]
+    assert not res["ok"] and "그런 노드가 없습니다" in res["reason"]
 
 
 def test_the_profile_can_be_switched_from_the_editor(ed):
@@ -534,7 +534,7 @@ def test_resetting_drops_the_file(ed):
 
 def test_an_unknown_box_is_refused(ed):
     res = ed.move_node("없는상자", 10, 10)
-    assert not res["ok"] and "그런 상자가 없다" in res["reason"]
+    assert not res["ok"] and "그런 상자가 없습니다" in res["reason"]
 
 
 def test_a_moved_box_keeps_its_place_and_the_rest_flow_around_it(ed):

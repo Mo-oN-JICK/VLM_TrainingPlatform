@@ -155,7 +155,7 @@ class HistoryMixin:
 
     def _restore(self, index: int) -> Dict[str, Any]:
         if not (0 <= index < len(self.history)):
-            return {"ok": False, "reason": f"그 시점이 없다: {index}"}
+            return {"ok": False, "reason": f"그 시점이 없습니다: {index}"}
         entry = self.history[index]
         try:
             data = yaml.safe_load(entry.spec) or {}
@@ -170,12 +170,12 @@ class HistoryMixin:
 
     def undo(self) -> Dict[str, Any]:
         if self.cursor <= 0:
-            return {"ok": False, "reason": "되돌릴 편집이 없다"}
+            return {"ok": False, "reason": "되돌릴 편집이 없습니다"}
         return self._restore(self.cursor - 1)
 
     def redo(self) -> Dict[str, Any]:
         if self.cursor >= len(self.history) - 1:
-            return {"ok": False, "reason": "다시 할 편집이 없다"}
+            return {"ok": False, "reason": "다시 할 편집이 없습니다"}
         return self._restore(self.cursor + 1)
 
     def rewind(self, index: int) -> Dict[str, Any]:

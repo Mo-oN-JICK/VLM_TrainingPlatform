@@ -320,7 +320,7 @@ class LineWindow(QtWidgets.QMainWindow):
             self.editor = new
             self.desc = self.editor.line_describe()
         except Exception as exc:  # 스펙이 어긋난 채 열린 창이 죽지 않게 한다
-            self.lbl_info.setText("읽지 못했다: " + str(exc).splitlines()[0])
+            self.lbl_info.setText("읽지 못했습니다: " + str(exc).splitlines()[0])
             self._set_detail(str(exc))
             return
         self._title()
@@ -549,7 +549,7 @@ class LineWindow(QtWidgets.QMainWindow):
         if res.get("ok"):
             self.statusBar().showMessage("저장했습니다", 4000)
         else:
-            self._refuse(res.get("reason", "저장하지 못했다"))
+            self._refuse(res.get("reason", "저장하지 못했습니다"))
             self._set_detail(str(res.get("detail") or ""))
         self._title()
 
@@ -616,7 +616,7 @@ class LineWindow(QtWidgets.QMainWindow):
         if res.get("ok"):
             self.statusBar().showMessage(f"내보냈습니다: {res['path']}", 8000)
         else:
-            self._refuse(res.get("reason", "내보내지 못했다"))
+            self._refuse(res.get("reason", "내보내지 못했습니다"))
             self._set_detail(str(res.get("detail") or ""))
 
     # ── 실행 ────────────────────────────────────────────────────────────
@@ -627,7 +627,7 @@ class LineWindow(QtWidgets.QMainWindow):
             self._ask_resume(ask)
             return
         if not res.get("ok"):
-            self._refuse(str(res.get("reason") or "실행하지 못했다"))
+            self._refuse(str(res.get("reason") or "실행하지 못했습니다"))
             if res.get("detail"):
                 self._set_detail(str(res["detail"]))
             return

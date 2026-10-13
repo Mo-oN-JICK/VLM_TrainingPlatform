@@ -40,7 +40,7 @@ QToolButton {{ background: {T.SURFACE['panel']}; color: #D8DCDF;
                border: 1px solid {T.NODE['border']}; border-radius: 2px; padding: 3px 10px; }}
 QToolButton:hover {{ background: {T.NODE['bg_selected']}; }}
 QToolButton:disabled {{ color: #5F6468; border-color: #3A3A3A; }}
-/* 켜진 토글. 이것이 없어서 `실행 따라가기` 가 켜졌는지 꺼졌는지 화면에 안 보였다. */
+/* 켜진 토글. 이것이 없어서 `실행 따라가기` 가 켜졌는지 꺼졌는지 화면에 안 보였습니다. */
 QToolButton:checked {{ background: {T.STATE['running']}; color: #0F1113;
                        border-color: {T.STATE['running']}; font-weight: 600; }}
 QToolButton:checked:hover {{ background: {T.STATE['running']}; }}
@@ -242,7 +242,7 @@ class EditorWindow(QtWidgets.QMainWindow):
                                           self.chk_debug.isChecked(),
                                           self._step_delay()),
             "미리보기"))
-        self.act_preview.setToolTip("샘플 몇 건만 돌려 중간값을 본다. 학습하지 않는다")
+        self.act_preview.setToolTip("샘플 몇 건만 돌려 중간값을 봅니다. 학습하지 않습니다")
         self.act_stop = tb.addAction("중단", self._stop)
         self.act_stop.setEnabled(False)
 
@@ -305,7 +305,7 @@ class EditorWindow(QtWidgets.QMainWindow):
         cg = self.editor.compiled
         self.setWindowTitle(self._title())
         if cg is None:
-            self.lbl_graph.setText("컴파일되지 않았다: "
+            self.lbl_graph.setText("컴파일되지 않았습니다: "
                                    + (self.editor.error or "").splitlines()[0])
             return
         fixed = {k: (int(v[0]), int(v[1])) for k, v in (self.editor.layout or {}).items()
@@ -386,7 +386,7 @@ class EditorWindow(QtWidgets.QMainWindow):
             return
         ok = QtWidgets.QMessageBox.question(
             self, "노드 삭제",
-            f"'{nid}' 를 지운다. 이 노드에 닿은 배선도 함께 사라진다.",
+            f"'{nid}' 를 지웁니다. 이 노드에 닿은 배선도 함께 사라집니다.",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No)
         if ok == QtWidgets.QMessageBox.Yes:
@@ -404,7 +404,7 @@ class EditorWindow(QtWidgets.QMainWindow):
     def on_save(self) -> None:
         res = self.editor.save()
         if res.get("ok"):
-            self.statusBar().showMessage(f"저장했다: {res.get('path', '')}", 5000)
+            self.statusBar().showMessage(f"저장했습니다: {res.get('path', '')}", 5000)
             self.setWindowTitle(self._title())
         else:
             self._refuse("저장", res)

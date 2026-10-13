@@ -32,7 +32,7 @@ class VerdictDialog(QtWidgets.QDialog):
     def __init__(self, thumbs: Dict[str, str], current: str = "", parent: Any = None) -> None:
         super().__init__(parent)
         self.thumbs = thumbs
-        self.setWindowTitle("검증 결과 — 모델 답을 보고 OK / NG 를 정한다")
+        self.setWindowTitle("검증 결과 — 모델 답을 보고 OK / NG 를 정합니다")
         self.resize(980, 720)
         self.setStyleSheet(QSS)
         lay = QtWidgets.QVBoxLayout(self)

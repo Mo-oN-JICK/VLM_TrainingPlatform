@@ -60,7 +60,7 @@ class RunsMixin:
         """하위 프로세스 하나를 띄운다. **버튼 하나가 CLI 명령 하나다** —
         편집기가 여러 명령을 엮어 돌리기 시작하면 그것이 UI 전용 실행 경로다."""
         if self.proc is not None and self.proc.poll() is None:
-            return {"ok": False, "reason": f"이미 {self.phase or '작업'}이 돌고 있다"}
+            return {"ok": False, "reason": f"이미 {self.phase or '작업'}이 돌고 있습니다"}
 
         run_dir = os.path.join(os.getcwd(), "runs", self.run_id)
         os.makedirs(run_dir, exist_ok=True)
@@ -83,7 +83,7 @@ class RunsMixin:
                 cmd, stdout=fh, stderr=subprocess.STDOUT, cwd=os.getcwd(), env=env
             )
         except OSError as exc:
-            return {"ok": False, "reason": f"실행을 띄우지 못했다: {exc}"}
+            return {"ok": False, "reason": f"실행을 띄우지 못했습니다: {exc}"}
         return {"ok": True, "run_id": self.run_id, "phase": phase, "command": " ".join(cmd)}
 
     def _base_command(self, sub: str) -> List[str]:
@@ -101,11 +101,11 @@ class RunsMixin:
         if self.dirty:
             return {
                 "ok": False,
-                "reason": "저장하지 않은 변경이 있다 — 실행은 디스크의 스펙을 돈다",
+                "reason": "저장하지 않은 변경이 있습니다 — 실행은 디스크의 스펙을 돕니다",
                 "detail": (
-                    "편집기의 그래프와 project.yaml이 다르다. 지금 실행하면 화면과 다른 그래프가 돈다.\n"
-                    "  이 검사가 없었다면: 방금 고친 값이 아니라 예전 값으로 돈 결과를 보고 판단하게 된다.\n"
-                    "  Save를 먼저 누른다."
+                    "편집기의 그래프와 project.yaml이 다릅니다. 지금 실행하면 화면과 다른 그래프가 돕니다.\n"
+                    "  이 검사가 없었다면: 방금 고친 값이 아니라 예전 값으로 돈 결과를 보고 판단하게 됩니다.\n"
+                    "  Save를 먼저 누릅니다."
                 ),
             }
         return {"ok": True}
@@ -147,12 +147,12 @@ class RunsMixin:
         if not ready["ok"]:
             return ready
         if not self.run_id:
-            return {"ok": False, "reason": "먼저 실행해서 모델을 만들어야 한다",
-                    "detail": "이 세션에서 학습한 것이 없다. 툴바의 `실행` 을 먼저 누른다."}
+            return {"ok": False, "reason": "먼저 실행해서 모델을 만들어야 합니다",
+                    "detail": "이 세션에서 학습한 것이 없습니다. 툴바의 `실행` 을 먼저 누릅니다."}
         train_dir = os.path.join(os.getcwd(), "runs", self.run_id, "train")
         if not os.path.isdir(train_dir):
-            return {"ok": False, "reason": "학습 산출물이 없다",
-                    "detail": f"{train_dir} 가 없다. `실행` 이 학습까지 갔는지 확인한다."}
+            return {"ok": False, "reason": "학습 산출물이 없습니다",
+                    "detail": f"{train_dir} 가 없습니다. `실행` 이 학습까지 갔는지 확인합니다."}
         return self._spawn(self._base_command("export"), "export")
 
     def pipeline_state(self) -> Dict[str, Any]:
@@ -185,9 +185,9 @@ class RunsMixin:
         if not self.run_id:
             return {
                 "ok": False,
-                "reason": "먼저 사전 준비를 실행해야 한다",
+                "reason": "먼저 사전 준비를 실행해야 합니다",
                 "detail": (
-                    "학습은 물질화된 shard를 읽는다. 아직 이 세션에서 만든 것이 없다.\n"
+                    "학습은 물질화된 shard를 읽습니다. 아직 이 세션에서 만든 것이 없습니다.\n"
                     "  `실행` 을 누르면 사전 준비부터 학습까지 한 번에 갑니다.\n"
                     "  사전 준비만 따로 하려면 실행 메뉴의 `사전 준비 실행 만`,\n"
                     "  터미널에서는 vlmt materialize."
@@ -197,7 +197,7 @@ class RunsMixin:
         if not os.path.isdir(mat):
             return {
                 "ok": False,
-                "reason": "미리 준비해 둔 것이 없다",
+                "reason": "미리 준비해 둔 것이 없습니다",
                 "detail": f"{mat} 가 없습니다. `실행` 을 누르면 사전 준비부터 합니다.",
             }
         return self._spawn(self._base_command("train"), "train")
@@ -212,7 +212,7 @@ class RunsMixin:
 
     def run_stop(self) -> Dict[str, Any]:
         if self.proc is None or self.proc.poll() is not None:
-            return {"ok": False, "reason": "돌고 있는 것이 없다"}
+            return {"ok": False, "reason": "돌고 있는 것이 없습니다"}
         self.stopped = True  # 사람이 멈춘 것과 죽은 것은 다르다
         self.proc.terminate()
         return {"ok": True}
@@ -347,9 +347,9 @@ class RunsMixin:
 
     def save(self) -> Dict[str, Any]:
         if self.readonly:
-            return {"ok": False, "reason": "5노드(Line)는 line_save 로 저장한다 — 이 저장은 Line 을 Project 로 덮는다"}
+            return {"ok": False, "reason": "5노드(Line)는 line_save 로 저장합니다 — 이 저장은 Line 을 Project 로 덮습니다"}
         if self.compiled is None:
-            return {"ok": False, "reason": "컴파일되지 않은 그래프는 저장하지 않는다"}
+            return {"ok": False, "reason": "컴파일되지 않은 그래프는 저장하지 않습니다"}
         if not self.valid:
             # 편집 중인 미완성 상태는 저장하지 않는다. 스펙 파일은 언제나 돌아가는 그래프여야 한다.
             return {"ok": False, "reason": _short(self.error), "detail": self.error}

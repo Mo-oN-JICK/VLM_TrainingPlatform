@@ -153,7 +153,7 @@ def test_history_records_and_rewinds(ed):
     assert ed.undo()["ok"] and ed.state()["cursor"] == 0
 
     again = ed.undo()
-    assert not again["ok"] and "되돌릴 편집이 없다" in again["reason"]
+    assert not again["ok"] and "되돌릴 편집이 없습니다" in again["reason"]
 
     assert ed.rewind(1)["ok"] and ed.state()["cursor"] == 1
 

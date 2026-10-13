@@ -97,9 +97,9 @@ def test_the_header_lists_the_columns_the_table_really_has(work):
     h = LD.read_header(spec_dir, "../../data/open_parts/new.csv")
     assert h["columns"] == ["번호", "사진", "질문", "부품", "방향", "묶음", "구분", "메모"] and h["count"] == 110
     assert "image_path" in LD.read_header(spec_dir, "../../data/open_parts/index.jsonl")["columns"]
-    with pytest.raises(SpecError, match="표 파일이 없다"):
+    with pytest.raises(SpecError, match="표 파일이 없습니다"):
         LD.read_header(spec_dir, "../../data/none.csv")
-    with pytest.raises(SpecError, match="정해지지 않았다"):
+    with pytest.raises(SpecError, match="정해지지 않았습니다"):
         LD.read_header(spec_dir, "")
 
 
@@ -262,7 +262,7 @@ def test_changing_the_table_leaves_unmatched_columns_blank_instead_of_guessing(a
     assert d.cb_key.currentText() == BLANK and d.cb_image.currentText() == BLANK
     assert d.tbl.cellWidget(0, 4).currentText() == BLANK, "이름이 다른 열을 짐작해 골랐다"
     d._apply()
-    assert "표의 열이 비었다" in d.lbl_err.toPlainText() and not d.editor.dirty
+    assert "표의 열이 비었습니다" in d.lbl_err.toPlainText() and not d.editor.dirty
 
 
 def test_filling_the_dialog_and_pressing_apply_writes_the_line_and_the_project_schema(app, work):

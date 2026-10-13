@@ -61,7 +61,7 @@ def compat_matrix(cg: CompiledGraph) -> Dict[str, Dict[str, str]]:
                     # 이미 배선이 있는 입력에도 놓을 수 있다 — 그 자리를 **교체**한다.
                     # 팬인은 여전히 금지되지만, 갈아끼우기를 두 단계로 만들면 편집기가 쓸모없어진다.
                     if cg.nodes[dnid].lane <= sn.lane:
-                        row[ref] = "위로 향하는 배선은 만들 수 없다"
+                        row[ref] = "위로 향하는 배선은 만들 수 없습니다"
                         continue
                     res = unify_ports(stype, port.type)
                     row[ref] = "" if res.ok else ", ".join(str(m) for m in res.mismatches[:3])
@@ -158,8 +158,8 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin, LineMixin):
         from ..spec.line import is_line
 
         if is_line(path):
-            raise ValueError(f"{os.path.basename(path)}는 5노드(Line) 파일이다 — 이 편집기는 아직 열지 못한다. "
-                             "`vlmt expand` 로 11노드로 펼쳐 열 수 있다.")
+            raise ValueError(f"{os.path.basename(path)}는 5노드(Line) 파일입니다 — 이 편집기는 아직 열지 못합니다. "
+                             "`vlmt expand` 로 11노드로 펼쳐 열 수 있습니다.")
         e = Editor(path=os.path.abspath(path))
         e.graph = load_project(e.path)
         e.book = recipe_mod.load(e.path)
@@ -235,8 +235,8 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin, LineMixin):
         기록한 뒤에 되돌리면 저널에는 이미 줄이 들어간 뒤라 거부된 편집이 History에 남는다.
         """
         if self.readonly:
-            return {"ok": False, "reason": "5노드(Line)에서는 상자와 배선을 고치지 않는다 — 설정만 고친다",
-                    "detail": "상자·배선을 바꾸려면 11노드로 내보내서 편집한다. 내보낸 뒤에는 Line 과 연결이 끊긴다."}
+            return {"ok": False, "reason": "5노드(Line)에서는 상자와 배선을 고치지 않습니다 — 설정만 고칩니다",
+                    "detail": "상자·배선을 바꾸려면 11노드로 내보내서 편집합니다. 내보낸 뒤에는 Line 과 연결이 끊깁니다."}
         before_nodes = [NodeInstance(n.id, n.type, dict(n.params)) for n in self.graph.nodes]
         before_edges = list(self.graph.edges)
         # Procedure 인스턴스도 되돌린다. 빠져 있으면 거부된 노출 파라미터 편집이
@@ -322,10 +322,10 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin, LineMixin):
                 n = self.graph.instance(node_id)
             except KeyError:
                 raise VlmtError(
-                    f"'{node_id}' 라는 상자가 이 프로젝트에 없다.\n"
+                    f"'{node_id}' 라는 상자가 이 프로젝트에 없습니다.\n"
                     f"  안 잡혔다면: 스펙에 없는 곳에 값을 써 두고 화면에만 반영돼,\n"
-                    f"    다음에 여는 사람은 다른 값으로 돌리게 된다.\n"
-                    f"  추정 낭비: 없음(편집이 거부됐다).\n"
+                    f"    다음에 여는 사람은 다른 값으로 돌리게 됩니다.\n"
+                    f"  추정 낭비: 없음(편집이 거부됐습니다).\n"
                     f"  있는 상자: {', '.join(self.graph.ids)}"
                 ) from None
             n.params[param] = value
@@ -365,7 +365,7 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin, LineMixin):
         """
         known = {p["id"] for p in (self.compiled.procedures if self.compiled else [])}
         if pid not in known:
-            return {"ok": False, "reason": f"그런 Procedure가 없다: {pid} (있는 것: {sorted(known)})"}
+            return {"ok": False, "reason": f"그런 Procedure가 없습니다: {pid} (있는 것: {sorted(known)})"}
         self.expanded.discard(pid) if pid in self.expanded else self.expanded.add(pid)
         return {"ok": True, "expanded": sorted(self.expanded)}
 

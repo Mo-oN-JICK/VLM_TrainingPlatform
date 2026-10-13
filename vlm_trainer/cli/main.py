@@ -45,32 +45,32 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--nodes", action="append", default=[], help="추가로 임포트할 노드 모듈")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    c = sub.add_parser("compile", help="스펙을 컴파일하고 4중 게이트 중 G1/G2를 통과시킨다")
+    c = sub.add_parser("compile", help="스펙을 컴파일하고 4중 게이트 중 G1/G2를 통과시킵니다")
     c.add_argument("spec")
     c.add_argument("--set", action="append", default=[], help="파라미터 오버라이드 (노드id.파라미터=값)")
     c.add_argument("--out", help="compiled.json 저장 경로")
     c.add_argument("-v", "--verbose", action="store_true")
     c.set_defaults(func=cmd_compile)
 
-    d = sub.add_parser("decompile", help="컴파일된 그래프를 스펙으로 되돌린다")
+    d = sub.add_parser("decompile", help="컴파일된 그래프를 스펙으로 되돌립니다")
     d.add_argument("spec")
     d.add_argument("--flatten", action="store_true", help="Procedure를 펼친 채로 출력")
     d.add_argument("--out")
     d.set_defaults(func=cmd_decompile)
 
-    ex0 = sub.add_parser("expand", help="Line(5노드) 파일을 11노드 Project 스펙으로 펼친다")
+    ex0 = sub.add_parser("expand", help="Line(5노드) 파일을 11노드 Project 스펙으로 펼칩니다")
     ex0.add_argument("spec")
     ex0.add_argument("--out")
     ex0.set_defaults(func=cmd_expand)
 
-    n = sub.add_parser("nodes", help="노드 라이브러리를 카테고리별로 나열한다")
+    n = sub.add_parser("nodes", help="노드 라이브러리를 카테고리별로 나열합니다")
     n.set_defaults(func=cmd_nodes)
 
-    s = sub.add_parser("show", help="노드 하나의 포트와 파라미터를 보여준다 (Node Quick Info)")
+    s = sub.add_parser("show", help="노드 하나의 포트와 파라미터를 보여줍니다 (Node Quick Info)")
     s.add_argument("type")
     s.set_defaults(func=cmd_show)
 
-    dr = sub.add_parser("dryrun", help="G3 — 실제 샘플 몇 건을 전 노드에 통과시켜 실측 검증한다")
+    dr = sub.add_parser("dryrun", help="G3 — 실제 샘플 몇 건을 전 노드에 통과시켜 실측 검증합니다")
     dr.add_argument("spec")
     dr.add_argument("--samples", type=int, default=3)
     dr.add_argument("--set", action="append", default=[])
@@ -80,32 +80,32 @@ def build_parser() -> argparse.ArgumentParser:
     dr.add_argument("-v", "--verbose", action="store_true")
     dr.set_defaults(func=cmd_dryrun)
 
-    r = sub.add_parser("run", help="그래프를 실행한다 (Output 노드 포함)")
+    r = sub.add_parser("run", help="그래프를 실행합니다 (Output 노드 포함)")
     r.add_argument("spec")
     r.add_argument("--limit", type=int, default=0)
     r.add_argument("--split", default="")
     r.add_argument("--set", action="append", default=[])
     r.add_argument("--cache-dir", default=".cache")
     r.add_argument("--cache-backend", default="local",
-                   help="캐시 저장 백엔드 (local | memory). 키 계산은 백엔드와 무관하다")
+                   help="캐시 저장 백엔드 (local | memory). 키 계산은 백엔드와 무관합니다")
     r.add_argument("--no-cache", action="store_true")
     r.add_argument("--run-id", default="")
     r.add_argument("--device", default="", help="예산 프로파일 (rtx3060_12gb | rtx4090_24gb)")
     r.add_argument("--skip-budget", action="store_true",
                    help="예산 검사를 건너뛴다(Trainer 없는 그래프 전용)")
-    r.add_argument("--view", default="", help="실행 상태를 칠한 그래프 HTML을 남긴다 ('-'면 runs/<id>/graph.html)")
+    r.add_argument("--view", default="", help="실행 상태를 칠한 그래프 HTML을 남깁니다 ('-'면 runs/<id>/graph.html)")
     r.add_argument("--debug-output", action="store_true",
-                   help="Debug Output 토글. 꺼져 있으면 미리보기를 생성조차 하지 않는다")
+                   help="Debug Output 토글. 꺼져 있으면 미리보기를 생성조차 하지 않습니다")
     r.add_argument("--trigger", default="cli", choices=("cli", "ui", "external"),
-                   help="누가 이 실행을 띄웠나. Debug Output 규약이 여기에 달려 있다")
+                   help="누가 이 실행을 띄웠나. Debug Output 규약이 여기에 달려 있습니다")
     r.add_argument("--progress", default="",
-                   help="진행 상황 스냅샷 경로 (기본 runs/<run-id>/progress.json, 'off'면 남기지 않는다)")
+                   help="진행 상황 스냅샷 경로 (기본 runs/<run-id>/progress.json, 'off'면 남기지 않습니다)")
     r.add_argument("--step-delay", type=float, default=0.0,
                    help="상자 하나를 지날 때마다 쉬는 시간(초). 어디를 도는지 눈으로 "
-                        "보려는 용도다 — 결과는 바뀌지 않고 그만큼 느려진다")
+                        "보려는 용도입니다 — 결과는 바뀌지 않고 그만큼 느려집니다")
     r.set_defaults(func=cmd_run)
 
-    b = sub.add_parser("budget", help="G4 — 학습 전에 단계별 VRAM과 시퀀스 길이를 산정한다")
+    b = sub.add_parser("budget", help="G4 — 학습 전에 단계별 VRAM과 시퀀스 길이를 산정합니다")
     b.add_argument("spec")
     b.add_argument("--set", action="append", default=[])
     b.add_argument("--device", default="", help="rtx3060_12gb | rtx4090_24gb | a100_40gb")
@@ -116,11 +116,11 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--run-id", default="")
     b.set_defaults(func=cmd_budget)
 
-    m = sub.add_parser("materialize", help="물질화 경계까지 구워 shard로 남긴다 (학습은 이것만 읽는다)")
+    m = sub.add_parser("materialize", help="물질화 경계까지 구워 shard로 남깁니다 (학습은 이것만 읽습니다)")
     m.add_argument("spec")
     m.add_argument("--out-dir", default="", help="기본값 runs/<run_id>/materialized")
     m.add_argument("--shard-size", type=int, default=64)
-    m.add_argument("--resume", action="store_true", help="커밋된 shard를 인정하고 남은 샘플만 굽는다")
+    m.add_argument("--resume", action="store_true", help="커밋된 shard를 인정하고 남은 샘플만 굽습니다")
     m.add_argument("--limit", type=int, default=0)
     m.add_argument("--split", default="")
     m.add_argument("--set", action="append", default=[])
@@ -128,8 +128,8 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--run-id", default="")
     m.set_defaults(func=cmd_materialize)
 
-    nw = sub.add_parser("new", help="빈 Solution/Project 껍데기를 만든다")
-    nw.add_argument("dir", help="만들 디렉터리 (없으면 만든다)")
+    nw = sub.add_parser("new", help="빈 Solution/Project 껍데기를 만듭니다")
+    nw.add_argument("dir", help="만들 디렉터리 (없으면 만듭니다)")
     nw.add_argument("--solution-id", default="", help="기본값은 디렉터리 이름")
     nw.add_argument("--project-id", default="", help="기본값은 01_<solution-id>")
     nw.add_argument("--name", default="", help="사람이 읽는 이름")
@@ -137,17 +137,17 @@ def build_parser() -> argparse.ArgumentParser:
                     help="샘플 인덱스 JSONL의 자리 (Solution 루트 기준)")
     nw.add_argument("--profile", default="windows_single_gpu",
                     help="실행 프로파일 (windows_single_gpu | linux_multi_gpu)")
-    nw.add_argument("--edit", action="store_true", help="만든 뒤 편집기를 연다")
+    nw.add_argument("--edit", action="store_true", help="만든 뒤 편집기를 엽니다")
     nw.set_defaults(func=cmd_new)
 
-    nl = sub.add_parser("new-line", help="빈 5노드 프로젝트 폴더를 만든다")
+    nl = sub.add_parser("new-line", help="빈 5노드 프로젝트 폴더를 만듭니다")
     nl.add_argument("dir", help="만들 폴더")
     nl.add_argument("--id", default="", help="프로젝트 id (기본: 폴더 이름)")
     nl.add_argument("--name", default="", help="화면에 보일 이름")
-    nl.add_argument("--edit", action="store_true", help="만든 뒤 편집기를 연다")
+    nl.add_argument("--edit", action="store_true", help="만든 뒤 편집기를 엽니다")
     nl.set_defaults(func=cmd_new_line)
 
-    tt = sub.add_parser("table-template", help="사용자가 채울 빈 표(CSV)의 첫 줄을 만든다")
+    tt = sub.add_parser("table-template", help="사용자가 채울 빈 표(CSV)의 첫 줄을 만듭니다")
     tt.add_argument("--out", required=True)
     tt.add_argument("--key", default="sample_id", help="건 구분 열")
     tt.add_argument("--image", default="image_path", help="사진 열")
@@ -157,7 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
     tt.add_argument("--group", default="", help="그룹 열 (그룹 기준 자동 나누기일 때)")
     tt.set_defaults(func=cmd_table_template)
 
-    sb = sub.add_parser("schema-build", help="정답 형태 표(CSV)에서 스키마 파일을 만든다")
+    sb = sub.add_parser("schema-build", help="정답 형태 표(CSV)에서 스키마 파일을 만듭니다")
     sb.add_argument("rows", help="첫 줄이 항목,이름,종류,허용값 인 CSV")
     sb.add_argument("--id", required=True, help="정답 형태 이름")
     sb.add_argument("--render", default="tagged", choices=("tagged", "json"))
@@ -165,23 +165,23 @@ def build_parser() -> argparse.ArgumentParser:
     sb.add_argument("--out", default="")
     sb.set_defaults(func=cmd_schema_build)
 
-    sr = sub.add_parser("schema-rows", help="스키마 파일을 정답 형태 표(CSV)로 되돌린다")
+    sr = sub.add_parser("schema-rows", help="스키마 파일을 정답 형태 표(CSV)로 되돌립니다")
     sr.add_argument("schema")
     sr.add_argument("--out", default="")
     sr.set_defaults(func=cmd_schema_rows)
 
-    jg = sub.add_parser("judge", help="검증 건 하나에 사람 판정(ok | ng | none)을 남긴다")
+    jg = sub.add_parser("judge", help="검증 건 하나에 사람 판정(ok | ng | none)을 남깁니다")
     jg.add_argument("run", help="실행 id(runs/ 아래) 또는 폴더")
     jg.add_argument("sample_id")
     jg.add_argument("verdict", choices=("ok", "ng", "none"))
     jg.set_defaults(func=cmd_judge)
 
-    jl = sub.add_parser("judgments", help="검증 건마다 항목별 O/X 와 사람 판정을 보인다")
+    jl = sub.add_parser("judgments", help="검증 건마다 항목별 O/X 와 사람 판정을 보입니다")
     jl.add_argument("run", help="실행 id(runs/ 아래) 또는 폴더")
     jl.set_defaults(func=cmd_judgments)
 
     nn = sub.add_parser(
-        "new-node", help="새 노드의 뼈대와 그 테스트 파일을 만든다 (Custom Node)")
+        "new-node", help="새 노드의 뼈대와 그 테스트 파일을 만듭니다 (Custom Node)")
     nn.add_argument("path", help="만들 파일 (예: my_nodes/crop.py)")
     nn.add_argument("--type", required=True, help="노드 타입 (예: my.crop_by_rule)")
     nn.add_argument("--kind", default="processing", choices=("input", "processing", "output"))
@@ -191,30 +191,30 @@ def build_parser() -> argparse.ArgumentParser:
     nn.set_defaults(func=cmd_new_node)
 
     cn = sub.add_parser(
-        "check-node", help="노드가 계약을 지키는지 실제로 돌려 본다 (등록 검사가 못 보는 것)")
+        "check-node", help="노드가 계약을 지키는지 실제로 돌려 봅니다 (등록 검사가 못 보는 것)")
     cn.add_argument("module", help="임포트 이름 (예: my_nodes.crop)")
     cn.add_argument("--root", default="", help="모듈을 찾을 기준 폴더 (기본: 현재 폴더)")
     cn.set_defaults(func=cmd_check_node)
 
-    ed = sub.add_parser("edit", help="그래프 편집기를 연다 (네이티브 창)")
+    ed = sub.add_parser("edit", help="그래프 편집기를 엽니다 (네이티브 창)")
     ed.add_argument("spec")
     ed.set_defaults(func=cmd_edit)
 
     # `app` 은 이식하는 동안 쓰던 이름이다. 손가락이 기억하는 것을 끊지 않는다.
-    ap2 = sub.add_parser("app", help="`edit` 과 같다")
+    ap2 = sub.add_parser("app", help="`edit` 과 같습니다")
     ap2.add_argument("spec")
     ap2.set_defaults(func=cmd_edit)
 
-    bb = sub.add_parser("backbones", help="등록된 백본과 그 형상을 보여준다 (가중치는 열지 않는다)")
-    bb.add_argument("--add", default="", help="hf:<경로 또는 모델 id>를 config.json만 읽어 등록한다")
-    bb.add_argument("--fetch", default="", help="가중치까지 내려받는다 (수 GB). 받은 뒤 등록한다")
+    bb = sub.add_parser("backbones", help="등록된 백본과 그 형상을 보여줍니다 (가중치는 열지 않습니다)")
+    bb.add_argument("--add", default="", help="hf:<경로 또는 모델 id>를 config.json만 읽어 등록합니다")
+    bb.add_argument("--fetch", default="", help="가중치까지 내려받습니다 (수 GB). 받은 뒤 등록합니다")
     bb.set_defaults(func=cmd_backbones)
 
-    vw = sub.add_parser("view", help="컴파일된 그래프를 한 장의 HTML로 그린다 (읽기 전용)")
+    vw = sub.add_parser("view", help="컴파일된 그래프를 한 장의 HTML로 그립니다 (읽기 전용)")
     vw.add_argument("spec")
     vw.add_argument("--set", action="append", default=[])
     vw.add_argument("--out", default="")
-    vw.add_argument("--open", action="store_true", help="브라우저로 연다")
+    vw.add_argument("--open", action="store_true", help="브라우저로 엽니다")
     vw.set_defaults(func=cmd_view)
 
     rc = sub.add_parser("recipe", help="Parameter Recipe 관리 (list/show/diff/expand/set-active)")
@@ -226,10 +226,10 @@ def build_parser() -> argparse.ArgumentParser:
     rc.add_argument("--device", default="")
     rc.set_defaults(func=cmd_recipe)
 
-    sw = sub.add_parser("sweep", help="레시피 여러 개를 순차로 돌린다 (물질화는 지문이 같으면 공유)")
+    sw = sub.add_parser("sweep", help="레시피 여러 개를 순차로 돌립니다 (물질화는 지문이 같으면 공유)")
     sw.add_argument("spec")
     sw.add_argument("--recipes", default="", help="예: 1,2,3 또는 10-21")
-    sw.add_argument("--sweep", default="", help="스윕 이름으로 전개해서 돌린다")
+    sw.add_argument("--sweep", default="", help="스윕 이름으로 전개해서 돌립니다")
     sw.add_argument("--run-root", default="runs/sweeps")
     sw.add_argument("--trainer-config", default="")
     sw.add_argument("--limit", type=int, default=0)
@@ -241,13 +241,13 @@ def build_parser() -> argparse.ArgumentParser:
     sw.add_argument("--cache-dir", default=".cache")
     sw.set_defaults(func=cmd_sweep)
 
-    ig = sub.add_parser("infer-graph", help="학습 그래프에서 정답 경로를 잘라낸 추론 그래프를 뽑는다")
+    ig = sub.add_parser("infer-graph", help="학습 그래프에서 정답 경로를 잘라낸 추론 그래프를 뽑습니다")
     ig.add_argument("spec")
     ig.add_argument("--set", action="append", default=[])
     ig.add_argument("--out", default="")
     ig.set_defaults(func=cmd_infer_graph)
 
-    tr = sub.add_parser("train", help="물질화된 shard로 다단계 학습을 실행한다")
+    tr = sub.add_parser("train", help="물질화된 shard로 다단계 학습을 실행합니다")
     tr.add_argument("spec")
     tr.add_argument("--materialized", default="", help="기본값 runs/<run_id>/materialized")
     tr.add_argument("--set", action="append", default=[])
@@ -263,18 +263,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     pl = sub.add_parser(
         "pipeline",
-        help="준비 -> 굽기 -> 학습 -> 추론을 한 번에 돈다 (그래프에 있는 단계까지만)")
+        help="준비 -> 굽기 -> 학습 -> 추론을 한 번에 돕니다 (그래프에 있는 단계까지만)")
     pl.add_argument("spec")
-    pl.add_argument("--run-id", default="", help="같은 id 로 다시 부르면 이어 받을 수 있다")
-    pl.add_argument("--resume", action="store_true", help="굽다 만 shard 를 인정하고 이어 받는다")
-    pl.add_argument("--fresh", action="store_true", help="굽다 만 것을 버리고 처음부터 굽는다")
+    pl.add_argument("--run-id", default="", help="같은 id 로 다시 부르면 이어 받을 수 있습니다")
+    pl.add_argument("--resume", action="store_true", help="굽다 만 shard 를 인정하고 이어 받습니다")
+    pl.add_argument("--fresh", action="store_true", help="굽다 만 것을 버리고 처음부터 굽습니다")
     pl.add_argument("--bake-split", default="auto",
                     help="굽기가 돌 split. auto=train 이 있으면 train 만, all=전부, "
-                         "또는 split 이름. 추론 split 은 추론 노드가 선언한 것을 쓴다")
+                         "또는 split 이름. 추론 split 은 추론 노드가 선언한 것을 씁니다")
     pl.add_argument("--set", action="append", default=[])
     pl.add_argument("--device", default="", help="예산 프로파일 (rtx3060_12gb | rtx4090_24gb)")
     pl.add_argument("--device-torch", default="auto", help="cuda | cpu | auto")
-    pl.add_argument("--skip-budget", action="store_true", help="준비 단계(G4)를 건너뛴다")
+    pl.add_argument("--skip-budget", action="store_true", help="준비 단계(G4)를 건너뜁니다")
     pl.add_argument("--what-if", action="append", default=[])
     pl.add_argument("--no-measure", action="store_true")
     pl.add_argument("--limit", type=int, default=0)
@@ -294,7 +294,7 @@ def build_parser() -> argparse.ArgumentParser:
     pl.set_defaults(func=cmd_pipeline)
 
     ex = sub.add_parser(
-        "export", help="학습한 모델을 LoRA 까지 합쳐 한 덩어리로 내보낸다 (계약 포함)")
+        "export", help="학습한 모델을 LoRA 까지 합쳐 한 덩어리로 내보냅니다 (계약 포함)")
     ex.add_argument("spec")
     ex.add_argument("--run-id", default="")
     ex.add_argument("--model-dir", default="", help="기본값 runs/<run_id>/train")
@@ -303,7 +303,7 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--cache-dir", default=".cache")
     ex.set_defaults(func=cmd_export)
 
-    pv = sub.add_parser("preview", help="노드 하나만 실행해 시각화 출력을 본다")
+    pv = sub.add_parser("preview", help="노드 하나만 실행해 시각화 출력을 봅니다")
     pv.add_argument("spec")
     pv.add_argument("--node", required=True)
     pv.add_argument("--sample", default="")
@@ -364,12 +364,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"{type(e).__name__}: {e}", file=sys.stderr)
         print("", file=sys.stderr)
         print(
-            "  노드가 받아들일 수 없는 값이다. --set 으로 준 값의 형태를 확인하라 "
+            "  노드가 받아들일 수 없는 값입니다. --set 으로 준 값의 형태를 확인하라 "
             "(예: 리스트는 --set n_plot.size=[640,320]).",
             file=sys.stderr,
         )
         print(
-            "  전체 추적을 보려면 VLMT_TRACE=1 을 설정하고 다시 실행하라.",
+            "  전체 추적을 보려면 VLMT_TRACE=1 을 설정하고 다시 실행하세요.",
             file=sys.stderr,
         )
         if os.environ.get("VLMT_TRACE"):

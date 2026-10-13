@@ -72,7 +72,7 @@ class HistoryDock(QtWidgets.QDockWidget):
     def _show_diff(self, row: int) -> None:
         if 0 <= row < len(self._rows):
             self.diff.setPlainText("\n".join(self._rows[row].get("diff") or [])
-                                   or "(이 시점에는 바뀐 줄이 없다)")
+                                   or "(이 시점에는 바뀐 줄이 없습니다)")
         else:
             self.diff.setPlainText("")
 

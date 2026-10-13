@@ -71,7 +71,7 @@ class ProjectMixin:
             p["id"] for p in (self.compiled.procedures if self.compiled else [])
         }
         if node_id not in known and node_id not in self.layout:
-            return {"ok": False, "reason": f"그런 상자가 없다: {node_id}"}
+            return {"ok": False, "reason": f"그런 상자가 없습니다: {node_id}"}
         self.layout[node_id] = (max(0, int(x)), max(0, int(y)))
         self._save_layout()
         return {"ok": True, "x": self.layout[node_id][0], "y": self.layout[node_id][1]}
@@ -91,12 +91,12 @@ class ProjectMixin:
     def set_boundary(self, node_id: str, on: bool) -> Dict[str, Any]:
         '''노드 하나를 물질화 경계에 넣거나 뺀다. 경계까지가 미리 굽는 구간이다.'''
         if node_id not in (self.compiled.nodes if self.compiled else {}):
-            return {"ok": False, "reason": f"그런 노드가 없다: {node_id}"}
+            return {"ok": False, "reason": f"그런 노드가 없습니다: {node_id}"}
         before = list(self.graph.materialize.boundary)
         if on and node_id in before:
-            return {"ok": False, "reason": f"{node_id}는 이미 경계에 있다"}
+            return {"ok": False, "reason": f"{node_id}는 이미 경계에 있습니다"}
         if not on and node_id not in before:
-            return {"ok": False, "reason": f"{node_id}는 경계에 없다"}
+            return {"ok": False, "reason": f"{node_id}는 경계에 없습니다"}
 
         def go() -> None:
             b = list(self.graph.materialize.boundary)
@@ -174,11 +174,11 @@ class ProjectMixin:
         if field_name not in self.SAMPLE_FIELDS:
             return {
                 "ok": False,
-                "reason": f"sample_space에 {field_name!r} 항목은 없다 "
+                "reason": f"sample_space에 {field_name!r} 항목은 없습니다 "
                 f"(있는 것: {list(self.SAMPLE_FIELDS)})",
             }
         if field_name == "splits" and not isinstance(value, dict):
-            return {"ok": False, "reason": "splits는 객체여야 한다"}
+            return {"ok": False, "reason": "splits는 객체여야 합니다"}
 
         before = getattr(self.graph.sample_space, field_name)
 
