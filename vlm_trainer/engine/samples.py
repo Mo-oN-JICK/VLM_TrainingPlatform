@@ -14,6 +14,7 @@ from hashlib import blake2b
 from typing import Any, Dict, List
 
 from ..core.errors import SpecError
+from . import xlsx
 
 
 @dataclass
@@ -56,11 +57,12 @@ def load(spec: Dict[str, Any], base_dir: str) -> SampleSpace:
     index = str(spec.get("index") or "")
     if not index:
         raise SpecError("sample_space.index가 비어 있습니다")
+    index, sheet = xlsx.split_sheet(index)   # `표.xlsx#시트1` — 시트는 이름 뒤에 붙여 적는다
     path = index if os.path.isabs(index) else os.path.normpath(os.path.join(base_dir, index))
     if not os.path.exists(path):
         raise SpecError(f"sample_space 인덱스 파일이 없습니다: {path}")
 
-    rows = read_table(path)
+    rows = read_table(path, sheet)
 
     key = str(spec.get("key") or "sample_id")
     for i, r in enumerate(rows):
@@ -75,12 +77,14 @@ def load(spec: Dict[str, Any], base_dir: str) -> SampleSpace:
     return SampleSpace(root=os.path.dirname(path), key=key, rows=rows, index_path=path)
 
 
-def read_table(path: str) -> List[Dict[str, Any]]:
-    """표 한 장 = 한 행이 한 건. `.csv` 면 CSV, 아니면 JSONL 이다.
+def read_table(path: str, sheet: str = "") -> List[Dict[str, Any]]:
+    """표 한 장 = 한 행이 한 건. `.csv` 면 CSV, `.xlsx` 면 엑셀 한 시트(`engine/xlsx.py`), 아니면 JSONL 이다.
 
     CSV 는 UTF-8 이고 BOM 이 있어도 된다(엑셀의 "CSV UTF-8" 저장). 값은 전부 문자열로 읽는다 —
     "3" 을 숫자로 짐작해 바꾸는 것도 자동 캐스팅이다.
     """
+    if path.lower().endswith((".xlsx", ".xls")):
+        return xlsx.read_xlsx(path, sheet)
     if path.lower().endswith(".csv"):
         with open(path, "r", encoding="utf-8-sig", newline="") as fh:
             rd = csv.DictReader(fh)

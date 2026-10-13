@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional
 from ..answer import table as answer_table
 from ..core.errors import SpecError
 from ..engine import samples as samples_mod
+from ..engine import xlsx
 
 _ONE_FIELD = re.compile(r"^\{([^{}]+)\}$")
 DEFAULT_SEED = 20260921
@@ -35,14 +36,16 @@ def read_header(spec_dir: str, index: str) -> Dict[str, Any]:
     """표의 열 목록과 건수. 못 읽으면 SpecError 가 그 이유를 말한다."""
     if not index.strip():
         raise SpecError("표 파일이 정해지지 않았습니다.\n  안 잡혔다면: 읽을 건이 없어 학습이 빈 데이터로 시작됩니다.\n  표 파일을 고르세요.")
+    index, sheet = xlsx.split_sheet(index)
     path = resolve(spec_dir, index)
     if not os.path.exists(path):
         raise SpecError(f"표 파일이 없습니다: {path}\n  안 잡혔다면: 실행 첫머리에서 멈춥니다.\n  파일 경로를 확인하세요.")
-    rows = samples_mod.read_table(path)
+    rows = samples_mod.read_table(path, sheet)
+    sheets = xlsx.sheet_names(path) if path.lower().endswith(".xlsx") else []
     cols = list(rows[0]) if rows else []
     for r in rows[1:]:
         cols = [c for c in cols if c in r]
-    return {"path": path, "columns": cols, "count": len(rows)}
+    return {"path": path, "columns": cols, "count": len(rows), "sheets": sheets, "sheet": sheet or (sheets[0] if sheets else "")}
 
 
 def split_counts(spec_dir: str, index: str, key: str, splits: Dict[str, Any]) -> Dict[str, int]:

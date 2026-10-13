@@ -19,6 +19,7 @@ from .. import line_data as LD
 from .. import tokens as T
 from ...answer import table as answer_table
 from ...core.errors import SpecError
+from ...engine import xlsx
 from ...spec import table as spec_table
 from .window import QSS
 
@@ -39,6 +40,7 @@ class DataDialog(QtWidgets.QDialog):
         self._custom = self.form["question_column"] is None and bool(self.form["template"])
         self._locked = False
         self.header: List[str] = []
+        self._want_sheet = ""
         self.setWindowTitle("데이터 — 사진, 질문, 정답을 표로 넣습니다")
         self.resize(900, 860)
         # 어두운 바탕에서는 기본 라디오 버튼의 점이 안 보인다 — 어느 것이 골라졌는지 안 보이면 안 된다.
@@ -62,6 +64,10 @@ class DataDialog(QtWidgets.QDialog):
         row.addWidget(self.ed_path, 1)
         row.addWidget(btn)
         f1.addRow("표 파일", row)
+        self.cb_sheet = QtWidgets.QComboBox()      # 엑셀(.xlsx)일 때만 보인다
+        self.cb_sheet.currentIndexChanged.connect(lambda _i: self._reread_table())
+        f1.addRow("시트", self.cb_sheet)
+        self.f1 = f1
         self.lbl_table = QtWidgets.QLabel()
         self.lbl_table.setStyleSheet(MUTED)
         f1.addRow("", self.lbl_table)
@@ -162,7 +168,8 @@ class DataDialog(QtWidgets.QDialog):
     # ── 채우기 ──────────────────────────────────────────────────────────
     def _fill(self) -> None:
         f = self.form
-        self.ed_path.setText(f["index"])
+        path, self._want_sheet = xlsx.split_sheet(f["index"])
+        self.ed_path.setText(path)
         self._reread_table(keep=f)
         schema = f["schema"]
         self._locked = bool(schema["unsupported"])
@@ -205,8 +212,34 @@ class DataDialog(QtWidgets.QDialog):
         cb.setCurrentIndex(i if i >= 0 else 0)   # 표에 없는 이름은 고르지 않은 것으로 둔다
         cb.blockSignals(False)
 
+    def _sheets(self) -> None:
+        """엑셀이면 시트 목록을 채워 보이고, 아니면 감춘다. 전에 고른 시트가 있으면 그대로 둔다."""
+        path = self.ed_path.text().strip()
+        full = LD.resolve(self.spec_dir, path)
+        names: List[str] = []
+        if path.lower().endswith(".xlsx") and os.path.exists(full):
+            try:
+                names = xlsx.sheet_names(full)
+            except SpecError:
+                names = []          # 못 여는 이유는 아래 표 읽기가 말한다
+        want = self.cb_sheet.currentData() or self._want_sheet
+        self.cb_sheet.blockSignals(True)
+        self.cb_sheet.clear()
+        for n in names:
+            self.cb_sheet.addItem(n, n)
+        self.cb_sheet.setCurrentIndex(max(0, self.cb_sheet.findData(want)))
+        self.cb_sheet.blockSignals(False)
+        self.cb_sheet.setVisible(bool(names))
+        self.f1.labelForField(self.cb_sheet).setVisible(bool(names))
+
+    def _index(self) -> str:
+        """표 파일 경로. 엑셀이면 `표.xlsx#시트` 로 시트까지 담는다."""
+        path, sheet = self.ed_path.text().strip(), self.cb_sheet.currentData()
+        return f"{path}#{sheet}" if sheet and self.cb_sheet.count() else path
+
     def _reread_table(self, keep: Optional[Dict[str, Any]] = None) -> None:
-        index = self.ed_path.text().strip()
+        self._sheets()
+        index = self._index()
         try:
             h = LD.read_header(self.spec_dir, index)
         except SpecError as exc:
@@ -238,7 +271,7 @@ class DataDialog(QtWidgets.QDialog):
 
     def _pick_file(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "표 파일 고르기", self.spec_dir, "표 (*.csv *.jsonl);;모든 파일 (*)")
+            self, "표 파일 고르기", self.spec_dir, "표 (*.csv *.xlsx *.jsonl);;모든 파일 (*)")
         if path:
             try:
                 rel = os.path.relpath(path, self.spec_dir)
@@ -315,7 +348,7 @@ class DataDialog(QtWidgets.QDialog):
 
     def _preview(self) -> None:
         try:
-            n = LD.split_counts(self.spec_dir, self.ed_path.text().strip(), self.cb_key.currentData() or "", self._splits())
+            n = LD.split_counts(self.spec_dir, self._index(), self.cb_key.currentData() or "", self._splits())
         except Exception as exc:
             self.lbl_counts.setText("미리 보기: " + str(exc).splitlines()[0])
             self.lbl_counts.setStyleSheet(RED)
@@ -348,7 +381,7 @@ class DataDialog(QtWidgets.QDialog):
         if mode == "group" and not self.cb_group.currentData():
             raise SpecError("그룹 열을 고르지 않았습니다.\n  안 잡혔다면: 같은 그룹이 학습과 검증에 나뉘어 들어갑니다.\n  그룹 열을 고르세요.")
         f = dict(self.form)
-        f.update({"index": self.ed_path.text().strip(), "key": self.cb_key.currentData(),
+        f.update({"index": self._index(), "key": self.cb_key.currentData(),
                   "image_column": self.cb_image.currentData(), "question_column": self.cb_question.currentData(),
                   "answers": answers, "splits": self._splits()})
         return {"form": f, "rows": rows}
