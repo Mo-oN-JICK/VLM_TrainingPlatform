@@ -109,17 +109,17 @@ def plan(cg: CompiledGraph, run_id: str = "", *, bake_split: str = "") -> Plan:
     """이 그래프가 돌아야 할 단계. 그래프에 없는 단계는 만들지 않는다."""
     p = Plan(run_id=run_id)
     p.stages.append(Stage("prepare", "준비", command="budget",
-                          note="컴파일과 예산(G4). GPU 를 잡기 전 마지막 문이다"))
+                          note="컴파일과 예산(G4). GPU 를 잡기 전 마지막 문입니다"))
 
     if cg.materialize.get("boundary"):
         p.stages.append(Stage("bake", "사전 준비", command="materialize", split=bake_split,
-                              note="학습이 읽을 데이터를 미리 만들어 둔다"))
+                              note="학습이 읽을 데이터를 미리 만들어 둡니다"))
     if trainers(cg):
         p.stages.append(Stage("train", "학습", command="train",
-                              note="미리 만들어 둔 것만 읽는다"))
+                              note="미리 만들어 둔 것만 읽습니다"))
     if after_training(cg):
         p.stages.append(Stage("infer", "추론", command="run", split=infer_split(cg),
-                              note="학습한 모델로 답을 만들고 Output 노드까지 돈다"))
+                              note="학습한 모델로 답을 만들고 Output 노드까지 돕니다"))
     return p
 
 

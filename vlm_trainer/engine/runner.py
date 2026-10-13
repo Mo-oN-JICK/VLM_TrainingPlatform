@@ -404,8 +404,8 @@ def execute(
         if rep.quarantine_ratio > opts.quarantine_ratio_threshold and len(rep.quarantine) >= 2:
             rep.aborted = (
                 f"quarantine 비율 {rep.quarantine_ratio:.1%}가 임계 "
-                f"{opts.quarantine_ratio_threshold:.1%}를 넘었다. "
-                "데이터가 조용히 사라진 채 학습이 도는 것을 막기 위해 멈춘다."
+                f"{opts.quarantine_ratio_threshold:.1%}를 넘었습니다. "
+                "데이터가 조용히 사라진 채 학습이 도는 것을 막기 위해 멈춥니다."
             )
             break
 

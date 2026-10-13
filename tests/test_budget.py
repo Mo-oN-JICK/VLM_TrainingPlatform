@@ -114,7 +114,7 @@ def test_context_overflow_is_rejected_not_truncated():
     assert not res.ok
     text = "\n".join(res.errors)
     assert "시퀀스 길이 초과" in text
-    assert "잘라내지 않고 거부한다" in text
+    assert "잘라내지 않고 거부합니다" in text
 
 
 def test_backbone_context_limit_is_checked():
@@ -132,7 +132,7 @@ def test_declared_text_tokens_smaller_than_measured_is_rejected():
     cfg = _cfg()
     cfg.sequence.text_tokens = 100
     res = budget_mod.for_graph(cg, cfg, tn, measured_text_tokens=400)
-    assert any("실측" in e and "작다" in e for e in res.errors)
+    assert any("실측" in e and "작습니다" in e for e in res.errors)
 
 
 def test_sensitivity_reports_what_actually_helps():

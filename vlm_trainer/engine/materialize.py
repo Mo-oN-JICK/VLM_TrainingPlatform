@@ -98,8 +98,8 @@ def boundary_targets(cg: CompiledGraph) -> Set[str]:
     b = [n for n in (cg.materialize.get("boundary") or []) if n in cg.nodes]
     if not b:
         raise StructureError(
-            "materialize.boundary가 비어 있다. 물질화할 경계 노드를 스펙에 지정하라.\n"
-            "  경계가 없으면 전처리가 학습 루프 안에서 돌며 GPU를 두고 경쟁한다."
+            "materialize.boundary가 비어 있습니다. 물질화할 경계 노드를 스펙에 지정하세요.\n"
+            "  경계가 없으면 전처리가 학습 루프 안에서 돌며 GPU를 두고 경쟁합니다."
         )
     out: Set[str] = set()
     for n in b:
@@ -143,10 +143,10 @@ def materialize(
     now_bake = bake_key(cg)
     if o.resume and replay.spec_hash and o.strict_spec_match and replay.spec_hash != cg.spec_hash:
         rep.aborted = (
-            f"재개 거부: 스펙이 바뀌었다.\n"
+            f"재개 거부: 스펙이 바뀌었습니다.\n"
             f"  저널의 spec_hash {replay.spec_hash}\n"
             f"  현재    spec_hash {cg.spec_hash}\n"
-            "  같은 run_id로 다른 실험을 이어 붙이면 재현이 깨진다. 새 run_id로 시작하라."
+            "  같은 run_id로 다른 실험을 이어 붙이면 재현이 깨집니다. 새 run_id로 시작하세요."
         )
         return rep
 
@@ -156,13 +156,13 @@ def materialize(
     # 내려가며 아무도 눈치채지 못한다.
     if o.resume and replay.bake_key and o.strict_spec_match and replay.bake_key != now_bake:
         rep.aborted = (
-            "재개 거부: 스펙은 같은데 굽는 방식이 바뀌었다.\n"
+            "재개 거부: 스펙은 같은데 굽는 방식이 바뀌었습니다.\n"
             f"  저널의 bake_key {replay.bake_key}\n"
             f"  현재    bake_key {now_bake}\n"
-            "  보통 커스텀 노드의 코드를 고친 경우다 — 스펙은 그대로라 spec_hash 로는 안 보인다.\n"
+            "  보통 커스텀 노드의 코드를 고친 경우입니다 — 스펙은 그대로라 spec_hash 로는 안 보입니다.\n"
             "  이 검사가 없었다면: 옛 코드로 구운 샘플과 새 코드로 구운 샘플이 한 학습에\n"
-            "  섞이고, 손실은 정상으로 내려가며 아무도 눈치채지 못한다.\n"
-            "  새 run_id 로 시작하거나, --resume 없이 다시 구워라."
+            "  섞이고, 손실은 정상으로 내려가며 아무도 눈치채지 못합니다.\n"
+            "  새 run_id 로 시작하거나, --resume 없이 다시 구우세요."
         )
         return rep
 
@@ -276,7 +276,7 @@ def render(rep: MaterializeReport) -> str:
     ]
     if rep.orphans_removed:
         lines.append(
-            f"  커밋되지 않은 shard {len(rep.orphans_removed)}개를 지웠다: {', '.join(rep.orphans_removed)}"
+            f"  커밋되지 않은 shard {len(rep.orphans_removed)}개를 지웠습니다: {', '.join(rep.orphans_removed)}"
         )
     if rep.quarantine:
         lines.append(f"  격리 {rep.quarantine}건")
@@ -284,5 +284,5 @@ def render(rep: MaterializeReport) -> str:
         lines.append("")
         lines.append(rep.aborted)
     else:
-        lines.append("  학습은 이 산출물만 읽는다. 전문가 모델 워커는 종료되었다.")
+        lines.append("  학습은 이 산출물만 읽습니다. 전문가 모델 워커는 종료되었습니다.")
     return "\n".join(lines)

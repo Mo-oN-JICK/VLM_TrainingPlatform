@@ -170,7 +170,7 @@ def test_g2_graph_without_output_node():
     )
     with pytest.raises(CompileFailed) as e:
         compile_graph(g)
-    assert "Output 노드가 없다" in msg(e)
+    assert "Output 노드가 없습니다" in msg(e)
 
 
 def test_g2_unreachable_node():
@@ -320,5 +320,5 @@ def test_recipe_overlay_only_touches_whitelisted_params():
     base = compile_graph(g)
     assert base.nodes["n_crop"].cache_key != cg.nodes["n_crop"].cache_key
 
-    with pytest.raises(Exception, match="덮어쓸 수 없다"):
+    with pytest.raises(Exception, match="덮어쓸 수 없습니다"):
         compile_graph(g, recipe_overrides={"n_crop.min_side_px": 8})

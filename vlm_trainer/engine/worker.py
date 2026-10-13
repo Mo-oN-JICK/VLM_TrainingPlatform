@@ -65,9 +65,9 @@ def run_isolated(
         shutdown()  # 깨진 풀은 버리고 다음 노드에서 새로 만든다
         raise NodeError(
             ctx.node_id,
-            f"워커 프로세스가 죽었다 ({type(e).__name__})",
+            f"워커 프로세스가 죽었습니다 ({type(e).__name__})",
             sample_key=ctx.sample_key,
-            hint="네이티브 크래시이거나 메모리 부족이다. 이 노드만 failed로 격리한다.",
+            hint="네이티브 크래시이거나 메모리 부족입니다. 이 노드만 failed로 격리합니다.",
         ) from None
     except NodeError:
         raise

@@ -91,9 +91,9 @@ def test_overrides_reach_the_nodes_including_procedure_params():
 
 
 def test_whitelist_still_guards_the_overlay():
-    with pytest.raises(PolicyError, match="덮어쓸 수 없다"):
+    with pytest.raises(PolicyError, match="덮어쓸 수 없습니다"):
         compile_project(PROJECT, recipe_overrides={"n_stats.channel_does_not_exist": 1})
-    with pytest.raises(PolicyError, match="덮어쓸 수 없다"):
+    with pytest.raises(PolicyError, match="덮어쓸 수 없습니다"):
         compile_project(PROJECT, recipe_overrides={"n_crop_missing.x": 1} if False else {"n_sample.placeholder": "!"})
 
 

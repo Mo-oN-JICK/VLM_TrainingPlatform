@@ -111,7 +111,7 @@ def test_the_budget_names_where_the_token_count_came_from():
 
     counted = budget_mod.estimate(cfg, images=1, measured_text_tokens=900, measured_how="tokenizer")
     assert counted.text_source == "토크나이저"
-    assert "토크나이저로 센 값이다" in " ".join(counted.notes)
+    assert "토크나이저로 센 값입니다" in " ".join(counted.notes)
 
     converted = budget_mod.estimate(
         cfg, images=1, measured_text_tokens=900, measured_how="chars_per_token"
@@ -131,7 +131,7 @@ def test_a_declared_count_smaller_than_the_measured_one_is_refused():
     cfg = TrainerConfig()
     cfg.sequence = Sequence(text_tokens=500)
     res = budget_mod.estimate(cfg, images=1, measured_text_tokens=1200, measured_how="tokenizer")
-    assert any("작다" in e for e in res.errors)
+    assert any("작습니다" in e for e in res.errors)
 
 
 def test_a_small_ratio_is_not_clamped():

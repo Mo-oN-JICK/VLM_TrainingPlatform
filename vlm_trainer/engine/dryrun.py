@@ -86,8 +86,8 @@ def dryrun(
         res.violation_ratio = viol / total if total else 0.0
         if res.violation_ratio > violation_threshold:
             res.aborted = res.aborted or (
-                f"정답 스키마 위반율 {res.violation_ratio:.1%}가 임계 {violation_threshold:.1%}를 넘는다. "
-                "정답 생성 규칙이 잘못된 채로 GPU를 태우는 것이 가장 흔한 낭비다."
+                f"정답 스키마 위반율 {res.violation_ratio:.1%}가 임계 {violation_threshold:.1%}를 넘습니다. "
+                "정답 생성 규칙이 잘못된 채로 GPU를 태우는 것이 가장 흔한 낭비입니다."
             )
     return res
 
@@ -102,7 +102,7 @@ def render(res: DryRunResult) -> str:
     if res.determinism_failures:
         lines.append("\n결정성 감사 실패(같은 입력, 다른 출력):")
         lines += [f"  - {n}" for n in res.determinism_failures]
-        lines.append("  Processing 노드는 순수 함수여야 한다. 캐시가 오염되면 재현이 깨진다.")
+        lines.append("  Processing 노드는 순수 함수여야 합니다. 캐시가 오염되면 재현이 깨집니다.")
     if res.quarantine:
         lines.append(f"\n격리된 샘플 {len(res.quarantine)}건:")
         lines += [f"  - {q}" for q in res.quarantine[:10]]
@@ -110,7 +110,7 @@ def render(res: DryRunResult) -> str:
         lines.append(f"\n중단: {res.aborted}")
     if res.measured_chars:
         lines.append(f"\n실측: 샘플당 프롬프트+정답 {res.measured_chars}자 (최대)")
-        lines.append("  토큰 수는 토크나이저가 있으면 세고, 없으면 chars_per_token으로 추정한다.")
+        lines.append("  토큰 수는 토크나이저가 있으면 세고, 없으면 chars_per_token으로 추정합니다.")
     if res.ok:
-        lines.append("\n통과. G1·G2·G3를 지났다. 남은 것은 자원 예산(G4)이다.")
+        lines.append("\n통과. G1·G2·G3를 지났습니다. 남은 것은 자원 예산(G4)입니다.")
     return "\n".join(lines)

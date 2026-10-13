@@ -118,7 +118,7 @@ def check_against(declared: PortType, value: Any, where: str = "") -> List[str]:
         elif base is BaseKind.REGIONS:
             for i, r in enumerate(value[:3]):
                 if not isinstance(r, dict) or "extent" not in r:
-                    out.append(f"{p}regions[{i}]에 extent가 없다")
+                    out.append(f"{p}regions[{i}]에 extent가 없습니다")
     elif base is BaseKind.SCHEMA:
         if not hasattr(value, "steps"):
             out.append(f"{p}AnswerSchema가 와야 하는데 {describe(value)}")

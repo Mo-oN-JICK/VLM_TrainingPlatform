@@ -47,7 +47,7 @@ class Edge:
 
 def _split(ref: str) -> Tuple[str, str]:
     if ":" not in ref:
-        raise ValueError(f"포트 참조는 '노드id:포트명' 형식이어야 한다: {ref!r}")
+        raise ValueError(f"포트 참조는 '노드id:포트명' 형식이어야 합니다: {ref!r}")
     node, port = ref.rsplit(":", 1)
     return node, port
 

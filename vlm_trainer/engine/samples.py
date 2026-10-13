@@ -55,17 +55,17 @@ def _h(s: str, seed: int = 0) -> int:
 def load(spec: Dict[str, Any], base_dir: str) -> SampleSpace:
     index = str(spec.get("index") or "")
     if not index:
-        raise SpecError("sample_space.index가 비어 있다")
+        raise SpecError("sample_space.index가 비어 있습니다")
     path = index if os.path.isabs(index) else os.path.normpath(os.path.join(base_dir, index))
     if not os.path.exists(path):
-        raise SpecError(f"sample_space 인덱스 파일이 없다: {path}")
+        raise SpecError(f"sample_space 인덱스 파일이 없습니다: {path}")
 
     rows = read_table(path)
 
     key = str(spec.get("key") or "sample_id")
     for i, r in enumerate(rows):
         if key not in r:
-            raise SpecError(f"{path}:{i + 1} 행에 키 컬럼 {key!r}가 없다")
+            raise SpecError(f"{path}:{i + 1} 행에 키 컬럼 {key!r}가 없습니다")
 
     expr = str(spec.get("filter") or "")
     if expr:
@@ -85,16 +85,16 @@ def read_table(path: str) -> List[Dict[str, Any]]:
         with open(path, "r", encoding="utf-8-sig", newline="") as fh:
             rd = csv.DictReader(fh)
             if not rd.fieldnames:
-                raise SpecError(f"{path}: 첫 줄(열 이름)이 비어 있다")
+                raise SpecError(f"{path}: 첫 줄(열 이름)이 비어 있습니다")
             names = [str(n).strip() for n in rd.fieldnames]
             dup = sorted({n for n in names if names.count(n) > 1})
             if dup:
-                raise SpecError(f"{path}: 열 이름이 겹친다 {dup} — 같은 이름이 둘이면 어느 열인지 정해지지 않는다")
+                raise SpecError(f"{path}: 열 이름이 겹칩니다 {dup} — 같은 이름이 둘이면 어느 열인지 정해지지 않습니다")
             rd.fieldnames = names
             rows = []
             for ln, r in enumerate(rd, 2):
                 if None in r:
-                    raise SpecError(f"{path}:{ln} 행에 열 이름보다 값이 더 많다 — 값 안의 쉼표는 큰따옴표로 감싸야 한다")
+                    raise SpecError(f"{path}:{ln} 행에 열 이름보다 값이 더 많습니다 — 값 안의 쉼표는 큰따옴표로 감싸야 합니다")
                 if all(not (v or "").strip() for v in r.values()):
                     continue  # 엑셀이 남기는 빈 줄
                 rows.append({k: (v if v is not None else "") for k, v in r.items()})
@@ -141,9 +141,9 @@ def _assign_splits(rows: List[Dict[str, Any]], splits: Dict[str, Any], key: str)
             # 열이 없거나 칸이 비면 "첫 split 으로" 같은 짐작을 하지 않는다. 검증 건이 0이 되는 길이다.
             if not str(r.get(col, "")).strip():
                 raise SpecError(
-                    f"split 열 {col!r}이 {i + 1}번째 행({r[key]})에서 비었거나 없다.\n"
+                    f"split 열 {col!r}이 {i + 1}번째 행({r[key]})에서 비었거나 없습니다.\n"
                     "  안 잡혔다면: 그 행이 짐작으로 한쪽에 들어가 학습과 검증이 섞이거나 검증이 0건이 되고,\n"
-                    "  결과를 본 뒤에야 알게 된다.\n"
+                    "  결과를 본 뒤에야 알게 됩니다.\n"
                     f"  표의 {col!r} 열에 모든 행의 값(예: train / val)을 채우세요.")
             r["_split"] = str(r[col]).strip()
         return
@@ -151,9 +151,9 @@ def _assign_splits(rows: List[Dict[str, Any]], splits: Dict[str, Any], key: str)
         missing = [r[key] for r in rows if group_by not in r]
         if missing:
             raise SpecError(
-                f"group_by 열 {group_by!r}이 표에 없다 (예: {missing[0]}).\n"
+                f"group_by 열 {group_by!r}이 표에 없습니다 (예: {missing[0]}).\n"
                 "  안 잡혔다면: 같은 그룹을 묶지 못하고 행마다 따로 나뉘어, 같은 부품·로트가 학습과 검증에\n"
-                "  양쪽으로 들어간다. 검증 점수가 부풀어도 눈치채기 어렵다.\n"
+                "  양쪽으로 들어갑니다. 검증 점수가 부풀어도 눈치채기 어렵습니다.\n"
                 "  그룹 열 이름을 확인하거나, 그룹 없이 나누려면 strategy 를 random 으로 바꾸세요.")
 
     for r in rows:

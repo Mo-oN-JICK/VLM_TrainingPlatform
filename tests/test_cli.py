@@ -36,7 +36,7 @@ def test_a_gate_error_keeps_its_own_format(capsys):
     assert code == 2
 
     err = capsys.readouterr().err
-    assert "레시피가 덮어쓸 수 없다" in err and "허용:" in err
+    assert "레시피가 덮어쓸 수 없습니다" in err and "허용:" in err
     assert "VLMT_TRACE" not in err
 
 

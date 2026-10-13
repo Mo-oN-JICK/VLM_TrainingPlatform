@@ -45,13 +45,13 @@ def _check_shape(d: NodeDef) -> None:
 def _check_contracts(d: NodeDef) -> None:
     if d.kind is NodeKind.INPUT and d.impl is not None:
         if d.impl.fingerprint is Node.fingerprint:
-            raise RegistrationError(f"{d.ref}: Input 노드는 fingerprint()를 구현해야 한다 (C4)")
+            raise RegistrationError(f"{d.ref}: Input 노드는 fingerprint()를 구현해야 합니다 (C4)")
     if not d.per_sample and d.kind is not NodeKind.OUTPUT:
-        raise RegistrationError(f"{d.ref}: per_sample=False는 Output 노드에만 허용된다")
+        raise RegistrationError(f"{d.ref}: per_sample=False는 Output 노드에만 허용됩니다")
     if d.external_call and d.kind is not NodeKind.PROCESSING:
-        raise RegistrationError(f"{d.ref}: external_call은 Processing 노드에만 허용된다")
+        raise RegistrationError(f"{d.ref}: external_call은 Processing 노드에만 허용됩니다")
     if d.params is not None and not dataclasses.is_dataclass(d.params):
-        raise RegistrationError(f"{d.ref}: params는 dataclass여야 한다 (C3)")
+        raise RegistrationError(f"{d.ref}: params는 dataclass여야 합니다 (C3)")
 
     known = set(d.default_params())
     for group, names in (("recipe_overridable", d.recipe_overridable), ("type_affecting", d.type_affecting)):
@@ -61,7 +61,7 @@ def _check_contracts(d: NodeDef) -> None:
     bad = set(d.type_affecting) - set(d.recipe_overridable)
     if bad:
         raise RegistrationError(
-            f"{d.ref}: type_affecting은 recipe_overridable의 부분집합이어야 한다 {sorted(bad)}"
+            f"{d.ref}: type_affecting은 recipe_overridable의 부분집합이어야 합니다 {sorted(bad)}"
         )
 
     # spawn 요구: 구현이 모듈 최상위에서 임포트 가능해야 워커로 넘길 수 있다
@@ -69,11 +69,11 @@ def _check_contracts(d: NodeDef) -> None:
         mod, qual = d.impl.__module__, d.impl.__qualname__
         if "<locals>" in qual:
             raise RegistrationError(
-                f"{d.ref}: 노드 구현이 함수 안에 정의되어 있다. "
-                "Windows spawn 워커가 임포트할 수 없다 — 모듈 최상위로 옮겨라."
+                f"{d.ref}: 노드 구현이 함수 안에 정의되어 있습니다. "
+                "Windows spawn 워커가 임포트할 수 없습니다 — 모듈 최상위로 옮기세요."
             )
         if mod == "__main__":
-            raise RegistrationError(f"{d.ref}: 노드 구현을 __main__에 두면 spawn 워커가 임포트할 수 없다")
+            raise RegistrationError(f"{d.ref}: 노드 구현을 __main__에 두면 spawn 워커가 임포트할 수 없습니다")
 
 
 BUILTIN_ROOT = "vlm_trainer."
@@ -172,12 +172,12 @@ def resolve(ref: str) -> NodeDef:
         if d is None:
             have = sorted(v for (n, v) in _REGISTRY if n == name)
             raise RegistrationError(
-                f"노드 {ref}를 찾을 수 없다" + (f" (등록된 버전: {have})" if have else " (등록되지 않은 타입)")
+                f"노드 {ref}를 찾을 수 없습니다" + (f" (등록된 버전: {have})" if have else " (등록되지 않은 타입)")
             )
         return d
     cands = [d for (n, _), d in _REGISTRY.items() if n == ref]
     if not cands:
-        raise RegistrationError(f"노드 {ref}를 찾을 수 없다")
+        raise RegistrationError(f"노드 {ref}를 찾을 수 없습니다")
     return max(cands, key=lambda d: _semver(d.version))
 
 

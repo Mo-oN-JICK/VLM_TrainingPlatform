@@ -144,7 +144,7 @@ def test_resolve_pins_and_defaults_to_latest():
     d = resolve("test.crop@1.0.0")
     assert d.type == "test.crop" and d.kind is NodeKind.PROCESSING
     assert resolve("test.crop").version == "1.0.0"
-    with pytest.raises(RegistrationError, match="찾을 수 없다"):
+    with pytest.raises(RegistrationError, match="찾을 수 없습니다"):
         resolve("test.crop@9.9.9")
 
 

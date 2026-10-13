@@ -177,13 +177,13 @@ def estimate(
     # ── 시퀀스 길이 ──────────────────────────────────────────────────
     res.images = int(cfg.vision.max_images_per_sample or images)
     # 백본이 격자를 알면 **선언한 타일 크기로** 계산한다. 고정값을 들고 있다가
-    # 타일을 키우면 예산이 조용히 낙관적으로 기운다.
+    # 타일을 키우면 예산이 조용히 낙관적으로 기웁니다.
     tpt = int(cfg.vision.tokens_per_tile or spec.tokens_for_tile(cfg.vision.tile_px))
     res.tokens_per_tile = tpt
     if not cfg.vision.tokens_per_tile and spec.patch_px:
         res.notes.append(
             f"타일당 비전 토큰 {tpt}는 타일 {cfg.vision.tile_px}px / 패치 {spec.patch_px}px "
-            f"/ merge {spec.spatial_merge}로 계산한 값이다 (이 백본은 해상도에 따라 변한다)"
+            f"/ merge {spec.spatial_merge}로 계산한 값입니다 (이 백본은 해상도에 따라 변합니다)"
         )
     tiles = 1
     if cfg.vision.tiling:
@@ -207,32 +207,32 @@ def estimate(
         res.text_source = "토크나이저" if measured_how == "tokenizer" else "문자 환산"
         # 센 것과 환산한 것을 같은 말로 적으면 읽는 사람이 그 차이를 알 수 없다
         res.notes.append(
-            f"텍스트 토큰 {res.s_text}는 토크나이저로 센 값이다"
+            f"텍스트 토큰 {res.s_text}는 토크나이저로 센 값입니다"
             if measured_how == "tokenizer"
-            else f"텍스트 토큰 {res.s_text}는 dry-run 실측 문자 수에서 환산한 값이다"
-            + (" (토크나이저가 없다 — 안전 여유를 얹었다)" if measured_how else "")
+            else f"텍스트 토큰 {res.s_text}는 dry-run 실측 문자 수에서 환산한 값입니다"
+            + (" (토크나이저가 없습니다 — 안전 여유를 얹었습니다)" if measured_how else "")
         )
     else:
         res.s_text = DEFAULT_TEXT_TOKENS
         res.notes.append(
-            f"텍스트 토큰을 {DEFAULT_TEXT_TOKENS}으로 가정했다. "
-            "dryrun을 먼저 돌리면 실측 문자 수로 환산한다."
+            f"텍스트 토큰을 {DEFAULT_TEXT_TOKENS}으로 가정했습니다. "
+            "dryrun을 먼저 돌리면 실측 문자 수로 환산합니다."
         )
 
     if cfg.sequence.text_tokens and measured_text_tokens > cfg.sequence.text_tokens:
         res.errors.append(
-            f"선언한 텍스트 토큰 {cfg.sequence.text_tokens}가 실측 {measured_text_tokens}보다 작다.\n"
-            "  추정이 실측보다 작으면 예산 계산 전체가 낙관적으로 기운다.\n"
-            f"  sequence.text_tokens를 {measured_text_tokens} 이상으로 올려라."
+            f"선언한 텍스트 토큰 {cfg.sequence.text_tokens}가 실측 {measured_text_tokens}보다 작습니다.\n"
+            "  추정이 실측보다 작으면 예산 계산 전체가 낙관적으로 기웁니다.\n"
+            f"  sequence.text_tokens를 {measured_text_tokens} 이상으로 올리세요."
         )
 
     if res.s_total > cfg.sequence.max_len and cfg.sequence.truncation == "forbid":
         res.errors.append(
             f"시퀀스 길이 초과: 비전 {res.s_vision} + 텍스트 {res.s_text} = {res.s_total} "
             f"> max_len {cfg.sequence.max_len}\n"
-            "  truncation: forbid 이므로 잘라내지 않고 거부한다.\n"
+            "  truncation: forbid 이므로 잘라내지 않고 거부합니다.\n"
             "  이 검사가 없었다면: 이미지 뒷부분이 조용히 잘린 채 학습되고, "
-            "손실은 정상적으로 떨어지며 성능만 나빠진다."
+            "손실은 정상적으로 떨어지며 성능만 나빠집니다."
         )
     if res.s_total > spec.max_context:
         res.errors.append(
@@ -285,33 +285,33 @@ def _contributions(
             "가중치",
             e.weights,
             f"backbone.quantization.mode = {cfg.quantization.mode}",
-            "nf4로 바꾸면 llm 가중치가 1/4로 줄어든다" if cfg.quantization.mode == "none" else "",
+            "nf4로 바꾸면 llm 가중치가 1/4로 줄어듭니다" if cfg.quantization.mode == "none" else "",
         ),
         Contribution(
             "그래디언트",
             e.grads,
             f"stages[{st.name}].trainable = {st.trainable}",
-            "학습 그룹을 lora로 바꾸면 거의 사라진다" if e.grads > 0.5 else "",
+            "학습 그룹을 lora로 바꾸면 거의 사라집니다" if e.grads > 0.5 else "",
         ),
         Contribution(
             "옵티마이저",
             e.optimizer,
             f"stages[{st.name}].optimizer = {st.optimizer}",
-            "adamw_bnb_8bit로 바꾸면 1/4로 줄어든다" if st.optimizer.startswith("adamw_torch") and e.optimizer > 0.5 else "",
+            "adamw_bnb_8bit로 바꾸면 1/4로 줄어듭니다" if st.optimizer.startswith("adamw_torch") and e.optimizer > 0.5 else "",
         ),
         Contribution(
             "활성화",
             e.activations,
             f"per_device={st.per_device}, grad_checkpointing={st.grad_checkpointing}, "
             f"S={int(e.activations * GB / max(1.0, st.per_device * spec.hidden * ACT_BYTES * (spec.n_layers + K_BLK)))}",
-            "grad_checkpointing을 켜면 크게 줄어든다" if not st.grad_checkpointing else
-            ("per_device를 줄이거나 이미지 개수를 줄여라" if e.activations > 2.0 else ""),
+            "grad_checkpointing을 켜면 크게 줄어듭니다" if not st.grad_checkpointing else
+            ("per_device를 줄이거나 이미지 개수를 줄이세요" if e.activations > 2.0 else ""),
         ),
         Contribution(
             "로짓",
             e.logits,
             f"loss.chunked_ce = {cfg.loss.chunked_ce}",
-            "chunked_ce를 켜면 크게 줄어든다" if not cfg.loss.chunked_ce else "",
+            "chunked_ce를 켜면 크게 줄어듭니다" if not cfg.loss.chunked_ce else "",
         ),
         Contribution("CUDA 컨텍스트", e.context, "고정값", ""),
     ]
@@ -334,8 +334,8 @@ def _over_budget_message(
     lines += [
         "",
         "  이 검사가 없었다면:",
-        "    물질화를 마치고 백본을 올린 뒤 첫 optimizer.step()에서 OOM.",
-        "    체크포인트 없음. 한 장뿐인 GPU가 그동안 점유된다.",
+        "    물질화를 마치고 백본을 올린 뒤 첫 optimizer.step()에서 OOM이 납니다.",
+        "    체크포인트 없음. 한 장뿐인 GPU가 그동안 점유됩니다.",
     ]
     return "\n".join(lines)
 
@@ -414,8 +414,8 @@ def render(res: BudgetResult) -> str:
         # 늘어나는 것은 유효 배치다. 이것을 적지 않으면 장치를 늘려 VRAM이 준다고 읽는다.
         lines.insert(
             2,
-            f"  다중 GPU: 장치 {res.world_size}개 (ddp) — 아래 VRAM은 장치 하나 기준이다. "
-            f"유효 배치가 {res.world_size}배가 된다",
+            f"  다중 GPU: 장치 {res.world_size}개 (ddp) — 아래 VRAM은 장치 하나 기준입니다. "
+            f"유효 배치가 {res.world_size}배가 됩니다",
         )
     for s in res.stages:
         need = s.required(res.headroom_ratio)
@@ -436,7 +436,7 @@ def render(res: BudgetResult) -> str:
         lines.extend(res.errors)
     else:
         lines.append("")
-        lines.append("  통과. 네 게이트를 모두 지났다.")
+        lines.append("  통과. 네 게이트를 모두 지났습니다.")
     return "\n".join(lines)
 
 

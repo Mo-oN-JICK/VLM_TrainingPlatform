@@ -61,7 +61,7 @@ def test_the_editor_opens_the_empty_project_and_says_what_is_missing(tmp_path):
     ed = Editor.open(proj)
 
     assert ed.valid is False
-    assert "Output 노드가 없다" in ed.error
+    assert "Output 노드가 없습니다" in ed.error
     assert not ed.save()["ok"], "미완성인 껍데기를 저장하지 않는다"
 
 

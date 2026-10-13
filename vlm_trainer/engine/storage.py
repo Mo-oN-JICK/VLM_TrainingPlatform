@@ -105,7 +105,7 @@ _BACKENDS: Dict[str, Type] = {"local": LocalFiles, "memory": InMemory}
 
 def register_backend(name: str, cls: Type) -> Type:
     if name in _BACKENDS and _BACKENDS[name] is not cls:
-        raise RegistrationError(f"저장 백엔드 이름이 겹친다: {name!r}")
+        raise RegistrationError(f"저장 백엔드 이름이 겹칩니다: {name!r}")
     _BACKENDS[name] = cls
     return cls
 

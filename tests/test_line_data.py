@@ -170,7 +170,7 @@ def test_a_blank_split_column_is_refused_in_the_dialog_path_too(work):
     text = open(src, encoding="utf-8-sig").read().replace(",train,m3", ",,m3", 1)
     open(src, "w", encoding="utf-8-sig", newline="").write(text)
     r = ed.line_apply_data(_apply_form(ed, spec_dir))
-    assert not r["ok"] and "비었거나 없다" in r["detail"]
+    assert not r["ok"] and "비었거나 없습니다" in r["detail"]
 
 
 # ── 정답 항목 표를 프로젝트 전용 파일로 ─────────────────────────────────

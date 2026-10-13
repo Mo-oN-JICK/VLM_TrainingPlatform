@@ -205,7 +205,7 @@ def test_the_column_mode_uses_the_tables_own_column_and_refuses_blanks(tree):
     assert sorted({r["_split"] for r in rows}) == ["train", "val"]
 
     tree.write_csv(split=lambda i: "" if i == 3 else "train")
-    with pytest.raises(SpecError, match="비었거나 없다"):
+    with pytest.raises(SpecError, match="비었거나 없습니다"):
         compile_project(tree.path())
 
 

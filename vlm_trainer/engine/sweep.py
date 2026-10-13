@@ -96,7 +96,7 @@ def plan(
         e.bake = key
         tns = budget_mod.train_nodes(cg)
         if not tns:
-            e.status, e.reason = FAILED, "Trainer 노드가 없다"
+            e.status, e.reason = FAILED, "Trainer 노드가 없습니다"
             rep.entries.append(e)
             continue
 

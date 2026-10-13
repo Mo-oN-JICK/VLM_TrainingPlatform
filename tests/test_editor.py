@@ -273,7 +273,7 @@ def test_procedure_exposed_override_reaches_the_inner_node(ed):
 def test_a_path_outside_the_whitelist_is_refused(ed):
     res = ed.recipe_add_path("n_img.color_space")
     assert not res["ok"]
-    assert "덮어쓸 수 없다" in res["detail"]
+    assert "덮어쓸 수 없습니다" in res["detail"]
     assert not ed.overlay, "거부된 축이 남으면 안 된다"
 
 
@@ -390,7 +390,7 @@ def test_a_key_that_is_not_in_the_index_is_refused(ed_with_data):
 def test_a_missing_index_file_is_refused(ed_with_data):
     ed = ed_with_data
     res = ed.set_sample_space("index", "../../data/dummy/nope.jsonl")
-    assert not res["ok"] and "인덱스 파일이 없다" in res["detail"]
+    assert not res["ok"] and "인덱스 파일이 없습니다" in res["detail"]
     assert ed.sample_space_view()["rows"] == 22
 
 
@@ -431,7 +431,7 @@ def test_an_empty_boundary_is_not_a_way_to_skip_the_check(ed):
     """검사를 끄는 방법이 '경계를 안 적는 것'이어서는 안 된다."""
     assert ed.set_boundary("n_sample", False)["ok"]
     assert not ed.valid
-    assert "물질화 경계가 비어 있다" in ed.error
+    assert "물질화 경계가 비어 있습니다" in ed.error
     assert not ed.save()["ok"]
 
     assert ed.set_boundary("n_sample", True)["ok"]

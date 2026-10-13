@@ -130,7 +130,7 @@ def test_worker_crash_is_isolated_to_one_node(tmp_path):
     assert rep.states_of("n_mid").get("failed") == 1, "크래시 노드가 failed로 표시되지 않았다"
     assert rep.states_of("n_src").get("success") == 1, "상류는 정상 실행되었어야 한다"
     assert rep.quarantine and rep.quarantine[0].node_id == "n_mid"
-    assert "워커 프로세스가 죽었다" in rep.quarantine[0].cause
+    assert "워커 프로세스가 죽었습니다" in rep.quarantine[0].cause
 
 
 def test_determinism_audit_catches_impure_processing(tmp_path):

@@ -121,7 +121,7 @@ def _inline_procedures(
                 )
             tgt_node, tgt_param = pd.exposed_params[key]
             if tgt_node not in inner:
-                raise SpecError(f"Procedure {pd.ref}: exposed_params가 없는 노드 {tgt_node!r}를 가리킨다")
+                raise SpecError(f"Procedure {pd.ref}: exposed_params가 없는 노드 {tgt_node!r}를 가리킵니다")
             inner[tgt_node].params[tgt_param] = val
 
         nodes.extend(inner.values())
@@ -259,7 +259,7 @@ def compile_graph(
             (e.dst_node, e.dst_port, "입력", "inputs"),
         ):
             if nid not in id_set:
-                errors.append(StructureError(f"배선이 없는 노드를 가리킨다: {nid!r}", node=nid))
+                errors.append(StructureError(f"배선이 없는 노드를 가리킵니다: {nid!r}", node=nid))
             elif port not in getattr(defs[nid], table):
                 avail = sorted(getattr(defs[nid], table))
                 errors.append(
@@ -278,8 +278,8 @@ def compile_graph(
         if e.dst in seen:
             errors.append(
                 StructureError(
-                    f"입력 포트 {e.dst}에 배선이 둘 이상이다 ({seen[e.dst]}, {e.src}). "
-                    "팬인은 금지된다 — 병합 노드를 명시하라.",
+                    f"입력 포트 {e.dst}에 배선이 둘 이상입니다 ({seen[e.dst]}, {e.src}). "
+                    "팬인은 금지됩니다 — 병합 노드를 명시하세요.",
                     node=e.dst_node,
                     port=e.dst,
                 )
@@ -291,7 +291,7 @@ def compile_graph(
         errors.append(
             StructureError(
                 f"위상 정렬에서 남은 노드 {sorted(leftover)}. "
-                "상단 입력·하단 출력 규약을 벗어난 배선(순환)이다 — 캔버스에서는 만들 수 없는 형태다."
+                "상단 입력·하단 출력 규약을 벗어난 배선(순환)입니다 — 캔버스에서는 만들 수 없는 형태입니다."
             )
         )
         raise CompileFailed(errors)
@@ -388,10 +388,10 @@ def compile_graph(
             errors.append(
                 PolicyError(
                     f"정답 누설: {nid}({d.ref})가 프롬프트를 만드는데 상류에서 "
-                    f"{sorted(leaked)} 태그가 도달한다.\n"
+                    f"{sorted(leaked)} 태그가 도달합니다.\n"
                     "  이 검사가 없었다면: 실험은 완주하고 점수는 비현실적으로 높게 나오며, "
-                    "그 사실을 아무도 눈치채지 못한다.\n"
-                    "  해결: answer.leakage_guard를 거치게 하거나 해당 배선을 끊어라.",
+                    "그 사실을 아무도 눈치채지 못합니다.\n"
+                    "  해결: answer.leakage_guard를 거치게 하거나 해당 배선을 끊으세요.",
                     node=nid,
                 )
             )
@@ -401,9 +401,9 @@ def compile_graph(
             if not t.is_ground():
                 errors.append(
                     UnresolvedTypeError(
-                        f"{nid}:{p}의 타입이 확정되지 않았다: {t} "
+                        f"{nid}:{p}의 타입이 확정되지 않았습니다: {t} "
                         f"(미해결 변수 {sorted(t.free_vars())}). "
-                        "제네릭은 compile 종료 시점에 전부 구체 타입이어야 한다.",
+                        "제네릭은 compile 종료 시점에 전부 구체 타입이어야 합니다.",
                         node=nid,
                         port=f"{nid}:{p}",
                     )
@@ -418,8 +418,8 @@ def compile_graph(
     elif not outputs:
         errors.append(
             StructureError(
-                "그래프에 Output 노드가 없다. 최소 하나의 Output으로 끝나야 한다.\n"
-                "  이 검사가 없었다면: 몇 시간 계산 후 아무 산출물 없이 '완료'된다."
+                "그래프에 Output 노드가 없습니다. 최소 하나의 Output으로 끝나야 합니다.\n"
+                "  이 검사가 없었다면: 몇 시간 계산 후 아무 산출물 없이 '완료'됩니다."
             )
         )
     else:
@@ -436,7 +436,7 @@ def compile_graph(
             errors.append(
                 StructureError(
                     f"어떤 Output에도 기여하지 않는 노드: {sorted(dead)}\n"
-                    "  이 검사가 없었다면: 쓸모없는 전처리에 시간을 쓴다."
+                    "  이 검사가 없었다면: 쓸모없는 전처리에 시간을 씁니다."
                 )
             )
 
@@ -485,10 +485,10 @@ def compile_graph(
         # 검사를 끄는 방법이 "경계를 안 적는 것"이어서는 안 된다.
         errors.append(
             PolicyError(
-                f"외부 모델을 호출하는 노드가 있는데 물질화 경계가 비어 있다: {externals}\n"
-                "  경계가 없으면 그 노드들이 학습 루프 안에서 돈다.\n"
-                "  이 검사가 없었다면: 학습 중 전문가 모델이 VRAM을 요구해 OOM 또는 심한 감속이 난다.\n"
-                "  materialize.boundary에 미리 구울 마지막 노드를 적어라 "
+                f"외부 모델을 호출하는 노드가 있는데 물질화 경계가 비어 있습니다: {externals}\n"
+                "  경계가 없으면 그 노드들이 학습 루프 안에서 돕니다.\n"
+                "  이 검사가 없었다면: 학습 중 전문가 모델이 VRAM을 요구해 OOM 또는 심한 감속이 납니다.\n"
+                "  materialize.boundary에 미리 구울 마지막 노드를 적으세요 "
                 "(편집기에서는 노드의 '물질화 경계' 토글)."
             )
         )
@@ -511,9 +511,9 @@ def compile_graph(
             if defs[nid].external_call and nid not in pre:
                 errors.append(
                     PolicyError(
-                        f"{nid}({defs[nid].ref})는 외부 모델을 호출하는데 물질화 경계 뒤에 있다.\n"
+                        f"{nid}({defs[nid].ref})는 외부 모델을 호출하는데 물질화 경계 뒤에 있습니다.\n"
                         "  이 검사가 없었다면: 학습 루프 안에서 전문가 모델이 VRAM을 요구해 "
-                        "OOM 또는 심한 감속이 난다.",
+                        "OOM 또는 심한 감속이 납니다.",
                         node=nid,
                     )
                 )
@@ -576,23 +576,23 @@ def _apply_overrides(
 
     for path, value in overrides.items():
         if "." not in path:
-            raise SpecError(f"오버라이드 경로는 '노드id.파라미터' 형식이어야 한다: {path!r}")
+            raise SpecError(f"오버라이드 경로는 '노드id.파라미터' 형식이어야 합니다: {path!r}")
         nid, param = path.split(".", 1)
         if nid in exposed:  # Procedure 인스턴스의 노출 파라미터
             table = exposed[nid]
             if param not in table:
                 raise PolicyError(
-                    f"Procedure {nid}가 노출하지 않은 파라미터 {param!r}는 레시피가 덮을 수 없다 "
+                    f"Procedure {nid}가 노출하지 않은 파라미터 {param!r}는 레시피가 덮을 수 없습니다 "
                     f"(노출된 것: {sorted(table)})",
                     node=nid,
                 )
             nid, param = table[param]
         if nid not in inst:
-            raise SpecError(f"오버라이드가 없는 노드를 가리킨다: {nid!r}")
+            raise SpecError(f"오버라이드가 없는 노드를 가리킵니다: {nid!r}")
         d = defs[nid]
         if param not in d.recipe_overridable:
             raise PolicyError(
-                f"{nid}({d.ref}): 파라미터 {param!r}는 레시피가 덮어쓸 수 없다 "
+                f"{nid}({d.ref}): 파라미터 {param!r}는 레시피가 덮어쓸 수 없습니다 "
                 f"(허용: {sorted(d.recipe_overridable) or '없음'})",
                 node=nid,
             )
