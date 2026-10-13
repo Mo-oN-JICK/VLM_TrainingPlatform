@@ -347,7 +347,7 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 - [x] 검증: 항목별 O/X는 보조, 사람 OK/NG 판정을 `judgments.jsonl`에 남긴다(`vlmt judge`·`judgments`)
 - [x] 용어집 적용(노드 설명·묶음 상자·사용자 문서). 금지어 표는 `ui/words.py`, 검사는 `tests/test_glossary.py`
 - [x] 오류는 한 줄 요약(스테이션 번호 포함) + 접힌 상세. **코어 게이트·엔진 메시지의 해라체는 그대로**(별도 작업)
-- 벗어난 지점은 `README.md` 표에 기록. 이월: 학습 시드 고정(같은 스펙도 답 문장이 가끔 달라진다), 엑셀 읽기, NG 되쓰기, 센서 칸, 숫자 항목 범위, 4090 PC 실물 확인
+- 벗어난 지점은 `README.md` 표에 기록. 학습 시드 고정 끝(`train/loop.py` 의 `SEED`, 모델 만들기 전 `torch.manual_seed`; 11노드·5노드 `answers.jsonl` 전체 비교). 이월: 엑셀 읽기, NG 되쓰기, 센서 칸, 숫자 항목 범위, 4090 PC 실물 확인
 
 ### 설계 문서
 

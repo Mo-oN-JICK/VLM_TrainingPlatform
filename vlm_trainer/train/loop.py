@@ -23,6 +23,9 @@ from . import shards as shards_mod
 from .config import Stage, TrainerConfig
 
 CKPT = "ckpt.pt"
+# 같은 데이터·같은 설정이면 같은 가중치가 나와야 한다. 어댑터 초기화(LoRA·프로젝터)와
+# 드롭아웃이 전역 난수를 쓰므로 모델을 만들기 전에 한 번 고정한다.
+SEED = 20260909
 
 
 class ShardDataset(Dataset):
@@ -111,6 +114,7 @@ def train(
 ) -> TrainReport:
     adapter = resolve_backbone(cfg.backbone)
     dev = _pick_device(device)
+    torch.manual_seed(SEED)
     ds = ShardDataset(materialized_dir)
     if not len(ds):
         raise FileNotFoundError(

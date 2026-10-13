@@ -97,10 +97,9 @@ def _rows(run_dir: str, *, drop=()) -> list:
 
 
 def test_both_forms_bake_the_same_data_and_ask_the_same_questions(tmp_path):
-    """학습이 끝나기 전까지의 결과(사전 준비 묶음)와 검증 건 목록·정답이 바이트까지 같다.
+    """사전 준비 묶음은 바이트까지, 검증 건 목록·모델이 낸 답 문장은 통째로 같다.
 
-    **모델이 낸 답 문장은 비교하지 않는다.** 학습이 시드를 안 쥐어서 같은 11노드 스펙을
-    두 번 돌려도 답이 가끔 달라진다(실측: 5회 중 1회). 5노드와 무관한 기존 동작이다.
+    학습이 시드를 쥐고 있으므로 같은 데이터·같은 설정이면 답 문장도 같아야 한다.
     """
     pytest.importorskip("torch")
     if not os.path.exists(os.path.join(ROOT, "solutions", "vlm_open", "data", "open_parts", "index.jsonl")):
@@ -108,7 +107,7 @@ def test_both_forms_bake_the_same_data_and_ask_the_same_questions(tmp_path):
     old, new = _run(OLD, str(tmp_path), "old"), _run(NEW, str(tmp_path), "new")
 
     assert _shards(old) and _shards(old) == _shards(new)
-    assert _rows(old, drop=("answer",)) == _rows(new, drop=("answer",))
+    assert _rows(old) == _rows(new)
     assert len(_rows(new)) == 10
     # 실제로 돈 11노드 스펙과 해시가 실행 기록에 남는다
     rec = os.path.join(new, "expanded_project.yaml")
