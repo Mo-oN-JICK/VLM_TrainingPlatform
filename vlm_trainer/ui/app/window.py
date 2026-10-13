@@ -14,6 +14,8 @@ from typing import Any, Dict
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .. import layout as L
+from .. import line_model as M
 from .. import tokens as T
 from .. import words as W
 from ..api import Editor, compat_matrix, occupied_inputs
@@ -21,6 +23,7 @@ from .canvas import GraphCanvas
 from .history import HistoryDock, RecipeDock
 from .inspector import Inspector
 from .library import LibraryDock
+from .line_settings import _BAD, fill_table, new_table, settings_rows
 from .progress import RunDock, RunWatcher
 
 FONT = "Malgun Gothic"
@@ -283,6 +286,11 @@ class EditorWindow(QtWidgets.QMainWindow):
         tb.addSeparator()
         tb.addAction("전체 맞춤", self.canvas.fit)
         tb.addAction("저장", self.on_save)
+        if self.editor.line_data is not None:
+            self.act_expert = tb.addAction("전문가 모드")
+            self.act_expert.setCheckable(True)
+            self.act_expert.setToolTip("켜면 모든 설정과 안쪽 상자의 값이 보입니다. 창을 닫으면 꺼집니다.")
+            self.act_expert.toggled.connect(lambda _on: self._show_inspector(self._picked))
 
     def _build_status(self) -> None:
         sb = self.statusBar()
@@ -403,12 +411,25 @@ class EditorWindow(QtWidgets.QMainWindow):
             self.reload_graph()
 
     def on_save(self) -> None:
-        res = self.editor.save()
+        res = self.editor.line_save() if self.editor.line_data is not None else self.editor.save()
         if res.get("ok"):
             self.statusBar().showMessage(f"저장했습니다: {res.get('path', '')}", 5000)
             self.setWindowTitle(self._title())
         else:
             self._refuse("저장", res)
+
+    def closeEvent(self, ev: QtGui.QCloseEvent) -> None:  # noqa: N802
+        """5노드는 설정을 고치면 저장 전까지 파일에 없다. 묻지 않고 닫으면 조용히 사라진다."""
+        if self.editor.line_data is not None and self.editor.dirty:
+            ans = QtWidgets.QMessageBox.question(
+                self, "저장하지 않은 변경", "저장하지 않은 변경이 있습니다. 저장할까요?",
+                QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.Discard | QtWidgets.QMessageBox.Cancel)
+            if ans == QtWidgets.QMessageBox.Save:
+                self.on_save()
+            if ans == QtWidgets.QMessageBox.Cancel or (ans == QtWidgets.QMessageBox.Save and self.editor.dirty):
+                ev.ignore()
+                return
+        ev.accept()
 
     # ── 실행 ────────────────────────────────────────────────────────────
     def _launch(self, fn: Any, label: str) -> None:
@@ -510,11 +531,54 @@ class EditorWindow(QtWidgets.QMainWindow):
 
     def _show_inspector(self, nid: str) -> None:
         card = self.canvas.cards.get(nid)
-        if card is None or self.editor.compiled is None or self.editor.line_data is not None:   # 5노드 설정은 5-C
+        if card is None or self.editor.compiled is None:
             self.inspector.show_empty()
+            return
+        if self.editor.line_data is not None:
+            self._show_line_settings(card.shown.id if card.shown.category == L.STATION else card.shown.station)
             return
         self.inspector.show_node(nid, card.shown, self.editor.compiled,
                                  getattr(self, "_state", {}) or {})
+
+    # ── 5노드 설정 ──────────────────────────────────────────────────────
+    def _show_line_settings(self, sid: str) -> None:
+        """고른 카드(펼친 상자를 골랐으면 그 상자가 속한 카드)의 설정을 설정 칸에 올린다."""
+        st = next((s for s in self.editor.line_describe()["stations"] if s["id"] == sid), None)
+        if st is None:
+            self.inspector.show_empty()
+            return
+        expert = self.act_expert.isChecked()
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(10, 10, 10, 10)
+        title = QtWidgets.QLabel(f"{M.mark(st['number'])}  {st['label']}" + ("   [전문가 모드]" if expert else ""))
+        title.setStyleSheet("color:#FFFFFF; font-size:14px; font-weight:600;")
+        hint = QtWidgets.QLabel(st["hint"])
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color:#A8B0B6; font-size:11px;")
+        t = new_table()
+        fill_table(t, settings_rows(self.editor, st, expert), self._line_edit_cb)
+        lay.addWidget(title)
+        lay.addWidget(hint)
+        lay.addWidget(t, 1)
+        self.inspector.show_widget(w)
+
+    def _line_edit_cb(self, setter: Any, old: Any) -> Any:
+        def done(v: Any) -> None:
+            if v is _BAD:
+                self._later(lambda: (self._refuse("설정", {"reason": "JSON 이 아닙니다 — 예: [448, 448]"}),
+                                     self._show_inspector(self._picked)))
+                return
+            if v != old:
+                self._later(lambda: self._line_apply(setter, v))   # 값을 보낸 입력칸은 다시 그릴 때 지워진다
+
+        return done
+
+    def _line_apply(self, setter: Any, value: Any) -> None:
+        res = setter(value)
+        if not res.get("ok"):
+            self._refuse("설정", res)
+        self.reload_graph()      # 거부됐어도 다시 그려 원래 값으로 되돌린다
 
     def _show_help(self) -> None:
         QtWidgets.QMessageBox.information(

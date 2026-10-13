@@ -68,6 +68,10 @@ class Inspector(QtWidgets.QDockWidget):
         lay.addStretch(1)
         self._scroll.setWidget(w)
 
+    def show_widget(self, w: QtWidgets.QWidget) -> None:
+        """5노드 설정처럼 이 파일이 모르는 내용을 그대로 올린다."""
+        self._scroll.setWidget(w)
+
     # ── 상자 하나 ───────────────────────────────────────────────────────
     def show_node(self, nid: str, shown: Any, cg: Any, state: Dict[str, Any]) -> None:
         """`shown` 은 캔버스가 그린 것과 같은 상자다 — 접혔으면 Procedure 하나."""

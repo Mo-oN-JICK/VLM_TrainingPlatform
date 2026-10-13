@@ -95,3 +95,56 @@ def test_expanding_every_card_keeps_all_inner_boxes_and_a_wire_or_arrow_between_
     w = EditorWindow(e)
     boxes, _ = fold(e.compiled, ())
     assert set(w.canvas.cards) == set(boxes)                     # 열한 상자 전부(소속 없는 것이 없다)
+
+
+def _pick(w, station_index):
+    sid = w.editor.line_describe()["stations"][station_index]["id"]
+    w._on_pick(sid)
+    return sid
+
+
+def _table(w):
+    from PySide6 import QtWidgets
+
+    return w.inspector.widget().widget().findChild(QtWidgets.QTableWidget)
+
+
+def test_picking_a_card_shows_its_basic_settings_and_expert_mode_adds_the_rest(app, line):
+    from vlm_trainer.ui.app.window import EditorWindow
+
+    w = EditorWindow(Editor.open_line(line))
+    _pick(w, 3)                                              # ④ 모델 학습
+    basic = _table(w).rowCount()
+    assert basic >= 1 and "학습량" in _table(w).item(0, 0).text()
+    w.act_expert.setChecked(True)
+    assert _table(w).rowCount() > basic                      # 전문가: 숫자 직접 입력과 안쪽 상자 값
+    w.act_expert.setChecked(False)
+    assert _table(w).rowCount() == basic
+
+
+def test_choosing_an_amount_edits_the_line_and_saving_round_trips(app, line):
+    from PySide6 import QtWidgets
+    from vlm_trainer.ui.app.window import EditorWindow
+
+    e = Editor.open_line(line)
+    w = EditorWindow(e)
+    sid = _pick(w, 3)
+    combo = _table(w).cellWidget(0, 1)
+    assert isinstance(combo, QtWidgets.QComboBox)
+    combo.setCurrentText("많게")
+    combo.activated.emit(combo.currentIndex())
+    app.processEvents()                                       # 값 적용은 입력칸 신호가 끝난 뒤로 미룬다
+    assert e.dirty and [s for s in e.line_describe()["stations"] if s["id"] == sid][0]["amount"]["value"] == "많게"
+    w.on_save()
+    assert not e.dirty
+    again = Editor.open_line(line)
+    assert [s for s in again.line_describe()["stations"] if s["id"] == sid][0]["amount"]["value"] == "많게"
+
+
+def test_dropping_a_library_node_onto_a_line_is_refused_with_the_reason(app, line):
+    from vlm_trainer.ui.app.window import EditorWindow
+
+    w = EditorWindow(Editor.open_line(line))
+    before = len(w.canvas.cards)
+    w._add_node("source.field", 0, 0)
+    assert "5노드(Line)" in w.lbl_refuse.text() and len(w.canvas.cards) == before

@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from typing import Any, Callable, Dict, List, Optional
 
@@ -28,6 +27,7 @@ from ..api import Editor
 from ...engine import runner as runner_mod
 from ...engine import samples as samples_mod
 from .canvas import GraphCanvas
+from .line_settings import _BAD, fill_table, make_editor, new_table, settings_rows
 from .window import FONT, QSS
 
 POLL_MS = 700
@@ -89,56 +89,6 @@ class CardWidget(QtWidgets.QFrame):
 
     def mouseDoubleClickEvent(self, ev: QtGui.QMouseEvent) -> None:  # noqa: N802
         self.opened.emit(self.cid)
-
-
-_BAD = object()   # JSON 이 아닌 입력. 그대로 보내지 않고 거부로 돌린다
-
-
-def make_editor(value: Any, choices: List[str], on_done: Callable[[Any], None]) -> QtWidgets.QWidget:
-    """값의 종류에 맞는 입력 위젯. 값이 바뀌어 **입력이 끝났을 때만** 알린다 — 글자마다 알리면
-    타이핑하는 동안 컴파일이 돌고 중간 값이 전부 거부된다."""
-    if choices:
-        w = QtWidgets.QComboBox()
-        w.addItems([str(c) for c in choices])
-        if str(value) not in [str(c) for c in choices]:
-            w.insertItem(0, str(value))
-        w.setCurrentText(str(value))
-        w.activated.connect(lambda _i: on_done(w.currentText()))
-        return w
-    if isinstance(value, bool):
-        w = QtWidgets.QCheckBox()
-        w.setChecked(value)
-        w.clicked.connect(lambda on: on_done(bool(on)))
-        return w
-    if isinstance(value, int):
-        w = QtWidgets.QSpinBox()
-        w.setRange(-10**9, 10**9)
-        w.setValue(value)
-        w.editingFinished.connect(lambda: on_done(w.value()))
-        return w
-    if isinstance(value, float):
-        w = QtWidgets.QDoubleSpinBox()
-        w.setRange(-1e9, 1e9)
-        w.setDecimals(6)
-        w.setValue(value)
-        w.editingFinished.connect(lambda: on_done(w.value()))
-        return w
-    w = QtWidgets.QLineEdit()
-    if isinstance(value, str):
-        w.setText(value)
-        w.editingFinished.connect(lambda: on_done(w.text()))
-    else:  # 목록·표·비어 있음 — JSON 으로 적는다
-        w.setText(json.dumps(value, ensure_ascii=False))
-        w.setToolTip("JSON 으로 적습니다. 예: [448, 448]")
-
-        def done() -> None:
-            try:
-                on_done(json.loads(w.text()))
-            except ValueError:
-                on_done(_BAD)
-
-        w.editingFinished.connect(done)
-    return w
 
 
 class InnerView(QtWidgets.QDialog):
@@ -255,13 +205,7 @@ class LineWindow(QtWidgets.QMainWindow):
         self.lbl_settings = QtWidgets.QLabel("스테이션을 누르면 설정이 보입니다")
         self.lbl_settings.setStyleSheet("font-weight:600;")
         tl.addWidget(self.lbl_settings)
-        self.tbl_settings = QtWidgets.QTableWidget(0, 2)
-        self.tbl_settings.setHorizontalHeaderLabels(["설정", "값"])
-        self.tbl_settings.horizontalHeader().setStretchLastSection(True)
-        self.tbl_settings.setColumnWidth(0, 200)
-        self.tbl_settings.verticalHeader().setVisible(False)
-        self.tbl_settings.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self.tbl_settings.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        self.tbl_settings = new_table()
         tl.addWidget(self.tbl_settings)
         right.addWidget(top)
 
@@ -486,45 +430,11 @@ class LineWindow(QtWidgets.QMainWindow):
         if st is None:
             return
         expert = self.act_expert.isChecked()
-        rows: List[tuple] = []     # (종류, 이름, 값, 선택지, 적용 함수)
-
-        if st.get("amount") and (expert or st["amount"]["level"] == "basic"):
-            a = st["amount"]
-            rows.append(("amount", a["label"] + ("" if a["value"] else " (직접 입력 중)"),
-                         a["value"] or "직접 입력", a["choices"],
-                         lambda v, sid=cid: self.editor.line_set_amount(sid, v)))
-        for name, s in st["settings"].items():
-            if s["level"] != "basic" and not expert:
-                continue
-            rows.append(("setting", s["label"] + ("" if s["level"] == "basic" else "  · 전문가"),
-                         s["value"], s["choices"], lambda v, sid=cid, n=name: self.editor.line_set(sid, n, v)))
-
-        if expert:
-            cg = self.editor.compiled
-            for b in M.boxes(st, cg, os.path.dirname(self.editor.path)):
-                rows.append(("box", f"{b.label}  ({b.id})", None, [], None))
-                for pname, pval in b.params:
-                    rows.append(("param", pname, pval, [],
-                                 lambda v, nid=b.id, pn=pname: self.editor.line_set_override(nid, pn, v)))
+        rows = settings_rows(self.editor, st, expert)
 
         self.lbl_settings.setText(f"{M.mark(st['number'])}  {st['label']} — 설정" + ("  [전문가 모드]" if expert else ""))
         t = self.tbl_settings
-        # 칸 위젯은 setRowCount 로 비워야 사라진다. 그냥 덮으면 지난 그림의 입력칸이 남는다.
-        t.clearSpans()
-        t.setRowCount(0)
-        t.setRowCount(len(rows))
-        for i, (kind, label, value, choices, setter) in enumerate(rows):
-            if kind == "box":
-                item = QtWidgets.QTableWidgetItem(label)
-                f = item.font()
-                f.setBold(True)
-                item.setFont(f)
-                t.setItem(i, 0, item)
-                t.setSpan(i, 0, 1, 2)
-                t.removeCellWidget(i, 1)
-                continue
-            t.setItem(i, 0, QtWidgets.QTableWidgetItem(label))
-            t.setCellWidget(i, 1, make_editor(value, choices, self._edit_cb(setter, value)))
+        fill_table(t, rows, self._edit_cb)
         t.setEnabled(not self._running)
 
     def _edit_cb(self, setter: Callable[[Any], Dict[str, Any]], old: Any) -> Callable[[Any], None]:
