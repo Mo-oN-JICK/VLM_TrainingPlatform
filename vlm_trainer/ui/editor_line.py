@@ -18,7 +18,9 @@ import string
 
 from ..answer import table as answer_table
 from ..core.compiler import compile_graph
+from ..core.errors import SpecError
 from ..core.graph import GraphModel
+from ..engine import table_edit
 from ..spec.decompile import dump_yaml
 from ..spec.line import expand_data, expand_file
 from ..spec.loader import build_project
@@ -171,6 +173,29 @@ class LineMixin:
         return res
 
     # ── 저장·내보내기 ───────────────────────────────────────────────────
+    def line_row(self, sample_key: str) -> Dict[str, Any]:
+        """NG 건의 표 한 행. 화면이 고칠 칸을 보여 줄 때 쓴다. CSV 가 아니면 이유만 돌려준다."""
+        try:
+            t = table_edit.target(self.line_data, os.path.dirname(self.path))
+            return {"ok": True, "key": t["key"], "values": table_edit.row_values(t["path"], t["key"], sample_key)}
+        except SpecError as exc:
+            return self._line_refuse(_short(_msg(exc)), _msg(exc))
+
+    def line_fix_row(self, sample_key: str, edits: Dict[str, str]) -> Dict[str, Any]:
+        """표(CSV)의 그 건 칸을 고쳐 쓴다. 다시 읽는 것은 부른 쪽이 한다."""
+        try:
+            t = table_edit.target(self.line_data, os.path.dirname(self.path))
+            return {"ok": True, "changed": table_edit.set_cells(t["path"], t["key"], sample_key, edits)}
+        except SpecError as exc:
+            return self._line_refuse(_short(_msg(exc)), _msg(exc))
+
+    def line_exclude_row(self, sample_key: str, on: bool = True) -> Dict[str, Any]:
+        try:
+            t = table_edit.target(self.line_data, os.path.dirname(self.path))
+            return {"ok": True, "changed": table_edit.set_excluded(t["path"], t["key"], sample_key, on)}
+        except SpecError as exc:
+            return self._line_refuse(_short(_msg(exc)), _msg(exc))
+
     def line_save(self) -> Dict[str, Any]:
         """Line 파일을 다시 쓴다. 주석과 따옴표·키 순서는 보존되지 않는다(의미와 해시는 보존)."""
         if getattr(self, "line_data", None) is None:

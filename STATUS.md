@@ -8,7 +8,7 @@
 - 마지막 커밋: `9ca64ca` fix: 저장이 Procedure 사이 배선을 지웠다
 - **실물 Qwen2-VL 로 한 바퀴가 돈다** — 굽기 → 학습 → 추론 → Export → §9
 - 편집기는 Qt 네이티브 앱이다. 웹 편집기는 걷어냈다 → §8
-- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **598 passed, 1 skipped**
+- 테스트: `.venv\Scripts\python.exe -m pytest tests -q` → **610 passed, 1 skipped**
 - 실행 환경: **`.venv` (Python 3.12.14 + torch 2.14.0+cu130, CUDA 동작 확인)**
 - **4중 게이트가 전부 동작한다.** G1(편집·타입) · G2(compile) · G3(dry-run) · G4(자원 예산)
 - 더미 데이터가 없으면 `python tools/make_dummy_dataset.py --n 24`를 먼저 실행한다(엔진 테스트는 없으면 skip)
@@ -347,7 +347,7 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 - [x] 검증: 항목별 O/X는 보조, 사람 OK/NG 판정을 `judgments.jsonl`에 남긴다(`vlmt judge`·`judgments`)
 - [x] 용어집 적용(노드 설명·묶음 상자·사용자 문서). 금지어 표는 `ui/words.py`, 검사는 `tests/test_glossary.py`
 - [x] 오류는 한 줄 요약(스테이션 번호 포함) + 접힌 상세. 사용자에게 나가는 메시지 전부 합니다체로 통일(2026-10-13, Q44~46: 평서 ~습니다·~입니다, 해결 배선 ~하세요; 주석·docstring·설계 문서는 그대로)
-- 벗어난 지점은 `README.md` 표에 기록. 학습 시드 고정 끝(`train/loop.py` 의 `SEED`, 모델 만들기 전 `torch.manual_seed`; 11노드·5노드 `answers.jsonl` 전체 비교). 엑셀 읽기 끝(`engine/xlsx.py`, 시트는 `표.xlsx#시트` 로 적고 `데이터` 에서 고른다). 이월: NG 되쓰기, 센서 칸, 숫자 항목 범위, 4090 PC 실물 확인
+- 벗어난 지점은 `README.md` 표에 기록. 학습 시드 고정 끝(`train/loop.py` 의 `SEED`, 모델 만들기 전 `torch.manual_seed`; 11노드·5노드 `answers.jsonl` 전체 비교). 엑셀 읽기 끝(`engine/xlsx.py`, 시트는 `표.xlsx#시트` 로 적고 `데이터` 에서 고른다). NG 되쓰기·제외 끝(`engine/table_edit.py`, CLI `row-set`·`row-exclude`, NG 상세의 `이 건 고치기`). 이월: 센서 칸, 4090 PC 실물 확인(사용자가 직접)
 
 ### 설계 문서
 

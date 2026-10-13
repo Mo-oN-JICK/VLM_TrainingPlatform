@@ -37,7 +37,7 @@ from ..train import contract as contract_mod
 # 명령 본문은 주제별 모듈에 있다. 파서는 그것을 가리키기만 한다.
 from .cmd_graph import cmd_backbones, cmd_compile, cmd_expand, cmd_decompile, cmd_infer_graph, cmd_nodes, cmd_show, cmd_view
 from .cmd_execute import cmd_budget, cmd_dryrun, cmd_export, cmd_materialize, cmd_pipeline, cmd_preview, cmd_run, cmd_sweep, cmd_train
-from .cmd_project import cmd_schema_rows, cmd_schema_build, cmd_judge, cmd_judgments, cmd_new_line, cmd_table_template, cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
+from .cmd_project import cmd_schema_rows, cmd_schema_build, cmd_judge, cmd_judgments, cmd_row_set, cmd_row_exclude, cmd_new_line, cmd_table_template, cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -175,6 +175,18 @@ def build_parser() -> argparse.ArgumentParser:
     jg.add_argument("sample_id")
     jg.add_argument("verdict", choices=("ok", "ng", "none"))
     jg.set_defaults(func=cmd_judge)
+
+    rs = sub.add_parser("row-set", help="표(CSV)의 한 건의 칸을 고칩니다 (처음 고치면 원본을 .bak.csv 로 남깁니다)")
+    rs.add_argument("spec", help="line.yaml 또는 project.yaml")
+    rs.add_argument("sample_id", help="건 구분 열의 값")
+    rs.add_argument("edits", nargs="+", metavar="열=값")
+    rs.set_defaults(func=cmd_row_set)
+
+    rx = sub.add_parser("row-exclude", help="한 건을 표에서 제외합니다 (`제외` 열에 x — 지우지 않습니다)")
+    rx.add_argument("spec", help="line.yaml 또는 project.yaml")
+    rx.add_argument("sample_id")
+    rx.add_argument("--undo", action="store_true", help="제외를 풀어 되살립니다")
+    rx.set_defaults(func=cmd_row_exclude)
 
     jl = sub.add_parser("judgments", help="검증 건마다 항목별 O/X 와 사람 판정을 보입니다")
     jl.add_argument("run", help="실행 id(runs/ 아래) 또는 폴더")

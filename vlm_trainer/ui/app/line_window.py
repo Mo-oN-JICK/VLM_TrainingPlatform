@@ -182,6 +182,9 @@ class LineWindow(QtWidgets.QMainWindow):
         self.thumbs: Dict[str, str] = {}      # 건 id -> 사진 경로
         self._ng_rows: List[M.NgRow] = []
         self._running = False
+        self._excluded = 0                    # 표의 `제외` 열 때문에 건너뛴 건수
+        self._fix_key = ""                    # 고치기 칸에 올라와 있는 건
+        self._fix_old: Dict[str, str] = {}
 
         self._build_toolbar()
         self._build_body()
@@ -294,9 +297,34 @@ class LineWindow(QtWidgets.QMainWindow):
         self.detail.setMaximumHeight(150)
         self.detail.setVisible(False)
         bl.addWidget(self.detail)
-        self.lbl_fix = QtWidgets.QLabel("고치려면 표(CSV)를 고치고 `다시 읽기` 를 누르세요.")
+        self.lbl_fix = QtWidgets.QLabel("고치려면 NG 한 건을 누르세요. 표(CSV)를 직접 고쳐도 됩니다 — 고친 뒤 `다시 읽기`.")
         self.lbl_fix.setStyleSheet(MUTED)
         bl.addWidget(self.lbl_fix)
+        self.fix_box = QtWidgets.QGroupBox("이 건 고치기")
+        fl = QtWidgets.QVBoxLayout(self.fix_box)
+        self.tbl_fix = QtWidgets.QTableWidget(0, 2)
+        self.tbl_fix.setHorizontalHeaderLabels(["열", "값"])
+        self.tbl_fix.horizontalHeader().setStretchLastSection(True)
+        self.tbl_fix.verticalHeader().setVisible(False)
+        self.tbl_fix.setMaximumHeight(150)
+        fl.addWidget(self.tbl_fix)
+        self.lbl_fixmsg = QtWidgets.QLabel()
+        self.lbl_fixmsg.setStyleSheet(MUTED)
+        self.lbl_fixmsg.setWordWrap(True)
+        fl.addWidget(self.lbl_fixmsg)
+        hb = QtWidgets.QHBoxLayout()
+        self.btn_fix = QtWidgets.QPushButton("저장 후 다시 읽기")
+        self.btn_fix.setToolTip("고친 칸만 표(CSV)에 씁니다. 처음 고칠 때 원본을 `표.bak.csv` 로 남깁니다.")
+        self.btn_fix.clicked.connect(self._fix_save)
+        self.btn_skip = QtWidgets.QPushButton("이 건 제외")
+        self.btn_skip.setToolTip("표의 `제외` 열에 x 를 적습니다. 행을 지우지 않으며, x 를 지우면 되살아납니다.")
+        self.btn_skip.clicked.connect(lambda: self._fix_exclude(True))
+        hb.addWidget(self.btn_fix)
+        hb.addWidget(self.btn_skip)
+        hb.addStretch(1)
+        fl.addLayout(hb)
+        self.fix_box.setVisible(False)
+        bl.addWidget(self.fix_box)
         right.addWidget(bottom)
         right.setSizes([320, 500])
 
@@ -327,6 +355,8 @@ class LineWindow(QtWidgets.QMainWindow):
         self._load_thumbs()
         self.refresh()
         self._show_settings(self.picked)
+        if self._fix_key:
+            self._show_fix(self._fix_key)      # 표가 바뀌었으니 고치기 칸도 새 값으로
 
     def _title(self) -> None:
         cg = self.editor.compiled
@@ -339,6 +369,7 @@ class LineWindow(QtWidgets.QMainWindow):
     def _load_thumbs(self) -> None:
         """NG 표의 사진. 건 id → 사진 경로. 표를 읽지 못하면 사진 없이 간다."""
         self.thumbs = {}
+        self._excluded = 0
         cg = self.editor.compiled
         if cg is None:
             return
@@ -348,6 +379,7 @@ class LineWindow(QtWidgets.QMainWindow):
             return
         col = next((n.params.get("column", "image_path") for n in cg.nodes.values()
                     if n.ref.startswith("source.image")), "image_path")
+        self._excluded = space.excluded
         for r in space.rows:
             self.thumbs[str(r[space.key])] = space_path(space.root, str(r.get(col, "")))
 
@@ -377,6 +409,7 @@ class LineWindow(QtWidgets.QMainWindow):
         self.tbl_settings.setEnabled(not running)
         self.act_save.setEnabled(not running)
         self.act_data.setEnabled(not running)
+        self.fix_box.setEnabled(not running)
         head = str((run.get("pipeline") or {}).get("headline") or "")
         self.lbl_run.setText(f"{run.get('run_id', '')} {head}".strip())
         if running and not self._poll.isActive():
@@ -416,7 +449,9 @@ class LineWindow(QtWidgets.QMainWindow):
 
     def _paint_ng(self, rows: List[M.NgRow], total: int) -> None:
         self._ng_rows = rows
-        self.lbl_ng.setText(f"NG {total}건" + (f" (표시 {len(rows)}건)" if total > len(rows) else ""))
+        self.lbl_ng.setText(f"NG {total}건" + (f" (표시 {len(rows)}건)" if total > len(rows) else "")
+                            + (f" · 제외 {self._excluded}건" if self._excluded else ""))
+        self.lbl_ng.setToolTip("제외한 건은 표의 `제외` 열에 x 가 적힌 행입니다. 되살리려면 x 를 지우고 `다시 읽기`.")
         keep = self.tbl_ng.currentRow()
         self.tbl_ng.setRowCount(len(rows))
         for i, r in enumerate(rows):
@@ -542,6 +577,62 @@ class LineWindow(QtWidgets.QMainWindow):
         # 요약 줄에는 원인만, 건 이름과 노드는 상세 머리에 둔다.
         nn = chr(10) * 2
         self._set_detail(r.cause + f"{nn}건 {r.sample_key} · {r.node_id}" + (f"{nn}해결: {r.hint}" if r.hint else ""), where)
+        self._show_fix(r.sample_key)
+
+    # ── NG 한 건 고치기 ─────────────────────────────────────────────────
+    def _show_fix(self, key: str) -> None:
+        """표의 그 행을 칸마다 보여 준다. CSV 가 아니면 이유만 보이고 고칠 수 없다."""
+        self._fix_key, self._fix_old = key, {}
+        self.fix_box.setVisible(bool(key))
+        if not key:
+            return
+        res = self.editor.line_row(key)
+        ok = bool(res.get("ok"))
+        vals = res.get("values") or {}
+        self._fix_old = dict(vals)
+        self.tbl_fix.setRowCount(len(vals))
+        for i, (col, v) in enumerate(vals.items()):
+            a = QtWidgets.QTableWidgetItem(col)
+            a.setFlags(QtCore.Qt.ItemIsEnabled)
+            b = QtWidgets.QTableWidgetItem(v)
+            if col == res.get("key"):                  # 건 이름은 NG 목록과 이어 주는 열이라 고치지 않는다
+                b.setFlags(QtCore.Qt.ItemIsEnabled)
+            self.tbl_fix.setItem(i, 0, a)
+            self.tbl_fix.setItem(i, 1, b)
+        self.lbl_fixmsg.setText("고친 건은 다시 실행하면 NG 목록에서 사라집니다." if ok else str(res.get("detail") or res.get("reason", "")))
+        self.btn_fix.setEnabled(ok and not self._running)
+        self.btn_skip.setEnabled(ok and not self._running)
+        self.tbl_fix.setEnabled(ok and not self._running)
+
+    def _fix_save(self) -> None:
+        edits = {self.tbl_fix.item(i, 0).text(): self.tbl_fix.item(i, 1).text() for i in range(self.tbl_fix.rowCount())}
+        edits = {c: v for c, v in edits.items() if v != self._fix_old.get(c)}
+        if not edits:
+            self.statusBar().showMessage("바뀐 칸이 없습니다", 4000)
+            return
+        res = self.editor.line_fix_row(self._fix_key, edits)
+        if not res.get("ok"):
+            self._refuse(res.get("reason", "저장하지 못했습니다"))
+            self._set_detail(str(res.get("detail") or ""))
+            return
+        self.lbl_refuse.setText("")
+        self.statusBar().showMessage(f"{self._fix_key}: {', '.join(res['changed'])} 칸을 고쳤습니다 (원본은 .bak.csv)", 6000)
+        self.reload()
+
+    def _fix_exclude(self, on: bool, confirm: bool = True) -> None:
+        if confirm:
+            ans = QtWidgets.QMessageBox.question(
+                self, "이 건 제외", f"건 {self._fix_key} 을(를) 학습·검증에서 뺍니다. 표에서 지우지는 않습니다. 계속할까요?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+            if ans != QtWidgets.QMessageBox.Yes:
+                return
+        res = self.editor.line_exclude_row(self._fix_key, on)
+        if not res.get("ok"):
+            self._refuse(res.get("reason", "저장하지 못했습니다"))
+            self._set_detail(str(res.get("detail") or ""))
+            return
+        self.lbl_refuse.setText("")
+        self.reload()
 
     # ── 저장·안쪽·내보내기 ──────────────────────────────────────────────
     def _save(self) -> None:

@@ -377,3 +377,16 @@ def test_a_number_outside_the_range_is_ejected_by_the_format_check(tree):
     rep = _run(tree)
     assert [q.sample_key for q in rep.quarantine] == ["a4"]
     assert rep.quarantine[0].node_id == "p_answer/n_check"
+
+
+def test_an_excluded_row_never_enters_the_run_and_a_fixed_row_passes(tree):
+    """NG 로 나간 건을 고치거나 제외하면 다음 실행에서 NG 가 사라진다."""
+    from vlm_trainer.engine import table_edit
+
+    csvp = os.path.join(os.path.dirname(os.path.dirname(tree.proj)), "data", "t.csv")
+    tree.write_csv(rows=[(s, "톱니바퀴" if s in ("a4", "a5") else p, o, g) for s, p, o, g in ROWS])
+    assert sorted(q.sample_key for q in _run(tree).quarantine) == ["a4", "a5"]
+    table_edit.set_cells(csvp, "sample_id", "a4", {"part_type": "기어"})        # 고친다
+    table_edit.set_excluded(csvp, "sample_id", "a5", True)                       # 뺀다
+    rep = _run(tree)
+    assert not rep.quarantine and rep.processed == len(ROWS) - 1

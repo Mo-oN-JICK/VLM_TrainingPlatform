@@ -14,7 +14,7 @@ from hashlib import blake2b
 from typing import Any, Dict, List
 
 from ..core.errors import SpecError
-from . import xlsx
+from . import table_edit, xlsx
 
 
 @dataclass
@@ -23,6 +23,7 @@ class SampleSpace:
     key: str
     rows: List[Dict[str, Any]] = field(default_factory=list)
     index_path: str = ""
+    excluded: int = 0          # 표의 `제외` 열 때문에 건너뛴 건수. 화면에 계속 보인다
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -32,7 +33,7 @@ class SampleSpace:
 
     def split(self, name: str) -> "SampleSpace":
         rows = [r for r in self.rows if r.get("_split") == name]
-        return SampleSpace(self.root, self.key, rows, self.index_path)
+        return SampleSpace(self.root, self.key, rows, self.index_path, self.excluded)
 
     def pick(self, n: int, seed: int = 0) -> List[Dict[str, Any]]:
         """결정적 표본 추출. split마다 최소 1건을 포함한다."""
@@ -69,12 +70,14 @@ def load(spec: Dict[str, Any], base_dir: str) -> SampleSpace:
         if key not in r:
             raise SpecError(f"{path}:{i + 1} 행에 키 컬럼 {key!r}가 없습니다")
 
+    rows, excluded = table_edit.drop_excluded(rows, path, key)
+
     expr = str(spec.get("filter") or "")
     if expr:
         rows = [r for r in rows if _safe_filter(expr, r)]
 
     _assign_splits(rows, dict(spec.get("splits") or {}), key)
-    return SampleSpace(root=os.path.dirname(path), key=key, rows=rows, index_path=path)
+    return SampleSpace(root=os.path.dirname(path), key=key, rows=rows, index_path=path, excluded=excluded)
 
 
 def read_table(path: str, sheet: str = "") -> List[Dict[str, Any]]:

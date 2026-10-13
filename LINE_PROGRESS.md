@@ -197,3 +197,4 @@ O/X 보조 표시와 사람 OK/NG 판정 / 용어집 / 오류 메시지 형식
 - 2026-10-13 · 이월 4건 · 시작 · Q47~51 확정. 센서 칸은 미룸 유지. 단계 A 숫자 범위부터
 - 2026-10-13 · 이월 4건 · 단계 A 숫자 범위 · 끝 · `Step.range`(스키마 `range: [최소, 최대]`, 숫자 항목만), 표 `0~100` 읽기·되돌리기, 형식 검사 `range:<항목>` → ③ NG, 추론 계약 `ranges`(있을 때만), 검증 화면·CLI `범위 밖` 표시. 범위 없는 스키마의 digest·계약은 그대로. 승인 대기
 - 2026-10-13 · 이월 4건 · 단계 B 엑셀 읽기 · 끝 · `engine/xlsx.py`(표준 라이브러리, 첫 시트 기본·`index: 표.xlsx#시트`), `read_table`·`samples.load`·`read_header` 연결, `데이터` 에 시트 칸. 날짜·퍼센트·자릿수 서식·병합·수식 오류·구형 .xls 는 거부. `SampleSpace` 에 필드를 안 더해 spec_hash 불변. 실제 엑셀로 만든 파일은 아직 못 읽어 봄. 승인 대기
+- 2026-10-13 · 이월 4건 · 단계 C NG 되쓰기·제외 · 끝 · `engine/table_edit.py`(그 셀만 쓰기·`.bak.csv` 한 번·`제외` 열 x, 읽을 때 건너뛰고 `SampleSpace.excluded` 로 센다), `Editor.line_row/line_fix_row/line_exclude_row`, CLI `row-set`·`row-exclude`(명령 31개), NG 상세 `이 건 고치기` 패널과 `NG n건 · 제외 m건`. CSV 만 쓰고 엑셀·JSONL 은 거부. 센서 칸은 사용자 결정으로 미룸 유지. 승인 대기

@@ -239,3 +239,40 @@ def cmd_judgments(a: argparse.Namespace) -> int:
     c = got["count"]
     print(f"OK {c['ok']} · NG {c['ng']} · 미판정 {c['none']}  (항목 순서: {', '.join(got['steps'])})")
     return 0
+
+
+def _table_of(spec: str) -> dict:
+    import yaml
+
+    from ..engine import table_edit
+
+    with open(spec, "r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    return table_edit.target(data, os.path.dirname(os.path.abspath(spec)))
+
+
+def cmd_row_set(a: argparse.Namespace) -> int:
+    """표(CSV)의 한 건의 칸을 고친다. 처음 고치면 `표.bak.csv` 로 원본을 남긴다."""
+    from ..core.errors import SpecError
+    from ..engine import table_edit
+
+    edits = {}
+    for kv in a.edits:
+        col, sep, val = kv.partition("=")
+        if not sep:
+            raise SpecError(f"{kv!r}를 읽을 수 없습니다.\n  안 잡혔다면: 어느 열을 무슨 값으로 고칠지 알 수 없습니다.\n  열이름=값 꼴로 적으세요.")
+        edits[col.strip()] = val
+    t = _table_of(a.spec)
+    changed = table_edit.set_cells(t["path"], t["key"], a.sample_id, edits)
+    print(f"{a.sample_id}: " + (", ".join(changed) + " 고침" if changed else "바뀐 것 없음"))
+    return 0
+
+
+def cmd_row_exclude(a: argparse.Namespace) -> int:
+    """한 건을 표에서 제외한다(`제외` 열에 x). 지우지 않고, --undo 로 되살린다."""
+    from ..engine import table_edit
+
+    t = _table_of(a.spec)
+    changed = table_edit.set_excluded(t["path"], t["key"], a.sample_id, not a.undo)
+    print(f"{a.sample_id}: " + (("되살림" if a.undo else "제외함") if changed else "바뀐 것 없음"))
+    return 0
