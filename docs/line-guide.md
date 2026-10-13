@@ -14,6 +14,9 @@ vlmt new-line 내폴더 --name "부품 분류"     # 빈 5노드 프로젝트
 vlmt edit 내폴더/line.yaml                  # 창이 열리고 `데이터` 가 먼저 뜬다
 ```
 
+터미널 없이 쓰려면 `line.bat` 을 더블클릭합니다. 폴더 경로를 물어서, 새 폴더면 빈 프로젝트를 만들고 있는 폴더면 엽니다.
+`line.yaml` 이나 폴더를 `line.bat` 위로 끌어다 놓아도 됩니다. 실행은 창의 `실행` 버튼입니다.
+
 창에서는 이미 있는 예제(`solutions/vlm_open/projects/01_open/line.yaml`)도 열린다.
 창 왼쪽 위의 `새 5노드…` 로도 같은 폴더를 만든다. YAML 을 손으로 쓸 일은 없다.
 
