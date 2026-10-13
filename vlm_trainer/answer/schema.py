@@ -46,7 +46,7 @@ class AnswerSchema:
         with open(path, "r", encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
         if data.get("kind") != "AnswerSchema":
-            raise ValueError(f"{path}: kind는 AnswerSchema여야 한다")
+            raise ValueError(f"{path}: kind는 AnswerSchema여야 합니다")
         c = data.get("constraints") or {}
         steps = []
         for s in data.get("steps") or []:

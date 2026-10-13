@@ -51,7 +51,7 @@ def test_recipe_may_not_change_structure(tmp_path):
         ),
         encoding="utf-8",
     )
-    with pytest.raises(PolicyError, match="바꿀 수 없다"):
+    with pytest.raises(PolicyError, match="바꿀 수 없습니다"):
         R.load(str(d / "project.yaml"))
 
 

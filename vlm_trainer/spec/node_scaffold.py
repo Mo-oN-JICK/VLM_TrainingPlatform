@@ -27,8 +27,8 @@ _PORTS = {
 
 TEMPLATE = '''"""{label} — {type_}
 
-이 노드가 무엇을 하는지 한 문단으로 적는다. **무엇을 하는가**보다 **왜 이 노드가 따로
-있어야 하는가**를 적는 편이 나중에 읽는 사람에게 쓸모 있다.
+이 노드가 무엇을 하는지 한 문단으로 적습니다. **무엇을 하는가**보다 **왜 이 노드가 따로
+있어야 하는가**를 적는 편이 나중에 읽는 사람에게 쓸모 있습니다.
 """
 
 from dataclasses import dataclass
@@ -42,7 +42,7 @@ from vlm_trainer.core.types import text
 @dataclass
 class {cls}Params:
     """파라미터는 **dataclass 여야 한다**(계약 C3). 앱이 이 선언을 보고 설정 화면을
-    자동으로 만든다 — 선언이 없으면 화면에 아무것도 안 뜬다."""
+    자동으로 만듭니다 — 선언이 없으면 화면에 아무것도 안 뜹니다."""
 
     example: str = "!"
 
@@ -58,19 +58,19 @@ class {cls}Params:
     doc=NodeDoc(
         label="{label}",
         hint="이 상자가 무슨 일을 하는지 한 줄. **이 도구를 처음 보는 사람** 기준으로.",
-        summary="정확한 참조 문장. 용어를 써도 된다.",
+        summary="정확한 참조 문장. 용어를 써도 됩니다.",
         scenario="언제 쓰는가. 안 쓰면 무엇이 곤란한가.",
     ),
 )
 class {cls}(Node):
-    """**구현은 모듈 최상위에 둔다.** 함수 안에 정의하면 Windows spawn 워커가
-    임포트할 수 없고, 등록 시점에 거부된다."""
+    """**구현은 모듈 최상위에 둡니다.** 함수 안에 정의하면 Windows spawn 워커가
+    임포트할 수 없고, 등록 시점에 거부됩니다."""
 {fingerprint}
     def run(self, ctx: RunCtx, params: Any, **inputs: Any) -> Dict[str, Any]:
-        # 같은 입력에는 같은 출력을 낸다. 파일·네트워크·전역 난수·시계에 손대지 않는다.
-        # 무작위가 필요하면 `ctx.rng()` 를 쓰고 `deterministic=False` 를 선언한다.
+        # 같은 입력에는 같은 출력을 냅니다. 파일·네트워크·전역 난수·시계에 손대지 않습니다.
+        # 무작위가 필요하면 `ctx.rng()` 를 쓰고 `deterministic=False` 를 선언합니다.
         #
-        # 실패는 `NodeError` 로 던진다. 네 가지를 담는다 —
+        # 실패는 `NodeError` 로 던집니다. 네 가지를 담습니다 —
         # 불일치 필드 / 안 잡혔다면 언제 어디서 터졌을지 / 추정 낭비 / 구체적 해결 배선.
 {body}
 '''
@@ -78,7 +78,7 @@ class {cls}(Node):
 _FINGERPRINT = '''
     def fingerprint(self, ctx: RunCtx, params: Any) -> str:
         """Input 은 이것을 구현해야 한다(계약 C4). 바깥 세계가 바뀌었는지 알려 주는
-        유일한 통로다 — 없으면 원본 파일이 바뀌어도 캐시가 옛 값을 돌려준다."""
+        유일한 통로입니다 — 없으면 원본 파일이 바뀌어도 캐시가 옛 값을 돌려줍니다."""
         return f"{params.example}"
 '''
 
@@ -86,16 +86,16 @@ _BODY = {
     "input": '        return {"value": params.example}',
     "processing": '        return {"value": str(inputs["value"]) + params.example}',
     "output": (
-        '        # Output 은 **부작용의 자리**다. 파일을 쓰거나 밖으로 보낸다.\n'
-        '        # 값을 내보내야 하면 출력 포트를 선언해도 된다 — 반드시 끝일 필요는 없다.\n'
+        '        # Output 은 **부작용의 자리**입니다. 파일을 쓰거나 밖으로 보냅니다.\n'
+        '        # 값을 내보내야 하면 출력 포트를 선언해도 됩니다 — 반드시 끝일 필요는 없습니다.\n'
         '        return {}'
     ),
 }
 
 TEST_TEMPLATE = '''"""{type_} 이 계약을 지키는지.
 
-`vlmt check-node {module}` 이 보는 것과 같은 성질을 여기에 고정해 둔다. 명령은 손으로
-부르는 것이고, 테스트는 잊지 않는다.
+`vlmt check-node {module}` 이 보는 것과 같은 성질을 여기에 고정해 둡니다. 명령은 손으로
+부르는 것이고, 테스트는 잊지 않습니다.
 """
 
 from vlm_trainer.core import registry
@@ -111,11 +111,11 @@ def _node():
 
 def test_it_registers():
     d = _node()
-    assert d.doc.label, "카드에 뜰 이름이 없다"
+    assert d.doc.label, "카드에 뜰 이름이 없습니다"
 
 
 def test_same_input_gives_the_same_output():
-    """순수하지 않으면 캐시가 거짓말을 한다."""
+    """순수하지 않으면 캐시가 거짓말을 합니다."""
     d = _node()
     ctx = RunCtx(run_id="t", node_id="n1")
     p = d.build_params(d.default_params())
@@ -149,14 +149,14 @@ def new_node(path: str, type_: str, kind: str, *, category: str = "Data Processi
     """노드 하나와 그 테스트 파일을 만든다. 이미 있으면 덮지 않는다."""
     kind = (kind or "processing").lower()
     if kind not in KINDS:
-        raise SpecError(f"kind 는 {', '.join(KINDS)} 중 하나여야 한다 (받은 값: {kind!r})")
+        raise SpecError(f"kind 는 {', '.join(KINDS)} 중 하나여야 합니다 (받은 값: {kind!r})")
     if "." not in type_:
         raise SpecError(
-            f"노드 타입은 `범주.이름` 꼴이어야 한다 (받은 값: {type_!r}, 예: my.crop_by_rule)")
+            f"노드 타입은 `범주.이름` 꼴이어야 합니다 (받은 값: {type_!r}, 예: my.crop_by_rule)")
 
     path = os.path.abspath(path)
     if os.path.exists(path):
-        raise SpecError(f"이미 있는 파일이다: {path}")
+        raise SpecError(f"이미 있는 파일입니다: {path}")
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 
     cls = _class_name(type_)
@@ -286,31 +286,31 @@ def check_module(module: str, *, root: str = "") -> CheckReport:
     if not fresh:
         rep.checks.append(
             Check("노드 등록", False,
-                  "이 모듈이 등록한 노드가 없다 — @register 데코레이터가 붙어 있는지 보라"))
+                  "이 모듈이 등록한 노드가 없습니다 — @register 데코레이터가 붙어 있는지 보세요"))
         return rep
     rep.checks.append(Check("노드 등록", True, ", ".join(rep.types)))
 
     for d in fresh:
         rep.checks.append(Check(
             f"{d.type}: 저장소 밖 노드로 인식", bool(d.impl_fingerprint),
-            "구현 지문이 있다 — 코드를 고치면 캐시가 갈린다" if d.impl_fingerprint
-            else "지문이 없다. `vlm_trainer.` 아래에 두면 내장 노드로 취급되어, "
-                 "코드를 고쳐도 캐시가 옛 결과를 돌려준다"))
+            "구현 지문이 있습니다 — 코드를 고치면 캐시가 갈립니다" if d.impl_fingerprint
+            else "지문이 없습니다. `vlm_trainer.` 아래에 두면 내장 노드로 취급되어, "
+                 "코드를 고쳐도 캐시가 옛 결과를 돌려줍니다"))
 
         rep.checks.append(Check(
             f"{d.type}: 사람이 읽을 이름", bool(d.doc.label),
-            d.doc.label or "NodeDoc(label=...) 이 비었다 — 카드에 타입 이름이 그대로 뜬다"))
+            d.doc.label or "NodeDoc(label=...) 이 비었습니다 — 카드에 타입 이름이 그대로 뜹니다"))
 
         rep.checks.append(Check(
             f"{d.type}: spawn 워커가 임포트 가능", _spawn_ok(d.ref, module, root),
-            "다른 프로세스에서 같은 노드를 찾았다"))
+            "다른 프로세스에서 같은 노드를 찾았습니다"))
 
         inputs = {name: sample_value(p.type) for name, p in d.inputs.items()}
         if any(v is None for v in inputs.values()):
             rep.checks.append(Check(
                 f"{d.type}: 실행", True,
-                "건너뜀 — 이 포트 타입의 표본 값을 지어낼 수 없다. "
-                "지어낸 값으로 통과시키지 않는다"))
+                "건너뜀 — 이 포트 타입의 표본 값을 지어낼 수 없습니다. "
+                "지어낸 값으로 통과시키지 않습니다"))
             continue
 
         ctx = RunCtx(run_id="check", node_id="n1")
@@ -321,25 +321,25 @@ def check_module(module: str, *, root: str = "") -> CheckReport:
         except Exception as e:                      # noqa: BLE001
             rep.checks.append(Check(f"{d.type}: 실행", False, f"{type(e).__name__}: {e}"))
             continue
-        rep.checks.append(Check(f"{d.type}: 실행", True, "돌았다"))
+        rep.checks.append(Check(f"{d.type}: 실행", True, "돌았습니다"))
 
         if d.deterministic and d.kind is not NodeKind.OUTPUT:
             same = values_mod.value_hash(first) == values_mod.value_hash(second)
             rep.checks.append(Check(
                 f"{d.type}: 두 번 돌려 같은 값", same,
-                "순수하다" if same else
-                "같은 입력에 다른 값이 나왔다. 캐시가 거짓말을 하게 된다 — "
-                "무작위가 필요하면 deterministic=False 를 선언하라"))
+                "순수합니다" if same else
+                "같은 입력에 다른 값이 나왔습니다. 캐시가 거짓말을 하게 됩니다 — "
+                "무작위가 필요하면 deterministic=False 를 선언하세요"))
 
         bad: List[str] = []
         for port, declared in ((p, d.outputs[p].type) for p in d.outputs):
             if port not in first:
-                bad.append(f"{port}: 선언했는데 내보내지 않았다")
+                bad.append(f"{port}: 선언했는데 내보내지 않았습니다")
                 continue
             bad += values_mod.check_against(declared, first[port], where=f"{d.type}:{port}")
         rep.checks.append(Check(
-            f"{d.type}: 선언한 타입대로 내보낸다", not bad,
-            "; ".join(bad[:3]) if bad else "선언과 실제가 맞는다"))
+            f"{d.type}: 선언한 타입대로 내보냅니다", not bad,
+            "; ".join(bad[:3]) if bad else "선언과 실제가 맞습니다"))
 
     return rep
 
@@ -379,7 +379,7 @@ def render(rep: CheckReport) -> str:
         mark = "v" if c.ok else "x"
         lines.append(f"  {mark} {c.name}" + (f"  —  {c.detail}" if c.detail else ""))
     lines.append("")
-    lines.append("통과." if rep.ok else "고칠 것이 있다.")
+    lines.append("통과." if rep.ok else "고칠 것이 있습니다.")
     if rep.ok and rep.types:
         lines.append(f"  스펙에 적어라: node_modules: [{rep.module}]")
     return "\n".join(lines)

@@ -305,7 +305,7 @@ def test_a_missing_module_says_where_it_looked(tmp_path):
             compile_project({rel!r})
         """)
     msg = str(e.value)
-    assert "임포트할 수 없다" in msg and "뒤진 곳" in msg
+    assert "임포트할 수 없습니다" in msg and "뒤진 곳" in msg
 
 
 def test_the_declaration_survives_a_save(tmp_path):

@@ -63,7 +63,7 @@ class RecipeBook:
 
     def get(self, rid: int) -> Recipe:
         if rid not in self.recipes:
-            raise SpecError(f"레시피 {rid}번이 없다 (있는 번호: {sorted(self.recipes)})")
+            raise SpecError(f"레시피 {rid}번이 없습니다 (있는 번호: {sorted(self.recipes)})")
         return self.recipes[rid]
 
     def overrides_for(self, rid: Optional[int]) -> Dict[str, Any]:
@@ -77,7 +77,7 @@ class RecipeBook:
         free = [i for i in range(max(lo, MIN_ID), min(hi, MAX_ID) + 1) if i not in self.recipes]
         if len(free) < count:
             raise SpecError(
-                f"번호가 모자란다: {count}개가 필요한데 {lo}~{hi} 범위에 {len(free)}개만 비어 있다"
+                f"번호가 모자랍니다: {count}개가 필요한데 {lo}~{hi} 범위에 {len(free)}개만 비어 있습니다"
             )
         return free[:count]
 
@@ -87,12 +87,12 @@ class RecipeBook:
 
 def _check_override_path(path: str) -> None:
     if "." not in path:
-        raise SpecError(f"오버라이드 경로는 '노드id.파라미터' 형식이어야 한다: {path!r}")
+        raise SpecError(f"오버라이드 경로는 '노드id.파라미터' 형식이어야 합니다: {path!r}")
     head = path.split(".", 1)[0]
     if head in FORBIDDEN_PREFIXES:
         raise PolicyError(
-            f"레시피는 {head!r}를 바꿀 수 없다. 값만 덮을 수 있고 그래프 구조는 스펙의 것이다.\n"
-            "  구조가 다르면 그것은 같은 실험의 변주가 아니라 다른 실험이다."
+            f"레시피는 {head!r}를 바꿀 수 없습니다. 값만 덮을 수 있고 그래프 구조는 스펙의 것입니다.\n"
+            "  구조가 다르면 그것은 같은 실험의 변주가 아니라 다른 실험입니다."
         )
 
 
@@ -106,7 +106,7 @@ def load(project_path: str) -> RecipeBook:
     with open(path, "r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     if data.get("kind") not in (None, "ParameterRecipes"):
-        raise SpecError(f"{path}: kind는 ParameterRecipes여야 한다")
+        raise SpecError(f"{path}: kind는 ParameterRecipes여야 합니다")
 
     book = RecipeBook(
         project=str(data.get("project", "")),
@@ -117,9 +117,9 @@ def load(project_path: str) -> RecipeBook:
     for r in data.get("recipes") or []:
         rid = int(r["id"])
         if not (MIN_ID <= rid <= MAX_ID):
-            raise SpecError(f"{path}: 레시피 번호는 {MIN_ID}~{MAX_ID}여야 한다 (받은 값 {rid})")
+            raise SpecError(f"{path}: 레시피 번호는 {MIN_ID}~{MAX_ID}여야 합니다 (받은 값 {rid})")
         if rid in book.recipes:
-            raise SpecError(f"{path}: 레시피 번호 {rid}가 중복이다")
+            raise SpecError(f"{path}: 레시피 번호 {rid}가 중복입니다")
         overrides = dict(r.get("overrides") or {})
         for k in overrides:
             _check_override_path(k)
@@ -218,18 +218,18 @@ def status(book: RecipeBook, current: Dict[str, Any]) -> str:
 def expand(book: RecipeBook, sweep_name: str) -> List[Recipe]:
     """축을 전개해 구체 레시피 목록을 만든다. 같은 입력이면 같은 목록이다."""
     if sweep_name not in book.sweeps:
-        raise SpecError(f"스윕 {sweep_name!r}가 없다 (있는 것: {sorted(book.sweeps)})")
+        raise SpecError(f"스윕 {sweep_name!r}가 없습니다 (있는 것: {sorted(book.sweeps)})")
     sw = book.sweeps[sweep_name]
     keys = sorted(sw.axes)  # 결정적 순서
     if not keys:
-        raise SpecError(f"스윕 {sweep_name}: axes가 비어 있다")
+        raise SpecError(f"스윕 {sweep_name}: axes가 비어 있습니다")
 
     if sw.strategy == "grid":
         combos = [dict(zip(keys, vals)) for vals in itertools.product(*(sw.axes[k] for k in keys))]
     elif sw.strategy == "list":
         n = {len(sw.axes[k]) for k in keys}
         if len(n) != 1:
-            raise SpecError(f"스윕 {sweep_name}: list 전략은 모든 축의 길이가 같아야 한다")
+            raise SpecError(f"스윕 {sweep_name}: list 전략은 모든 축의 길이가 같아야 합니다")
         combos = [dict(zip(keys, vals)) for vals in zip(*(sw.axes[k] for k in keys))]
     elif sw.strategy == "random":
         allc = [dict(zip(keys, vals)) for vals in itertools.product(*(sw.axes[k] for k in keys))]

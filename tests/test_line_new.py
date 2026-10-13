@@ -44,7 +44,7 @@ def test_a_new_line_opens_without_a_table_and_runs_only_after_data_is_applied(tm
 
 def test_an_existing_line_is_not_overwritten(tmp_path):
     scaffold.new_line(str(tmp_path / "a"))
-    with pytest.raises(SpecError, match="덮지 않는다"):
+    with pytest.raises(SpecError, match="덮지 않습니다"):
         scaffold.new_line(str(tmp_path / "a"))
 
 

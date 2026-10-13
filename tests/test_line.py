@@ -48,7 +48,7 @@ def test_an_empty_cell_is_refused_where_it_is_read_and_says_which_one():
     with pytest.raises(SpecError) as e:
         expand_data(d, PROJ)
     msg = str(e.value)
-    assert "prompt" in msg and "비어 있다" in msg and "정답 형태" in msg
+    assert "prompt" in msg and "비어 있습니다" in msg and "정답 형태" in msg
 
 
 def test_a_setting_the_station_does_not_expose_is_refused():

@@ -21,7 +21,7 @@ id: {sid}
 name: "{name}"
 description: ""
 
-# 노드 기본값. 프로젝트마다 반복해 쓰지 않기 위한 자리다.
+# 노드 기본값. 프로젝트마다 반복해 쓰지 않기 위한 자리입니다.
 defaults: {{}}
 
 runtime_profile: {profile}
@@ -34,11 +34,11 @@ kind: Project
 id: "{pid}"
 name: "{name}"
 
-# 그래프 밖의 샘플 공간 선언. Input 노드는 배선 대신 여기서 값을 길어온다.
-# 경로는 모두 이 파일이 있는 디렉터리 기준이다.
+# 그래프 밖의 샘플 공간 선언. Input 노드는 배선 대신 여기서 값을 길어옵니다.
+# 경로는 모두 이 파일이 있는 디렉터리 기준입니다.
 #
-# index 파일이 아직 없다면 먼저 만들어야 한다 — 한 줄에 샘플 하나(JSONL),
-# key로 지정한 열이 샘플을 가리키는 이름이다.
+# index 파일이 아직 없다면 먼저 만들어야 합니다 — 한 줄에 샘플 하나(JSONL),
+# key로 지정한 열이 샘플을 가리키는 이름입니다.
 sample_space:
   index: "{index}"
   key: sample_id
@@ -48,12 +48,12 @@ sample_space:
     ratios: {{train: 0.8, val: 0.2}}
     seed: 20260910
 
-# 편집기에서 노드를 놓고 배선한다. 비어 있는 그래프는 아직 컴파일되지 않는다 —
-# Output 노드가 하나는 있어야 한다.
+# 편집기에서 노드를 놓고 배선합니다. 비어 있는 그래프는 아직 컴파일되지 않습니다 —
+# Output 노드가 하나는 있어야 합니다.
 nodes: []
 edges: []
 
-# 물질화 경계. 여기 적힌 노드까지가 한 번 계산해 두고 재사용하는 구간이다.
+# 물질화 경계. 여기 적힌 노드까지가 한 번 계산해 두고 재사용하는 구간입니다.
 materialize:
   boundary: []
 """
@@ -90,8 +90,8 @@ def new_project(
     for p in (sol_path, proj_path):
         if os.path.exists(p):
             raise SpecError(
-                f"이미 있는 파일을 덮지 않는다: {p}\n"
-                "  다른 디렉터리를 쓰거나, 그 프로젝트를 직접 열어라:\n"
+                f"이미 있는 파일을 덮지 않습니다: {p}\n"
+                "  다른 디렉터리를 쓰거나, 그 프로젝트를 직접 여세요:\n"
                 f"    vlmt edit {proj_path}"
             )
 
@@ -119,7 +119,7 @@ kind: Line
 id: "{lid}"
 name: "{name}"
 
-# 표(CSV)와 열 지정은 화면의 `데이터` 에서 정한다. 아래 값은 그 전의 빈 자리다.
+# 표(CSV)와 열 지정은 화면의 `데이터` 에서 정합니다. 아래 값은 그 전의 빈 자리입니다.
 sample_space:
   index: "data/table.csv"
   key: sample_id
@@ -171,7 +171,7 @@ def new_line(folder: str, *, line_id: str = "", name: str = "") -> Tuple[str, Li
     lid = _slug(line_id or os.path.basename(folder))
     path = os.path.join(folder, "line.yaml")
     if os.path.exists(path):
-        raise SpecError(f"이미 있는 파일을 덮지 않는다: {path}\n  다른 폴더를 쓰거나 그 파일을 직접 여세요: vlmt edit {path}")
+        raise SpecError(f"이미 있는 파일을 덮지 않습니다: {path}\n  다른 폴더를 쓰거나 그 파일을 직접 여세요: vlmt edit {path}")
     os.makedirs(folder, exist_ok=True)
     made: List[str] = []
     with open(path, "w", encoding="utf-8") as fh:

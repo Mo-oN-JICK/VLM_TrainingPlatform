@@ -22,8 +22,8 @@ def header(*, key: str, image: str, question: str, answers: Sequence[str],
     dup = sorted({c for c in cols if cols.count(c) > 1})
     if empty or dup or not answers:
         raise SpecError(
-            f"표 양식의 열 이름이 맞지 않는다 (열 {cols}).\n"
-            "  안 잡혔다면: 같은 이름이 둘이면 어느 열인지 정해지지 않고, 정답 열이 없으면 정답이 비어 학습된다.\n"
+            f"표 양식의 열 이름이 맞지 않습니다 (열 {cols}).\n"
+            "  안 잡혔다면: 같은 이름이 둘이면 어느 열인지 정해지지 않고, 정답 열이 없으면 정답이 비어 학습됩니다.\n"
             "  열 이름을 서로 다르게 하고 정답 열을 하나 이상 넣으세요.")
     return cols
 

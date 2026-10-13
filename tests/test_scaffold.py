@@ -44,7 +44,7 @@ def test_the_index_path_is_relative_to_the_project_file(tmp_path):
 def test_it_refuses_to_overwrite(tmp_path):
     """껍데기를 만드는 명령이 남의 스펙을 지우면 안 된다."""
     scaffold.new_project(str(tmp_path / "s"))
-    with pytest.raises(SpecError, match="덮지 않는다"):
+    with pytest.raises(SpecError, match="덮지 않습니다"):
         scaffold.new_project(str(tmp_path / "s"))
 
 

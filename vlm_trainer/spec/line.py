@@ -22,7 +22,7 @@ from .loader import _read_yaml
 def find_station(ref: str, source_dir: str) -> Dict[str, Any]:
     """`name@semver` 를 `stations/<name>.yaml` 로 해소한다. 찾는 길은 Procedure 와 같다."""
     if "@" not in ref:
-        raise SpecError(f"Station 참조는 name@semver로 핀 고정해야 한다: {ref!r}")
+        raise SpecError(f"Station 참조는 name@semver로 핀 고정해야 합니다: {ref!r}")
     name, version = ref.split("@", 1)
     d, roots = os.path.abspath(source_dir), []
     for _ in range(4):
@@ -33,14 +33,14 @@ def find_station(ref: str, source_dir: str) -> Dict[str, Any]:
         if os.path.exists(cand):
             data = _read_yaml(cand)
             if data.get("kind") != "Station":
-                raise SpecError(f"{cand}: kind는 Station이어야 한다")
+                raise SpecError(f"{cand}: kind는 Station이어야 합니다")
             if str(data.get("version")) != version:
                 raise SpecError(
-                    f"Station {ref}: 파일 버전은 {data.get('version')}이다 ({cand}). "
-                    "참조는 핀 고정이므로 자동 승격하지 않는다."
+                    f"Station {ref}: 파일 버전은 {data.get('version')}입니다 ({cand}). "
+                    "참조는 핀 고정이므로 자동 승격하지 않습니다."
                 )
             return data
-    raise SpecError(f"Station {ref}를 찾을 수 없다 (검색 경로: {roots})")
+    raise SpecError(f"Station {ref}를 찾을 수 없습니다 (검색 경로: {roots})")
 
 
 def _targets(v: Any) -> List[str]:
@@ -50,8 +50,8 @@ def _targets(v: Any) -> List[str]:
 def _set_param(inst: Dict[str, Dict[str, Any]], st: str, exposed: Dict[str, Any], name: str, value: Any) -> None:
     if name not in exposed:
         raise SpecError(
-            f"Station {st}가 노출하지 않은 설정 {name!r}이다 (노출된 것: {sorted(exposed)}). "
-            "안쪽 값은 노출한 설정으로만 덮을 수 있다."
+            f"Station {st}가 노출하지 않은 설정 {name!r}입니다 (노출된 것: {sorted(exposed)}). "
+            "안쪽 값은 노출한 설정으로만 덮을 수 있습니다."
         )
     tgt = exposed[name]
     inst[str(tgt["node"])].setdefault("params", {})[str(tgt["param"])] = value
@@ -73,16 +73,16 @@ def _apply_amount(inst: Dict[str, Dict[str, Any]], st: Dict[str, Any], amount: s
                   given: Dict[str, Any], source_dir: str, where: str, sid: str, label: str) -> None:
     spec = st.get("amount")
     if not spec:
-        raise SpecError(f"{where}: 스테이션 {sid}({label})에는 학습량이 없다.\n"
-                        "  안 잡혔다면: 적은 값이 아무 데도 쓰이지 않는다.\n  amount 를 빼세요.")
+        raise SpecError(f"{where}: 스테이션 {sid}({label})에는 학습량이 없습니다.\n"
+                        "  안 잡혔다면: 적은 값이 아무 데도 쓰이지 않습니다.\n  amount 를 빼세요.")
     if amount not in AMOUNTS:
-        raise SpecError(f"{where}: 학습량 {amount!r}는 없는 값이다 ({' | '.join(AMOUNTS)}).\n"
-                        "  안 잡혔다면: 몇 배로 학습하는지 짐작해야 한다.\n  셋 중 하나를 적으세요.")
+        raise SpecError(f"{where}: 학습량 {amount!r}는 없는 값입니다 ({' | '.join(AMOUNTS)}).\n"
+                        "  안 잡혔다면: 몇 배로 학습하는지 짐작해야 합니다.\n  셋 중 하나를 적으세요.")
     target = str(spec["node"])
     direct = inst[target].get("params", {}).get(str(spec["param"]))
     if direct:
-        raise SpecError(f"{where}: 스테이션 {sid}({label})에 학습량 {amount!r}과 직접 입력한 횟수 {direct}가 같이 있다.\n"
-                        "  안 잡혔다면: 어느 쪽이 적용되는지 화면과 실제가 갈라진다.\n"
+        raise SpecError(f"{where}: 스테이션 {sid}({label})에 학습량 {amount!r}과 직접 입력한 횟수 {direct}가 같이 있습니다.\n"
+                        "  안 잡혔다면: 어느 쪽이 적용되는지 화면과 실제가 갈라집니다.\n"
                         "  둘 중 하나만 남기세요(직접 입력을 지우거나 학습량을 빼세요).")
     if amount == "보통":
         return
@@ -93,8 +93,8 @@ def _apply_amount(inst: Dict[str, Dict[str, Any]], st: Dict[str, Any], amount: s
         with open(full, "r", encoding="utf-8") as fh:
             stages = (yaml.safe_load(fh) or {}).get("stages") or []
     except OSError as exc:
-        raise SpecError(f"{where}: 학습량을 셈하려면 학습 설정 파일이 필요한데 읽지 못했다: {full} ({exc})\n"
-                        "  안 잡혔다면: 몇 번이 기본인지 모른 채 학습이 시작된다.\n"
+        raise SpecError(f"{where}: 학습량을 셈하려면 학습 설정 파일이 필요한데 읽지 못했습니다: {full} ({exc})\n"
+                        "  안 잡혔다면: 몇 번이 기본인지 모른 채 학습이 시작됩니다.\n"
                         "  학습 설정 파일 경로를 확인하세요.") from None
     factor = AMOUNTS[amount]
     inst[target].setdefault("params", {})[str(spec["param"])] = {
@@ -107,11 +107,11 @@ def _apply_overrides(data: Dict[str, Any], nodes: List[Dict[str, Any]], procs: L
     by_id = {str(x["id"]): x for x in nodes + procs}
     for i, o in enumerate(data.get("overrides") or []):
         if not isinstance(o, dict) or not {"node", "param"} <= set(o) or "value" not in o:
-            raise SpecError(f"{where}: overrides[{i}]는 {{node, param, value}} 이어야 한다 — {o!r}")
+            raise SpecError(f"{where}: overrides[{i}]는 {{node, param, value}} 이어야 합니다 — {o!r}")
         tgt = by_id.get(str(o["node"]))
         if tgt is None:
-            raise SpecError(f"{where}: overrides[{i}]가 없는 상자를 가리킨다: {o['node']!r} (있는 상자: {sorted(by_id)}).\n"
-                            "  안 잡혔다면: 고친 값이 어디에도 적용되지 않는데 적용된 줄 안다.\n"
+            raise SpecError(f"{where}: overrides[{i}]가 없는 상자를 가리킵니다: {o['node']!r} (있는 상자: {sorted(by_id)}).\n"
+                            "  안 잡혔다면: 고친 값이 어디에도 적용되지 않는데 적용된 줄 압니다.\n"
                             "  상자 id 를 확인하세요.")
         tgt.setdefault("params", {})[str(o["param"])] = o["value"]
 
@@ -120,7 +120,7 @@ def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line", *, c
                 info: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Line 매핑 -> Project 매핑. 읽는 파일은 Station 정의와, `check` 일 때 표(첫 줄과 split)다."""
     if data.get("kind") != "Line":
-        raise SpecError(f"{where}: kind는 Line이어야 한다 (현재 {data.get('kind')!r})")
+        raise SpecError(f"{where}: kind는 Line이어야 합니다 (현재 {data.get('kind')!r})")
 
     nodes: List[Dict[str, Any]] = []
     procs: List[Dict[str, Any]] = []
@@ -130,7 +130,7 @@ def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line", *, c
 
     stations = data.get("stations") or []
     if not stations:
-        raise SpecError(f"{where}: stations가 비었다 — 한 줄에 스테이션이 하나는 있어야 한다")
+        raise SpecError(f"{where}: stations가 비었습니다 — 한 줄에 스테이션이 하나는 있어야 합니다")
 
     seen = set()
     for si, sref in enumerate(stations):
@@ -155,18 +155,18 @@ def expand_data(data: Dict[str, Any], source_dir: str, where: str = "line", *, c
         dup = sorted(set(inst) & taken)
         if dup:
             raise SpecError(
-                f"{where}: 스테이션 {sid}({label})의 안쪽 id {dup}가 앞 스테이션과 겹친다 — "
-                "같은 종류의 스테이션을 한 줄에 둘 수 없다."
+                f"{where}: 스테이션 {sid}({label})의 안쪽 id {dup}가 앞 스테이션과 겹칩니다 — "
+                "같은 종류의 스테이션을 한 줄에 둘 수 없습니다."
             )
 
         # 읽기는 이 스테이션이 쓰기 전에 푼다 — 읽고 다시 쓰는 칸은 위쪽 값을 읽는다.
         for cell, ports in (st.get("reads") or {}).items():
             if cell not in writer:
                 raise SpecError(
-                    f"{where}: 스테이션 {sid}({label})가 읽는 칸 {cell!r}이 비어 있다.\n"
+                    f"{where}: 스테이션 {sid}({label})가 읽는 칸 {cell!r}이 비어 있습니다.\n"
                     f"  채워진 칸: {sorted(writer) or '없음'}\n"
                     "  안 잡혔다면: 이 스테이션의 입력 포트가 배선되지 않은 채 컴파일에서\n"
-                    "  '필수 입력 포트가 연결되지 않았다'로 막히고, 어느 칸이 비었는지는 안 나온다.\n"
+                    "  '필수 입력 포트가 연결되지 않았습니다'로 막히고, 어느 칸이 비었는지는 안 나옵니다.\n"
                     f"  {cell!r}을 쓰는 스테이션을 {label} 위에 두세요."
                 )
             src = writer[cell][1]

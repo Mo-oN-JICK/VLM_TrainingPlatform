@@ -193,7 +193,7 @@ def test_a_missing_group_column_is_refused_not_silently_split_per_row(tree):
 
 def test_an_empty_validation_side_is_refused(tree):
     tree.line["sample_space"]["splits"]["ratios"] = {"train": 0.999, "val": 0.001}
-    with pytest.raises(SpecError, match="0이다"):
+    with pytest.raises(SpecError, match="0입니다"):
         compile_project(tree.path())
 
 
@@ -284,8 +284,8 @@ def test_a_number_item_rejects_a_word_and_a_list_item_rejects_an_unlisted_value(
 
 
 @pytest.mark.parametrize("edit,match", [
-    (lambda r: r[0].update({"허용값": ""}), "허용값이 없다"),
-    (lambda r: r[0].update({"허용값": "기어|기어"}), "겹친다"),
+    (lambda r: r[0].update({"허용값": ""}), "허용값이 없습니다"),
+    (lambda r: r[0].update({"허용값": "기어|기어"}), "겹칩니다"),
     (lambda r: r[2].update({"허용값": "1|2"}), "허용값"),
     (lambda r: r[1].update({"항목": "part_type"}), "앞에서도"),
     (lambda r: r[1].update({"항목": "1번 항목"}), "태그 이름"),
@@ -304,7 +304,7 @@ def test_a_bad_answer_row_names_the_row_and_the_fix(edit, match):
 def test_an_empty_answer_table_is_refused():
     from vlm_trainer.answer import table
 
-    with pytest.raises(SpecError, match="하나도 없다"):
+    with pytest.raises(SpecError, match="하나도 없습니다"):
         table.build([], schema_id="t1")
 
 

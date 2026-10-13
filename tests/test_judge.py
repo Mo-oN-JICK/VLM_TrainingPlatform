@@ -42,7 +42,7 @@ def test_judgments_last_line_wins_and_clear(run):
 
 
 def test_unknown_sample_and_verdict_refused(run):
-    with pytest.raises(SpecError, match="답에 없다"):
+    with pytest.raises(SpecError, match="답에 없습니다"):
         judge.judge(run, "nope", "ok")
     with pytest.raises(SpecError, match="없는 값"):
         judge.judge(run, "s1", "maybe")

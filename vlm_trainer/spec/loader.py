@@ -28,11 +28,11 @@ SPEC_VERSION = 1
 
 def _read_yaml(path: str) -> Dict[str, Any]:
     if not os.path.exists(path):
-        raise SpecError(f"스펙 파일이 없다: {path}")
+        raise SpecError(f"스펙 파일이 없습니다: {path}")
     with open(path, "r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     if not isinstance(data, dict):
-        raise SpecError(f"스펙 최상위는 매핑이어야 한다: {path}")
+        raise SpecError(f"스펙 최상위는 매핑이어야 합니다: {path}")
     return data
 
 
@@ -40,7 +40,7 @@ def _edges(raw: Any, where: str) -> List[Edge]:
     out: List[Edge] = []
     for i, e in enumerate(raw or []):
         if not isinstance(e, dict) or "from" not in e or "to" not in e:
-            raise SpecError(f"{where}: edges[{i}]는 {{from, to}} 매핑이어야 한다 — {e!r}")
+            raise SpecError(f"{where}: edges[{i}]는 {{from, to}} 매핑이어야 합니다 — {e!r}")
         try:
             out.append(Edge.parse(str(e["from"]), str(e["to"])))
         except ValueError as exc:
@@ -52,7 +52,7 @@ def _node_modules(raw: Any, where: str) -> List[str]:
     if raw is None:
         return []
     if not isinstance(raw, list) or any(not isinstance(m, str) for m in raw):
-        raise SpecError(f"{where}: node_modules는 문자열 목록이어야 한다 (예: [my_nodes.crop])")
+        raise SpecError(f"{where}: node_modules는 문자열 목록이어야 합니다 (예: [my_nodes.crop])")
     return [m.strip() for m in raw if m.strip()]
 
 
@@ -103,11 +103,11 @@ def import_node_modules(g: GraphModel) -> List[str]:
             except ImportError as e:
                 where_looked = ", ".join(roots)
                 raise SpecError(
-                    f"node_modules의 {m!r}을 임포트할 수 없다 — {e}\n"
+                    f"node_modules의 {m!r}을 임포트할 수 없습니다 — {e}\n"
                     f"  뒤진 곳: {where_looked}\n"
                     "  안 잡혔다면: 이 스펙이 쓰는 노드가 등록되지 않은 채\n"
-                    "  컴파일에 들어가고 '노드를 찾을 수 없다'로 막힌다.\n"
-                    "  무엇이 빠졌는지는 거기서 안 나온다.\n"
+                    "  컴파일에 들어가고 '노드를 찾을 수 없습니다'로 막힙니다.\n"
+                    "  무엇이 빠졌는지는 거기서 안 나옵니다.\n"
                     "  파일 이름과 위치를 확인하라 (예: my_nodes/crop.py -> my_nodes.crop)."
                 ) from None
     finally:
@@ -121,10 +121,10 @@ def _nodes(raw: Any, where: str) -> List[NodeInstance]:
     out: List[NodeInstance] = []
     for i, n in enumerate(raw or []):
         if not isinstance(n, dict) or "id" not in n or "type" not in n:
-            raise SpecError(f"{where}: nodes[{i}]에 id 또는 type이 없다 — {n!r}")
+            raise SpecError(f"{where}: nodes[{i}]에 id 또는 type이 없습니다 — {n!r}")
         params = n.get("params") or {}
         if not isinstance(params, dict):
-            raise SpecError(f"{where}: nodes[{i}].params는 매핑이어야 한다")
+            raise SpecError(f"{where}: nodes[{i}].params는 매핑이어야 합니다")
         out.append(NodeInstance(id=str(n["id"]), type=str(n["type"]), params=dict(params)))
     return out
 
@@ -148,7 +148,7 @@ def build_project(data: Dict[str, Any], source_dir: str, where: str = "spec") ->
     """이미 읽어 둔 매핑에서 GraphModel을 만든다. History 되감기가 이 경로를 쓴다."""
     kind = data.get("kind", "Project")
     if kind != "Project":
-        raise SpecError(f"{where}: kind는 Project여야 한다 (현재 {kind!r})")
+        raise SpecError(f"{where}: kind는 Project여야 합니다 (현재 {kind!r})")
     if int(data.get("spec_version", SPEC_VERSION)) != SPEC_VERSION:
         raise SpecError(f"{where}: 지원하지 않는 spec_version {data.get('spec_version')!r}")
 
@@ -218,12 +218,12 @@ def _exposed_ports(raw: Any, where: str, kind: str) -> Dict[str, Any]:
     for name, v in (raw or {}).items():
         port = v.get("port") if isinstance(v, dict) else v
         if not port:
-            raise SpecError(f"{where}: exposed_{kind}[{name}]에 port가 없다")
+            raise SpecError(f"{where}: exposed_{kind}[{name}]에 port가 없습니다")
         if kind == "outputs":
             if isinstance(port, list):
                 raise SpecError(
-                    f"{where}: exposed_outputs[{name}]는 포트 하나여야 한다 — "
-                    "출력이 두 곳에서 나오면 어느 값인지 정해지지 않는다"
+                    f"{where}: exposed_outputs[{name}]는 포트 하나여야 합니다 — "
+                    "출력이 두 곳에서 나오면 어느 값인지 정해지지 않습니다"
                 )
             out[str(name)] = str(port)
         else:
@@ -234,12 +234,12 @@ def _exposed_ports(raw: Any, where: str, kind: str) -> Dict[str, Any]:
 def load_procedure(path: str) -> ProcedureDef:
     data = _read_yaml(path)
     if data.get("kind") != "Procedure":
-        raise SpecError(f"{path}: kind는 Procedure여야 한다")
+        raise SpecError(f"{path}: kind는 Procedure여야 합니다")
     where = os.path.basename(path)
     params: Dict[str, tuple] = {}
     for name, v in (data.get("exposed_params") or {}).items():
         if not isinstance(v, dict) or "node" not in v or "param" not in v:
-            raise SpecError(f"{where}: exposed_params[{name}]는 {{node, param}}이어야 한다")
+            raise SpecError(f"{where}: exposed_params[{name}]는 {{node, param}}이어야 합니다")
         params[str(name)] = (str(v["node"]), str(v["param"]))
 
     return ProcedureDef(
@@ -260,7 +260,7 @@ def load_procedure(path: str) -> ProcedureDef:
 def find_procedure(ref: str, source_dir: Optional[str]) -> ProcedureDef:
     """`name@semver`를 프로시저 파일로 해소한다. 버전 핀은 정확히 일치해야 한다."""
     if "@" not in ref:
-        raise SpecError(f"Procedure 참조는 name@semver로 핀 고정해야 한다: {ref!r}")
+        raise SpecError(f"Procedure 참조는 name@semver로 핀 고정해야 합니다: {ref!r}")
     name, version = ref.split("@", 1)
     roots: List[str] = []
     if source_dir:
@@ -274,8 +274,8 @@ def find_procedure(ref: str, source_dir: Optional[str]) -> ProcedureDef:
             pd = load_procedure(cand)
             if pd.version != version:
                 raise SpecError(
-                    f"Procedure {ref}: 파일 버전은 {pd.version}이다 ({cand}). "
-                    "참조는 핀 고정이므로 자동 승격하지 않는다."
+                    f"Procedure {ref}: 파일 버전은 {pd.version}입니다 ({cand}). "
+                    "참조는 핀 고정이므로 자동 승격하지 않습니다."
                 )
             return pd
-    raise SpecError(f"Procedure {ref}를 찾을 수 없다 (검색 경로: {roots})")
+    raise SpecError(f"Procedure {ref}를 찾을 수 없습니다 (검색 경로: {roots})")

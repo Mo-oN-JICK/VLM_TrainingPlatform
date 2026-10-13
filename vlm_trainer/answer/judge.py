@@ -26,8 +26,8 @@ def _steps(run_dir: str) -> List[str]:
     """실행이 학습 때 쓴 정답 항목 이름들. 추론 계약에 적혀 있다."""
     path = os.path.join(run_dir, "train", "inference_contract.json")
     if not os.path.exists(path):
-        raise SpecError(f"{path} 가 없다 — 이 실행은 학습까지 끝나지 않았다.\n"
-                        "  안 잡혔다면: 정답 항목을 몰라 모델 답을 항목별로 나눌 수 없다.\n"
+        raise SpecError(f"{path} 가 없습니다 — 이 실행은 학습까지 끝나지 않았습니다.\n"
+                        "  안 잡혔다면: 정답 항목을 몰라 모델 답을 항목별로 나눌 수 없습니다.\n"
                         "  학습이 끝난 실행 폴더를 고르세요.")
     with open(path, "r", encoding="utf-8") as fh:
         return [str(s) for s in (json.load(fh).get("answer_schema") or {}).get("steps") or []]
@@ -53,11 +53,11 @@ def read_judgments(run_dir: str) -> Dict[str, Dict[str, str]]:
 def judge(run_dir: str, sample_id: str, verdict: str) -> Dict[str, str]:
     """판정 한 줄을 덧붙인다. 답 파일에 없는 건은 거부한다 — 오타가 조용히 기록되면 안 된다."""
     if verdict not in VERDICTS:
-        raise SpecError(f"판정 {verdict!r}는 없는 값이다 ({' | '.join(VERDICTS)}).\n"
-                        "  안 잡혔다면: 엉뚱한 글자가 판정으로 남아 요약이 어긋난다.\n  ok, ng, none 중 하나를 쓰세요.")
+        raise SpecError(f"판정 {verdict!r}는 없는 값입니다 ({' | '.join(VERDICTS)}).\n"
+                        "  안 잡혔다면: 엉뚱한 글자가 판정으로 남아 요약이 어긋납니다.\n  ok, ng, none 중 하나를 쓰세요.")
     if str(sample_id) not in {r["id"] for r in read_answers(run_dir)}:
-        raise SpecError(f"건 {sample_id!r}는 이 실행의 검증 답에 없다.\n"
-                        "  안 잡혔다면: 없는 건에 판정이 쌓여 어디에도 안 보인다.\n"
+        raise SpecError(f"건 {sample_id!r}는 이 실행의 검증 답에 없습니다.\n"
+                        "  안 잡혔다면: 없는 건에 판정이 쌓여 어디에도 안 보입니다.\n"
                         "  `vlmt judgments <실행>` 으로 건 id 를 확인하세요.")
     rec = {"id": str(sample_id), "verdict": verdict, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
     with open(os.path.join(_infer_dir(run_dir), "judgments.jsonl"), "a", encoding="utf-8") as fh:
@@ -68,8 +68,8 @@ def judge(run_dir: str, sample_id: str, verdict: str) -> Dict[str, str]:
 def read_answers(run_dir: str) -> List[Dict[str, Any]]:
     path = os.path.join(_infer_dir(run_dir), "answers.jsonl")
     if not os.path.exists(path):
-        raise SpecError(f"{path} 가 없다 — 이 실행은 검증을 하지 않았다.\n"
-                        "  안 잡혔다면: 빈 목록이 '모두 통과'처럼 보인다.\n  검증까지 끝난 실행을 고르세요.")
+        raise SpecError(f"{path} 가 없습니다 — 이 실행은 검증을 하지 않았습니다.\n"
+                        "  안 잡혔다면: 빈 목록이 '모두 통과'처럼 보입니다.\n  검증까지 끝난 실행을 고르세요.")
     with open(path, "r", encoding="utf-8") as fh:
         rows = [json.loads(l) for l in fh if l.strip()]
     # 같은 실행 id 로 다시 돌리면 답이 이어 붙는다. 건마다 마지막 답이 지금 모델의 답이다
