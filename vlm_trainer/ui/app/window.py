@@ -18,11 +18,13 @@ from .. import layout as L
 from .. import line_model as M
 from .. import tokens as T
 from .. import words as W
+from ...engine import runner as runner_mod
 from ..api import Editor, compat_matrix, occupied_inputs
 from .canvas import GraphCanvas
 from .history import HistoryDock, RecipeDock
 from .inspector import Inspector
 from .library import LibraryDock
+from .line_dock import NgDock
 from .line_settings import _BAD, fill_table, new_table, settings_rows
 from .progress import RunDock, RunWatcher
 
@@ -93,6 +95,14 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.tabifyDockWidget(self.recipe, self.run_dock)
         self.inspector.raise_()
         self.resizeDocks([self.library, self.inspector], [250, 330], QtCore.Qt.Horizontal)
+        # 5노드는 NG 표가 항상 보인다 — 배출함을 가리면 라인 옆 상자를 가린 것과 같다
+        self.ng_dock = None
+        if editor.line_data is not None:
+            self.ng_dock = NgDock(self)
+            self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.ng_dock)
+            self.ng_dock.bind(editor)
+            self.ng_dock.reread.connect(lambda: self._later(self.reread))
+            self.ng_dock.refused.connect(self._refuse)
 
         self._connect_canvas()
         self._connect_panels()
@@ -268,25 +278,30 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.chk_debug.setToolTip(
             "상자마다 중간 결과를 그림으로 남깁니다.\n"
             "꺼져 있으면 만들지도 않습니다 — 켜면 그만큼 느려집니다.")
-        tb.addWidget(self.chk_debug)
+        self._preview_acts = [self.act_preview, tb.addWidget(self.chk_debug)]
 
         # `샘플 8` 만 적혀 있어 무슨 숫자인지 알 수 없었다. 어느 버튼이 쓰는 값인지
         # 이름에 넣는다.
         lbl = QtWidgets.QLabel("  미리보기 샘플 ")
         lbl.setToolTip("`미리보기` 가 돌릴 샘플 수입니다. `실행` 은 전부 돕니다.")
-        tb.addWidget(lbl)
+        self._preview_acts.append(tb.addWidget(lbl))
         self.spin_limit = QtWidgets.QSpinBox()
         self.spin_limit.setRange(1, 99999)
         self.spin_limit.setValue(8)
         self.spin_limit.setFixedWidth(72)
         self.spin_limit.setSuffix(" 건")
         self.spin_limit.setToolTip(lbl.toolTip())
-        tb.addWidget(self.spin_limit)
+        self._preview_acts.append(tb.addWidget(self.spin_limit))
 
         tb.addSeparator()
         tb.addAction("전체 맞춤", self.canvas.fit)
         tb.addAction("저장", self.on_save)
         if self.editor.line_data is not None:
+            # 미리보기는 상자 그래프의 중간값을 보는 도구다. 5노드는 `실행` 하나가 끝까지 간다.
+            for a in self._preview_acts:
+                a.setVisible(False)
+            self.act_reread = tb.addAction("다시 읽기", lambda: self.reread())
+            self.act_reread.setToolTip("표(CSV)와 Line 파일을 다시 읽습니다. 표를 고쳤다면 눌러 주세요.")
             self.act_expert = tb.addAction("전문가 모드")
             self.act_expert.setCheckable(True)
             self.act_expert.setToolTip("켜면 모든 설정과 안쪽 상자의 값이 보입니다. 창을 닫으면 꺼집니다.")
@@ -347,6 +362,48 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.history.update_view(self._state.get("history") or [])
         self.recipe.update_view(self._state.get("recipe") or {})
         self._show_inspector(self._picked)
+        if self.ng_dock is not None:
+            self.paint_run(self.editor.run_state())     # 다시 그리면 색이 지워진다
+
+    def paint_run(self, st: Dict[str, Any]) -> None:
+        """진행 상태를 칠한다. 5노드는 스테이션 카드의 램프·건수와 NG 표도 함께."""
+        self.canvas.paint_states(st.get("states") or {})
+        if self.ng_dock is None or self.editor.compiled is None:
+            return
+        snap = self.editor._read_progress()
+        rep = runner_mod.report_from_snapshot(snap) if snap else None
+        cards = M.cards(self.editor.line_describe(), self.editor.compiled, rep, st)
+        for c in cards:
+            node = self.canvas.cards.get(c.id)
+            if node is not None:
+                node.state, node.state_extra = LAMP_STATE[c.lamp], c.line2
+                node.update()
+        quarantine = list((snap or {}).get("quarantine") or [])
+        self.ng_dock.paint(M.ng_rows(cards, quarantine), int((snap or {}).get("quarantine_total") or len(quarantine)))
+
+    def reread(self, confirm: bool = True) -> None:
+        """Line 과 표를 디스크에서 다시 읽는다. 저장하지 않은 변경은 사라지므로 먼저 묻는다."""
+        if confirm and self.editor.dirty:
+            ans = QtWidgets.QMessageBox.question(
+                self, "저장하지 않은 변경", "다시 읽으면 저장하지 않은 변경이 사라집니다. 계속할까요?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+            if ans != QtWidgets.QMessageBox.Yes:
+                return
+        old = self.editor
+        try:
+            new = Editor.open_line(old.path)
+        except Exception as exc:  # 스펙이 어긋난 채 열린 창이 죽지 않게 한다
+            self._refuse("다시 읽기", {"reason": str(exc).splitlines()[0], "detail": str(exc)})
+            return
+        # 돌고 있는 실행의 손잡이를 넘긴다. 빈 손이면 다시 읽는 순간 실행 중인 것이 화면에서 사라진다.
+        for f in ("proc", "run_id", "progress_path", "train_progress_path", "console_path",
+                  "phase", "stopped", "launched_at", "finished_at", "extra_modules"):
+            setattr(new, f, getattr(old, f))
+        self.editor = new
+        self.inspector.bind(new)
+        self.run_dock.bind_preview_reader(new.preview_file)
+        self.ng_dock.bind(new)
+        self.reload_graph()
 
     def _mutate(self, fn: Any, label: str = "편집") -> bool:
         """편집을 시도한다. `api`가 물리면 화면을 되돌리고 이유를 보여 준다."""
@@ -510,6 +567,8 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.act_stop.setEnabled(on)
         self.library.setEnabled(not on)
         self.inspector.setEnabled(not on)
+        if self.ng_dock is not None:
+            self.ng_dock.set_running(on)
         # **보는 것은 막지 않는다.** 전에는 `setInteractive(False)` 로 캔버스의 마우스
         # 이벤트를 통째로 껐는데, 그러면 팬도 휠 줌도 선택도 죽는다 — 실행 중에 아래쪽
         # 노드를 보러 갈 수가 없었다. 실행 중에 제일 하고 싶은 일이 그것인데.
@@ -527,6 +586,9 @@ class EditorWindow(QtWidgets.QMainWindow):
             self.lbl_run.setText("")
             return
         s = self.canvas.cards[nid].shown
+        if s.category == L.STATION:     # 내부 이름(s4 · Station) 대신 현장 이름
+            self.lbl_run.setText(s.label)
+            return
         self.lbl_run.setText(f"{nid}   {s.ref}")
 
     def _show_inspector(self, nid: str) -> None:
@@ -596,6 +658,9 @@ class EditorWindow(QtWidgets.QMainWindow):
             f"  상자 우클릭 — 펼치기/접기 · {W.BOUNDARY} · 삭제\n\n"
             f"실행 — `실행` 은 준비 → {W.BAKE} → 학습 → 추론을 끝까지,\n"
             "       `미리보기` 는 샘플 몇 건만 돌려 중간값을 봅니다.")
+
+
+LAMP_STATE = {M.PENDING: "pending", M.RUNNING: "running", M.OK: "success", M.NG: "partial", M.ERROR: "failed"}
 
 
 def launch(project_path: str, extra_modules: tuple = (), canvas: bool = False) -> int:

@@ -148,3 +148,72 @@ def test_dropping_a_library_node_onto_a_line_is_refused_with_the_reason(app, lin
     before = len(w.canvas.cards)
     w._add_node("source.field", 0, 0)
     assert "5노드(Line)" in w.lbl_refuse.text() and len(w.canvas.cards) == before
+
+
+# ── 단계 5-D: 상태·NG 표 ───────────────────────────────────────────────
+def _snap(ed, tmp_path):
+    import json
+
+    cg = ed.compiled
+    snap = {
+        "run_id": "t", "phase": "running", "order": list(cg.order), "total": 10, "processed": 10,
+        "node_state": {n: {"success": 8} for n in cg.order} | {"n_guard": {"success": 8, "failed": 2}},
+        "node_ms": {}, "cache": {}, "quarantine_total": 2,
+        "quarantine": [{"sample_key": f"o010{i}", "node_id": "n_guard",
+                        "cause": "정답 어휘가 프롬프트에 있다: ['기어']", "hint": "템플릿에서 뺀다"} for i in (1, 2)],
+    }
+    p = tmp_path / "progress.json"
+    p.write_text(json.dumps(snap), encoding="utf-8")
+    ed.progress_path = str(p)
+
+
+def test_ejected_samples_color_the_cards_and_fill_the_ng_table_under_the_canvas(app, line, tmp_path):
+    from vlm_trainer.ui.app.window import EditorWindow
+
+    ed = Editor.open_line(line)
+    _snap(ed, tmp_path)
+    w = EditorWindow(ed)
+    cards = {c.shown.label[0]: c for c in w.canvas.cards.values()}
+    assert cards["③"].state == "partial" and cards["③"].state_extra.endswith("NG 2")
+    assert cards["②"].state == "success"
+    d = w.ng_dock
+    assert d.tbl_ng.rowCount() == 2 and d.lbl_ng.text().startswith("NG 2건")
+    assert d.tbl_ng.item(0, 2).text() == "③ 정답 형태"
+    d.tbl_ng.selectRow(1)
+    assert d.lbl_sum.text().startswith("③ 정답 형태 — ") and not d.detail.isVisibleTo(w)
+    d.btn_more.setChecked(True)
+    assert "o0102" in d.detail.toPlainText() and "해결: 템플릿에서 뺀다" in d.detail.toPlainText()
+    w.reload_graph()                                          # 다시 그려도 색이 남는다
+    assert {c.shown.label[0]: c for c in w.canvas.cards.values()}["③"].state == "partial"
+
+
+def test_the_status_line_names_a_card_in_shop_language_and_a_line_has_no_preview(app, line):
+    from vlm_trainer.ui.app.window import EditorWindow
+
+    w = EditorWindow(Editor.open_line(line))
+    sid = next(i for i, c in w.canvas.cards.items() if c.shown.label.startswith("③"))
+    w._on_pick(sid)
+    assert w.lbl_run.text().startswith("③") and "Station" not in w.lbl_run.text()
+    assert all(not a.isVisible() for a in w._preview_acts)
+
+
+def test_fixing_a_row_from_the_dock_writes_the_csv_and_rereads(app, line, tmp_path):
+    from vlm_trainer.engine import table_edit
+    from vlm_trainer.ui.app.window import EditorWindow
+
+    w = EditorWindow(Editor.open_line(line))
+    csvp = tmp_path / "t.csv"
+    csvp.write_bytes("번호,사진,질문,부품\r\na1,x.png,무슨 부품입니까?,기어\r\n".encode("utf-8-sig"))
+    ss = w.editor.line_data["sample_space"]
+    ss["index"], ss["key"] = str(csvp), "번호"
+    d = w.ng_dock
+    d._show_fix("a1")
+    assert d.fix_box.isVisibleTo(w) and d.tbl_fix.rowCount() == 4
+    d.tbl_fix.item(3, 1).setText("볼트")
+    d._fix_save()
+    assert table_edit.row_values(str(csvp), "번호", "a1")["부품"] == "볼트"
+    d._fix_exclude(True, confirm=False)
+    assert csvp.read_bytes().decode("utf-8-sig").splitlines()[1].endswith(",x")
+    old = w.editor
+    w.reread(confirm=False)
+    assert w.editor is not old and d.editor is w.editor and len(w.canvas.cards) == 5

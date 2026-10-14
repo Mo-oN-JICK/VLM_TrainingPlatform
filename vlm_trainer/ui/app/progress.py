@@ -191,7 +191,7 @@ class RunWatcher(QtCore.QObject):
         st = self.win.editor.run_state()
         win = self.win
 
-        win.canvas.paint_states(st.get("states") or {})
+        win.paint_run(st)
         win.run_dock.update_view(st)
 
         running = bool(st.get("running"))
