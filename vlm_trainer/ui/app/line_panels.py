@@ -287,6 +287,10 @@ def image_panel(win: Any, st: Dict[str, Any]) -> QtWidgets.QWidget:
         b.clicked.connect(win._open_data)
         lay.addWidget(b)
     ss = ed.line_data.get("sample_space") or {}
+    if ed.compiled is None:     # 아직 폴더도 표도 안 고른 새 프로젝트 — 셀 것이 없다
+        lay.addWidget(_label("사진 폴더나 표를 고르면 여기에 건수와 첫 사진이 보입니다."))
+        win.preview_pair = False
+        return box
     try:
         n = LD.split_counts(os.path.dirname(ed.path), str(ss.get("index", "")), str(ss.get("key", "")),
                             dict(ss.get("splits") or {}))
