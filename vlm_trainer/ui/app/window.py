@@ -103,6 +103,8 @@ class EditorWindow(QtWidgets.QMainWindow):
             self.ng_dock.bind(editor)
             self.ng_dock.reread.connect(lambda: self._later(self.reread))
             self.ng_dock.refused.connect(self._refuse)
+            self.run_dock.quarantine_label.hide()      # 아래 NG 표와 겹친다
+            self.run_dock.quarantine.hide()
 
         self._connect_canvas()
         self._connect_panels()
@@ -724,19 +726,16 @@ class EditorWindow(QtWidgets.QMainWindow):
 LAMP_STATE = {M.PENDING: "pending", M.RUNNING: "running", M.OK: "success", M.NG: "partial", M.ERROR: "failed"}
 
 
-def launch(project_path: str, extra_modules: tuple = (), canvas: bool = False) -> int:
+def launch(project_path: str, extra_modules: tuple = ()) -> int:
     """창을 띄운다. `vlmt app`이 부르는 자리다."""
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     app.setApplicationName("VLM Trainer")
     from ...spec.line import is_line
 
-    # ponytail: `canvas` 는 5-F 에서 LineWindow 와 함께 사라지는 임시 스위치다
-    if is_line(project_path) and not canvas:  # 5노드는 아직 전용 화면이 연다
-        from .line_window import launch_line
-
-        return launch_line(project_path, extra_modules)
     editor = Editor.open_line(project_path) if is_line(project_path) else Editor.open(project_path)
     editor.extra_modules = tuple(extra_modules)
     win = EditorWindow(editor)
     win.show()
+    if win.ng_dock is not None and editor.compiled is None:  # 새 5노드: 표부터 넣게 한다
+        QtCore.QTimer.singleShot(0, win._open_data)
     return app.exec()

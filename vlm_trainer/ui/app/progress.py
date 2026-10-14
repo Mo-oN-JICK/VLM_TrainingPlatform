@@ -54,7 +54,8 @@ class RunDock(QtWidgets.QDockWidget):
 
         self.quarantine = QtWidgets.QListWidget()
         self.quarantine.setMaximumHeight(150)
-        lay.addWidget(QtWidgets.QLabel("NG 배출 샘플"))
+        self.quarantine_label = QtWidgets.QLabel("NG 배출 샘플")
+        lay.addWidget(self.quarantine_label)
         lay.addWidget(self.quarantine)
 
         self.previews = QtWidgets.QWidget()

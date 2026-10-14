@@ -210,7 +210,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     ed = sub.add_parser("edit", help="그래프 편집기를 엽니다 (네이티브 창)")
     ed.add_argument("spec")
-    ed.add_argument("--canvas", action="store_true", help="5노드를 캔버스 화면으로 엽니다 (단계 5 작업 중인 임시 스위치)")
     ed.set_defaults(func=cmd_edit)
 
     # `app` 은 이식하는 동안 쓰던 이름이다. 손가락이 기억하는 것을 끊지 않는다.

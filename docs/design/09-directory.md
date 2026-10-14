@@ -90,7 +90,7 @@ vlm_trainer/
     line_data.py       데이터 대화상자 계산(열 목록, 나누기 미리보기)
     words.py           화면 용어 금지어 표
     app/               PySide6 — window / canvas / library / inspector /
-                       history / progress / line_window(5노드) /
+                       history / progress / line_settings / line_dock(5노드) /
                        data_dialog / verdict_dialog
 ```
 

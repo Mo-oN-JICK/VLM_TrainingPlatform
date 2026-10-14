@@ -33,10 +33,10 @@ def available() -> bool:
     return True
 
 
-def launch(project_path: str, extra_modules: Tuple[str, ...] = (), canvas: bool = False) -> int:
+def launch(project_path: str, extra_modules: Tuple[str, ...] = ()) -> int:
     """편집기 창을 띄운다. PySide6 가 없으면 무엇을 해야 하는지 말하고 멈춘다."""
     if not available():
         raise SystemExit(INSTALL_HINT)
     from .window import launch as _launch
 
-    return _launch(project_path, extra_modules, canvas)
+    return _launch(project_path, extra_modules)

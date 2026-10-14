@@ -343,7 +343,7 @@ transformers가 없으면 무엇을 설치해야 하는지 말하고 멈춘다(�
 
 - [x] `spec/line.py`(펼침·Station·학습량), `solutions/stations/*.yaml`, `01_open/line.yaml`. 펼친 그래프는 11노드와 `spec_hash`·사전 준비 묶음·검증 id/정답이 같다
 - [x] 표(CSV) 입력과 정답 항목 표(`spec/table*.py`, `answer/table.py`), 학습/검증 나누기 모드 명시
-- [x] 화면: `LineWindow`(카드·NG 표·설정·안쪽 보기·내보내기), `데이터`·`검증 결과` 대화상자, 새 5노드 만들기(`vlmt new-line`)
+- [x] 화면: 기존 편집기 화면(`EditorWindow`) 하나로 통일(2026-10-14, Q52~58). `line.yaml` 을 열면 캔버스에 카드 5장, 카드 우클릭으로 안쪽 상자 펼치기·접기(읽기 전용), 설정 칸에 5노드 설정(기본/전문가·학습량), 아래 도크에 NG 표·이 건 고치기, 툴바에 `데이터`·`검증 결과`·`다시 읽기`·`11노드로 내보내기`·`새 5노드…`. 전용 창 `LineWindow` 는 없앴다
 - [x] 검증: 항목별 O/X는 보조, 사람 OK/NG 판정을 `judgments.jsonl`에 남긴다(`vlmt judge`·`judgments`)
 - [x] 용어집 적용(노드 설명·묶음 상자·사용자 문서). 금지어 표는 `ui/words.py`, 검사는 `tests/test_glossary.py`
 - [x] 오류는 한 줄 요약(스테이션 번호 포함) + 접힌 상세. 사용자에게 나가는 메시지 전부 합니다체로 통일(2026-10-13, Q44~46: 평서 ~습니다·~입니다, 해결 배선 ~하세요; 주석·docstring·설계 문서는 그대로)

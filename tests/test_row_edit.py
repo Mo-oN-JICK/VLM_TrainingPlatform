@@ -133,9 +133,9 @@ def app():
 
 @pytest.fixture
 def window(app, tmp_path):
-    """작은 CSV 를 가리키게 한 Line 창. NG 표를 거치지 않고 고치기 칸을 바로 연다."""
+    """작은 CSV 를 가리키게 한 Line 창의 NG 도크. NG 표를 거치지 않고 고치기 칸을 바로 연다."""
     from vlm_trainer.ui.api import Editor
-    from vlm_trainer.ui.app.line_window import LineWindow
+    from vlm_trainer.ui.app.window import EditorWindow
 
     registry.load_builtin_nodes()
     dst = tmp_path / "solutions"
@@ -145,16 +145,17 @@ def window(app, tmp_path):
         if False else None
     csvp = tmp_path / "t.csv"
     csvp.write_bytes(b"\xef\xbb\xbf" + TEXT.encode("utf-8"))
-    w = LineWindow(Editor.open_line(line))
+    w = EditorWindow(Editor.open_line(line))
     ss = w.editor.line_data["sample_space"]        # 창이 자기 편집기를 다시 만든 뒤에 표를 바꿔 끼운다
     ss["index"], ss["key"] = str(csvp), "번호"
-    return w, str(csvp)
+    w.ng_dock._win = w                              # 창이 먼저 지워지지 않게 붙들어 둔다
+    return w.ng_dock, str(csvp)
 
 
 def test_the_fix_box_shows_the_row_and_saving_writes_only_the_changed_cell(window):
     w, p = window
     w._show_fix("a2")
-    assert w.fix_box.isVisibleTo(w) and w.tbl_fix.rowCount() == 4
+    assert w.fix_box.isVisibleTo(w.window()) and w.tbl_fix.rowCount() == 4
     from PySide6 import QtCore
 
     assert not w.tbl_fix.item(0, 1).flags() & QtCore.Qt.ItemIsEditable       # 건 이름 칸은 고칠 수 없다

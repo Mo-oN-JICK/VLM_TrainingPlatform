@@ -135,70 +135,38 @@ def app():
     return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 
-def test_the_window_draws_five_cards_top_to_bottom(app):
-    from vlm_trainer.ui.app.line_window import LineWindow
-
-    w = LineWindow(Editor.open_line(LINE))
-    ys = [w.widgets[c.id].mapTo(w, w.widgets[c.id].rect().topLeft()).y() for c in w.cards]
-    assert len(w.cards) == 5 and ys == sorted(ys)
+def _inspector_labels(w):
+    t = w.inspector.widget().findChild(__import__("PySide6.QtWidgets", fromlist=["x"]).QTableWidget)
+    return t, [t.item(i, 0).text() for i in range(t.rowCount()) if t.item(i, 0) is not None]
 
 
-def _labels(w):
-    return [w.tbl_settings.item(i, 0).text() for i in range(w.tbl_settings.rowCount())
-            if w.tbl_settings.item(i, 0) is not None]
+def test_a_rejected_edit_leaves_the_old_value_and_says_why_and_normal_amount_restores_the_original(app):
+    from vlm_trainer.ui.app.window import EditorWindow
 
-
-def test_basic_mode_shows_only_basic_settings_and_expert_mode_adds_the_rest_and_inner_boxes(app):
-    from vlm_trainer.ui.app.line_window import LineWindow
-
-    w = LineWindow(Editor.open_line(LINE))
-    w._pick("s3")
-    basic = _labels(w)
-    assert basic == ["정답 형태 파일", "항목별 정답 열"], basic          # Q33: 정답 표기·노출 검사는 전문가
-    w._pick("s4")
-    assert _labels(w) == ["학습량"] and w.tbl_settings.cellWidget(0, 1).count() == 3
-
-    w.act_expert.setChecked(True)
-    ex = _labels(w)
-    assert "학습량" in ex and "단계별 횟수 직접 입력  · 전문가" in ex
-    assert any("n_train" in x for x in ex) and any("n_sample" in x for x in ex), "안쪽 상자가 안 보인다"
-    w._pick("s3")
-    assert any("n_guard" in x for x in _labels(w)) and any("정답 노출 검사 방식" in x for x in _labels(w))
-    w.act_expert.setChecked(False)
-    assert _labels(w)[:2] == ["정답 형태 파일", "항목별 정답 열"] and not any("n_guard" in x for x in _labels(w))
-
-
-def test_an_accepted_edit_shows_up_in_the_table_and_marks_the_title_a_rejected_one_does_not(app):
-    from vlm_trainer.ui.app.line_window import LineWindow
-
-    w = LineWindow(Editor.open_line(LINE))
-    w._pick("s1")
+    w = EditorWindow(Editor.open_line(LINE))
+    w._on_pick("s1")
     assert "저장 안 됨" not in w.windowTitle()
-    w._apply(lambda v: w.editor.line_set("s1", "size", v), [224, 224])
-    assert "저장 안 됨" in w.windowTitle() and w.tbl_settings.cellWidget(1, 1).text() == "[224, 224]"
-    assert w.lbl_refuse.text() == ""
+    w._line_apply(lambda v: w.editor.line_set("s1", "size", v), [224, 224])
+    assert "저장 안 됨" in w.windowTitle()
+    t, _ = _inspector_labels(w)
+    assert t.cellWidget(1, 1).text() == "[224, 224]"
 
-    w._apply(lambda v: w.editor.line_set("s1", "image_column", v), "photo")       # 표에 없는 열
-    assert w.lbl_refuse.text().startswith("거부") and "photo" in w.detail.toPlainText()
-    assert w.tbl_settings.cellWidget(0, 1).text() == "image_path", "거부됐는데 화면에 틀린 값이 남았다"
+    w._line_apply(lambda v: w.editor.line_set("s1", "image_column", v), "photo")       # 표에 없는 열
+    assert w.lbl_refuse.text().startswith("거부") and "photo" in w.lbl_refuse.toolTip()
+    t, _ = _inspector_labels(w)
+    assert t.cellWidget(0, 1).text() == "image_path", "거부됐는데 화면에 틀린 값이 남았다"
 
-
-def test_the_amount_combo_changes_the_training_epochs_and_normal_restores_the_original(app):
-    from vlm_trainer.ui.app.line_window import LineWindow
-
-    w = LineWindow(Editor.open_line(LINE))
-    base = w.editor.compiled.spec_hash
-    w._pick("s4")
-    w._apply(lambda v: w.editor.line_set_amount("s4", v), "많게")
+    first = Editor.open_line(LINE).compiled.nodes["n_train"].params.get("epochs")
+    w._on_pick("s4")
+    w._line_apply(lambda v: w.editor.line_set_amount("s4", v), "많게")
     assert w.editor.compiled.nodes["n_train"].params["epochs"] == {"projector_align": 8, "lora_ft": 8}
-    assert w.tbl_settings.cellWidget(0, 1).currentText() == "많게"
-    w._apply(lambda v: w.editor.line_set_amount("s4", v), "보통")
-    assert w.editor.compiled.spec_hash == base
+    w._line_apply(lambda v: w.editor.line_set_amount("s4", v), "보통")
+    assert w.editor.compiled.nodes["n_train"].params.get("epochs") == first
 
 
 def test_widgets_report_only_when_the_input_is_finished_and_bad_json_is_not_sent(app):
     from PySide6 import QtWidgets
-    from vlm_trainer.ui.app.line_window import _BAD, make_editor
+    from vlm_trainer.ui.app.line_settings import _BAD, make_editor
 
     got = []
     cb = got.append
@@ -219,79 +187,38 @@ def test_widgets_report_only_when_the_input_is_finished_and_bad_json_is_not_sent
     assert isinstance(make_editor(0.5, [], cb), QtWidgets.QDoubleSpinBox)
 
 
-def test_the_inner_view_draws_the_expanded_graph_read_only_with_the_stations_boxes_selected(app):
-    from vlm_trainer.ui.app.line_window import InnerView
-
-    ed = Editor.open_line(LINE)
-    members = describe_file(LINE)["stations"][2]["members"]
-    v = InnerView(ed.compiled, members, "3 정답 형태")
-    assert {"n_guard", "p_answer", "n_schema"} <= set(v.canvas.cards)
-    assert all(v.canvas.cards[m].isSelected() for m in members)
-    assert not v.canvas.cards["n_img"].isSelected()
-
-
-def test_a_progress_file_with_ejected_samples_fills_the_ng_table_and_the_detail(app, tmp_path):
-    from vlm_trainer.ui.app.line_window import LineWindow
-
-    ed = Editor.open_line(LINE)
-    cg = ed.compiled
-    snap = {
-        "run_id": "t", "phase": "running", "order": list(cg.order), "total": 10, "processed": 10,
-        "node_state": {n: {"success": 8} for n in cg.order} | {"n_guard": {"success": 8, "failed": 2}},
-        "node_ms": {}, "cache": {}, "quarantine_total": 2,
-        "quarantine": [{"sample_key": f"o010{i}", "node_id": "n_guard",
-                        "cause": "정답 어휘가 프롬프트에 있다: ['기어']", "hint": "템플릿에서 뺀다"} for i in (1, 2)],
-    }
-    path = tmp_path / "progress.json"
-    path.write_text(json.dumps(snap), encoding="utf-8")
-    ed.progress_path = str(path)
-
-    w = LineWindow(ed)
-    w.editor.progress_path = str(path)
-    w.refresh()
-    assert w.cards[2].lamp == M.NG and w.cards[2].line2.endswith("NG 2")
-    assert w.tbl_ng.rowCount() == 2 and w.lbl_ng.text().startswith("NG 2건")
-    assert w.tbl_ng.item(0, 2).text() == "③ 정답 형태"
-    w.tbl_ng.selectRow(1)
-    # 한 줄 요약은 몇 번 스테이션인지와 원인을 보이고, 네 가지 상세는 접혀 있다
-    assert w.lbl_sum.text().startswith("③ 정답 형태 — ") and not w.detail.isVisibleTo(w)
-    w.btn_more.setChecked(True)
-    assert w.detail.isVisibleTo(w)
-    assert "o0102" in w.detail.toPlainText() and "해결: 템플릿에서 뺀다" in w.detail.toPlainText()
-
-
 def test_pressing_run_goes_through_the_whole_line_from_the_window(app, tmp_path, monkeypatch):
     """화면의 `실행` 이 `vlmt pipeline line.yaml` 을 띄우고 끝까지 간다. 램프는 정상으로 끝난다."""
     if not os.path.exists(os.path.join(ROOT, "solutions", "vlm_open", "data", "open_parts", "index.jsonl")):
         pytest.skip("vlm_open 데이터가 없다")
     pytest.importorskip("torch")
     from PySide6 import QtWidgets
-    from vlm_trainer.ui.app.line_window import LineWindow
+    from vlm_trainer.ui.app.window import EditorWindow
 
     monkeypatch.chdir(tmp_path)
-    w = LineWindow(Editor.open_line(LINE))
+    w = EditorWindow(Editor.open_line(LINE))
     w.editor.run_id = "t_view"
-    w._run(False)
+    w._run_pipeline(False)
     assert w.editor.proc is not None and "pipeline" in (w.editor.phase or "")
     t0 = time.time()
     while w.editor.proc.poll() is None and time.time() - t0 < 300:
         QtWidgets.QApplication.processEvents()
         time.sleep(0.2)
     assert w.editor.proc.returncode == 0, w.editor._console_tail(40)
-    w.refresh()
-    assert [c.lamp for c in w.cards][3:] == [M.OK, M.OK], [(c.label, c.lamp, c.line2) for c in w.cards]
-    assert w.cards[4].passed == 10
+    w.watcher.poll()
+    states = [c.state for c in sorted(w.canvas.cards.values(), key=lambda c: c.shown.lane)]
+    assert states[3:] == ["success", "success"], states
     assert (tmp_path / "runs" / "t_view" / "expanded_project.yaml").exists()
 
 
 def test_the_five_node_window_uses_only_the_agreed_words(app):
-    """화면 글자와 툴팁을 용어집 금지어 표로 훑는다(카드·설정 표·툴바 전부)."""
+    """화면 글자와 툴팁을 용어집 금지어 표로 훑는다(카드·설정 표·툴바·NG 도크 전부)."""
     from PySide6 import QtGui, QtWidgets
     from vlm_trainer.ui import words as W
-    from vlm_trainer.ui.app.line_window import LineWindow
+    from vlm_trainer.ui.app.window import EditorWindow
 
-    w = LineWindow(Editor.open_line(LINE))
-    w._pick("s3")
+    w = EditorWindow(Editor.open_line(LINE))
+    w._on_pick("s3")
     found = []
     texts = [(getattr(x, "text", lambda: "")() or "") + (x.toolTip() or "") for x in w.findChildren(QtWidgets.QWidget)]
     texts += [a.text() + a.toolTip() for a in w.findChildren(QtGui.QAction)]

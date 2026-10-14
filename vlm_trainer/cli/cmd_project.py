@@ -69,7 +69,7 @@ def cmd_edit(a: argparse.Namespace) -> int:
     from ..ui import app as app_mod
 
     _load_nodes(a.nodes)
-    return app_mod.launch(a.spec, extra_modules=tuple(a.nodes), canvas=getattr(a, "canvas", False))
+    return app_mod.launch(a.spec, extra_modules=tuple(a.nodes))
 
 
 def cmd_table_template(a: argparse.Namespace) -> int:

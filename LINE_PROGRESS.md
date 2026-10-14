@@ -154,7 +154,7 @@ O/X 보조 표시와 사람 OK/NG 판정 / 용어집 / 오류 메시지 형식
 - [x] 5-C 인스펙터에 5노드 설정(기본/전문가·학습량 3단·안쪽 상자 값) + 툴바 전문가 토글, 라이브러리 놓기 거부 안내
 - [x] 5-D 실행·중단·상태 칠하기·통과/NG 카운터를 카드에, 아래 도크에 NG 표·`이 건 고치기`
 - [x] 5-E 툴바 `데이터`·`검증 결과`·저장·11노드 내보내기·새 5노드
-- [ ] 5-F `LineWindow` 삭제, `launch` 정리, 테스트 이전, `line.bat` 통일·`editor.bat` 얇게, 문서 갱신
+- [x] 5-F `LineWindow` 삭제, `launch` 정리, 테스트 이전, `line.bat` 통일·`editor.bat` 얇게, 문서 갱신
 
 ## 4. 작업 로그 (최신이 위)
 
@@ -215,3 +215,4 @@ O/X 보조 표시와 사람 OK/NG 판정 / 용어집 / 오류 메시지 형식
 - 2026-10-13 · 이월 4건 · 단계 C NG 되쓰기·제외 · 끝 · `engine/table_edit.py`(그 셀만 쓰기·`.bak.csv` 한 번·`제외` 열 x, 읽을 때 건너뛰고 `SampleSpace.excluded` 로 센다), `Editor.line_row/line_fix_row/line_exclude_row`, CLI `row-set`·`row-exclude`(명령 31개), NG 상세 `이 건 고치기` 패널과 `NG n건 · 제외 m건`. CSV 만 쓰고 엑셀·JSONL 은 거부. 센서 칸은 사용자 결정으로 미룸 유지. 승인 대기
 - 2026-10-14 · 단계 5 · 5-D 끝 · 새 `ui/app/line_dock.py`(`NgDock`: 아래 도크의 NG 표·한 줄 요약·상세·`이 건 고치기`·`이 건 제외`, 사진 `load_thumbs`). `EditorWindow.paint_run` 이 스테이션 카드의 램프(`line_model.cards`)와 `통과 n · NG m` 을 칠하고 NG 표를 채움(다시 그려도 유지), `reread`(= `다시 읽기`, 실행 손잡이 승계), 5노드에서는 미리보기 단추·Debug·샘플 수를 숨김, 상태줄은 `③ 정답 형태`처럼 현장 이름. `실행`·`중단`은 기존 단추 그대로. 621 passed. 승인 대기
 - 2026-10-14 · 단계 5 · 5-E 끝 · `EditorWindow` 툴바에 `새 5노드…`·`데이터`(DataDialog)·`검증 결과`(VerdictDialog, 사진은 NG 도크의 `thumbs`)·`11노드로 내보내기`(확인 대화상자·덮어쓰기 거부). 다시 읽기는 5-D 에서 먼저 넣음. 도는 동안 `데이터`·`새 5노드…` 는 잠김. 623 passed. 승인 대기
+- 2026-10-14 · 단계 5 · 5-F 끝 · `LineWindow`(`line_window.py`)·`--canvas` 삭제, `vlmt edit line.yaml`·`line.bat` 이 `EditorWindow` 를 연다(표 없는 새 프로젝트는 `데이터` 가 먼저 뜸). 5노드에서는 실행 도크의 `NG 배출 샘플` 목록을 숨김(NG 표와 겹침). 테스트 `test_line_view`·`test_row_edit` 를 `EditorWindow` 기준으로 옮김(안쪽 보기 대화상자 테스트는 펼치기로 대체돼 삭제). `editor.bat` 은 `line.bat` 을 부르는 얇은 파일(인자 없으면 11노드 예제). 문서 갱신. 단계 5 끝, 승인 대기
