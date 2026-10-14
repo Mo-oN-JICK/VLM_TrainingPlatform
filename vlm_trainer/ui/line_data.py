@@ -110,3 +110,56 @@ def owned_schema_path(current: str, line_id: str) -> str:
     base = f"{line_id or 'line'}_answer.yaml"
     d = posixpath.dirname(current.replace("\\", "/"))
     return posixpath.join(d, base) if d else base
+
+
+# ── 질문 문장의 사진 자리 ─────────────────────────────────────────────────
+IMAGE_TOKEN = "{image}"
+
+
+def parse_question(text: str) -> tuple:
+    """화면의 질문 문장 → (template, policy). `{image}` 는 맨 앞이나 맨 뒤에만 둔다(Q61).
+
+    노드는 사진 자리를 문장 앞(prepend)이나 뒤(append)에만 붙인다. 중간에 적힌 것을 앞이나 뒤로
+    옮겨 붙이면 화면과 모델이 받는 문장이 갈라지므로 거부한다.
+    """
+    t = str(text or "").strip()
+    low = t.lower()
+    n = low.count(IMAGE_TOKEN)
+    if n > 1:
+        raise SpecError(f"질문 문장에 {IMAGE_TOKEN} 가 {n}번 있습니다: {t!r}\n"
+                        "  안 잡혔다면: 사진은 한 장인데 자리가 여럿이라 어디에 들어가는지 화면과 실제가 갈라집니다.\n"
+                        f"  {IMAGE_TOKEN} 를 하나만 남기세요.")
+    policy = "prepend"
+    if n == 1:
+        if low.startswith(IMAGE_TOKEN):
+            t = t[len(IMAGE_TOKEN):].strip()
+        elif low.endswith(IMAGE_TOKEN):
+            t, policy = t[:-len(IMAGE_TOKEN)].strip(), "append"
+        else:
+            raise SpecError(f"질문 문장 가운데에 {IMAGE_TOKEN} 가 있습니다: {t!r}\n"
+                            "  안 잡혔다면: 모델은 사진을 문장 앞이나 뒤에만 받아서, 화면에 보이는 문장과 실제로 학습하는 문장이 달라집니다.\n"
+                            f"  {IMAGE_TOKEN} 를 문장 맨 앞이나 맨 뒤로 옮기세요(예: {IMAGE_TOKEN} 공의 색상은?).")
+    if not t:
+        raise SpecError("질문 문장이 비었습니다.\n  안 잡혔다면: 모델이 무엇을 답해야 하는지 모른 채 학습합니다.\n"
+                        f"  질문을 적으세요(예: {IMAGE_TOKEN} 공의 색상은?).")
+    return t, policy
+
+
+def question_text(template: str, policy: str) -> str:
+    """(template, policy) → 화면에 보이는 질문 문장."""
+    return f"{template} {IMAGE_TOKEN}" if policy == "append" else f"{IMAGE_TOKEN} {template}"
+
+
+def question_for(template: str, policy: str, row: Dict[str, Any]) -> str:
+    """한 건에 실제로 들어갈 질문(표의 열 값을 채운 것). 못 채우면 문장 그대로."""
+    try:
+        filled = str(template).format(**{k: v for k, v in row.items()})
+    except (KeyError, IndexError, ValueError):
+        filled = str(template)
+    return question_text(filled, policy)
+
+
+def val_pct(splits: Dict[str, Any]) -> int:
+    r = splits.get("ratios") or {}
+    total = sum(r.values()) or 1.0
+    return int(round(100.0 * float(r.get("val", 0.2)) / total)) if r else 20

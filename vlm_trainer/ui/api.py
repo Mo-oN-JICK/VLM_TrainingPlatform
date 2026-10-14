@@ -150,6 +150,8 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin, LineMixin):
     # 고쳐 저장하면 원본이 Project 로 덮인다 — 그래서 편집·저장을 전부 거부한다.
     readonly: bool = False
     line_data: Optional[Dict[str, Any]] = None   # Line 의 원본 매핑. 편집은 이것을 고친다
+    answer_edits: Dict[str, Dict[str, str]] = field(default_factory=dict)   # ③ 에서 고친 정답. 저장 때 표에 쓴다
+    folder_sync: Dict[str, Any] = field(default_factory=dict)   # 열 때 폴더와 표를 맞춘 결과
 
     @staticmethod
     def open(path: str) -> "Editor":
@@ -183,6 +185,8 @@ class Editor(HistoryMixin, ProjectMixin, RecipeMixin, RunsMixin, LineMixin):
         e = Editor(path=os.path.abspath(path), readonly=True)
         e.line_data = _read_yaml(e.path)
         e._load_layout()     # 읽기만 한다. 파일은 상자를 옮길 때 처음 생긴다
+        # 폴더 입력 방식이면 폴더와 표를 먼저 맞춘다(Q67). 표 방식이면 아무것도 쓰지 않는다.
+        e.folder_sync = e.line_sync_folder()
         try:
             e.graph = load_project(e.path)
             e._recompile()

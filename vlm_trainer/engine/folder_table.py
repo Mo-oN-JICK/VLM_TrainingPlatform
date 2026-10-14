@@ -129,3 +129,13 @@ def sync(folder: str, csv_path: str, answer_cols: Sequence[str]) -> Dict[str, in
     if changed or added or excluded:
         _write(csv_path, [names, *body])
     return {"total": len(items), "added": added, "excluded": excluded, "skipped": skipped}
+
+
+def folder_name(key: str) -> str:
+    """건 이름에서 사진이 있던 하위 폴더 이름(바로 위 폴더). 맨 위 폴더의 사진이면 빈 문자열.
+
+    ponytail: 파일 이름 자체에 `__` 가 든 맨 위 사진은 폴더가 있는 것으로 읽힌다. 그런 이름이 실제로
+    문제가 되면 표에 상대 경로 열을 따로 두고 그것을 본다.
+    """
+    parts = key.split(SEP)
+    return parts[-2] if len(parts) >= 2 else ""

@@ -182,6 +182,13 @@ class DataDialog(QtWidgets.QDialog):
             for b in self.btns:
                 b.setEnabled(False)
             self._lock_cells(True)
+        elif schema["rows"]:
+            # 정답 항목은 ③ 정답 형태 패널에서 고친다(Q64). 여기서는 표의 열만 고른다 — 표를 바꾸면
+            # 열 이름이 달라지므로 그것까지 막으면 바꾼 표를 적용할 길이 없다.
+            self.lbl_schema.setText("정답 항목은 오른쪽 ③ 정답 형태에서 고칩니다. 여기서는 항목마다 표의 열만 고릅니다.")
+            for b in self.btns:
+                b.setEnabled(False)
+            self._lock_cells(True)
         else:
             src = f["schema_path"] or "(없음)"
             self.lbl_schema.setText(f"지금 정답 형태 파일: {src}\n저장하면 이 프로젝트 전용 파일 "

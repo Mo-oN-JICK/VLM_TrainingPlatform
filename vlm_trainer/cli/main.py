@@ -37,7 +37,7 @@ from ..train import contract as contract_mod
 # 명령 본문은 주제별 모듈에 있다. 파서는 그것을 가리키기만 한다.
 from .cmd_graph import cmd_backbones, cmd_compile, cmd_expand, cmd_decompile, cmd_infer_graph, cmd_nodes, cmd_show, cmd_view
 from .cmd_execute import cmd_budget, cmd_dryrun, cmd_export, cmd_materialize, cmd_pipeline, cmd_preview, cmd_run, cmd_sweep, cmd_train
-from .cmd_project import cmd_schema_rows, cmd_schema_build, cmd_judge, cmd_judgments, cmd_row_set, cmd_row_exclude, cmd_new_line, cmd_table_template, cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
+from .cmd_project import cmd_schema_rows, cmd_schema_build, cmd_judge, cmd_judgments, cmd_row_set, cmd_row_exclude, cmd_line_folder, cmd_row_fill_folder, cmd_new_line, cmd_table_template, cmd_check_node, cmd_edit, cmd_new, cmd_new_node, cmd_recipe
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -187,6 +187,20 @@ def build_parser() -> argparse.ArgumentParser:
     rx.add_argument("sample_id")
     rx.add_argument("--undo", action="store_true", help="제외를 풀어 되살립니다")
     rx.set_defaults(func=cmd_row_exclude)
+
+    lf = sub.add_parser("line-folder", help="사진 폴더를 5노드 입력으로 씁니다 (폴더·질문 문장·정답 항목을 한 번에)")
+    lf.add_argument("spec", help="line.yaml")
+    lf.add_argument("folder", help="사진 폴더 (하위 폴더도 읽습니다)")
+    lf.add_argument("--question", required=True, help="질문 문장. {image} 는 맨 앞이나 맨 뒤 (예: '{image} 공의 색상은?')")
+    lf.add_argument("--item", action="append", required=True, metavar="항목:종류[:허용값]",
+                    help="정답 항목. 종류는 목록|숫자|문장 (예: 색상:목록:검정색|파란색|흰색). 여러 번 쓸 수 있습니다")
+    lf.add_argument("--val-pct", type=int, default=20, help="검증 비율 %% (기본 20)")
+    lf.set_defaults(func=cmd_line_folder)
+
+    rf = sub.add_parser("row-fill-folder", help="빈 정답 칸을 하위 폴더 이름으로 채웁니다 (적힌 값은 덮지 않습니다)")
+    rf.add_argument("spec", help="line.yaml")
+    rf.add_argument("item", help="채울 정답 항목")
+    rf.set_defaults(func=cmd_row_fill_folder)
 
     jl = sub.add_parser("judgments", help="검증 건마다 항목별 O/X 와 사람 판정을 보입니다")
     jl.add_argument("run", help="실행 id(runs/ 아래) 또는 폴더")

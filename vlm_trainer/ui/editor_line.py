@@ -20,7 +20,8 @@ from ..answer import table as answer_table
 from ..core.compiler import compile_graph
 from ..core.errors import SpecError
 from ..core.graph import GraphModel
-from ..engine import table_edit
+from ..engine import folder_table, table_edit, xlsx
+from ..engine import samples as samples_mod
 from ..spec.decompile import dump_yaml
 from ..spec.line import expand_data, expand_file
 from ..spec.loader import build_project
@@ -143,13 +144,21 @@ class LineMixin:
         def mut(data: Dict[str, Any]) -> None:
             ss = data.setdefault("sample_space", {})
             ss["index"], ss["key"], ss["splits"] = f["index"], f["key"], f["splits"]
+            # 폴더 입력 방식이면 고른 폴더를 Line 층에 적는다(SampleSpace 가 아니라 spec_hash 는 그대로).
+            # 표 방식으로 적용하면 지운다 — 그때부터 표가 원본이다.
+            if f.get("folder"):
+                data["folder"] = f["folder"]
+            else:
+                data.pop("folder", None)
             img, qst, ans = (LD.station(data, n) for n in ("image", "question", "answer"))
             missing = [n for n, s in (("이미지", img), ("질문 형태", qst), ("정답 형태", ans)) if s is None]
             if missing:
                 raise ValueError(f"이 Line 에 {', '.join(missing)} 스테이션이 없어 열을 지정할 수 없습니다")
             for st in (img, qst, ans):
                 st.setdefault("params", {})
-            if f.get("question_column"):
+            if f.get("question") is not None:
+                qst["params"]["template"], qst["params"]["policy"] = LD.parse_question(f["question"])
+            elif f.get("question_column"):
                 qst["params"]["template"] = "{" + f["question_column"] + "}"
             fields = [x for _, x, _, _ in string.Formatter().parse(str(qst["params"].get("template", ""))) if x]
             cols: List[str] = []
@@ -171,6 +180,201 @@ class LineMixin:
                 with open(full, "wb") as fh:
                     fh.write(before)
         return res
+
+    # ── 폴더 입력 ───────────────────────────────────────────────────────
+    def _folder_full(self) -> str:
+        f = str((getattr(self, "line_data", None) or {}).get("folder") or "")
+        return LD.resolve(os.path.dirname(self.path), f) if f else ""
+
+    @staticmethod
+    def _answer_cols(data: Dict[str, Any]) -> List[str]:
+        ans = LD.station(data, "answer") or {}
+        return [str(c) for c in ((ans.get("params") or {}).get("mapping") or {}).values()]
+
+    def line_sync_folder(self) -> Dict[str, Any]:
+        """폴더 입력 방식이면 폴더에 맞춰 표를 맞춘다(Q67). 열 때와 다시 읽을 때 부른다."""
+        full = self._folder_full()
+        if not full:
+            return {"ok": True}
+        try:
+            t = table_edit.target(self.line_data, os.path.dirname(self.path))
+            return dict(folder_table.sync(full, t["path"], self._answer_cols(self.line_data)), ok=True)
+        except SpecError as exc:
+            return self._line_refuse(_short(_msg(exc)), _msg(exc))
+
+    def _with_csv_restore(self, csv_path: str, work: Any) -> Dict[str, Any]:
+        """표를 먼저 고치고 Line 편집을 시도한다. 편집이 거부되면 표를 원래대로 되돌린다."""
+        before = open(csv_path, "rb").read() if os.path.exists(csv_path) else None
+        res = work()
+        if not res.get("ok"):
+            if before is None:
+                if os.path.exists(csv_path):
+                    os.remove(csv_path)
+            else:
+                with open(csv_path, "wb") as fh:
+                    fh.write(before)
+        return res
+
+    def _schema_meta(self, rows: List[Dict[str, str]]) -> Dict[str, Any]:
+        s = LD.form(self.line_data, os.path.dirname(self.path))["schema"]
+        return {"rows": rows, "id": s["id"], "render": s["render"], "max_tokens": s["max_tokens"],
+                "step_order": s["step_order"], "vocabulary": s["vocabulary"]}
+
+    def line_use_folder(self, folder: str, question: str, rows: List[Dict[str, str]],
+                        val_pct: int = 20) -> Dict[str, Any]:
+        """폴더 입력 방식으로 바꾼다(Q74 a). 폴더·질문 문장·정답 항목을 **한 번에** 받아야 컴파일이 통과한다.
+
+        `line.yaml` 옆 `data.csv` 를 폴더에 맞춰 만들고(정답은 빈 칸), 나누기는 무작위 비율이다.
+        """
+        if getattr(self, "line_data", None) is None:
+            return self._line_refuse("5노드(Line) 파일이 아닙니다")
+        d = os.path.dirname(self.path)
+        full = os.path.abspath(LD.resolve(d, folder))
+        try:
+            rel = os.path.relpath(full, d)
+        except ValueError:      # 다른 드라이브면 상대 경로가 없다
+            rel = full
+        rel = rel.replace(os.sep, "/")
+        csv_path = os.path.join(d, "data.csv")
+        ids = [str(r.get("항목", "")).strip() for r in rows]
+        counts: Dict[str, Any] = {}
+
+        def work() -> Dict[str, Any]:
+            try:
+                counts.update(folder_table.sync(full, csv_path, [i for i in ids if i]))
+            except SpecError as exc:
+                return self._line_refuse(_short(_msg(exc)), _msg(exc))
+            cur = LD.form(self.line_data, d)
+            f = {"index": "data.csv", "key": folder_table.KEY_COL, "image_column": folder_table.IMAGE_COL,
+                 "splits": LD.make_splits("random", val_pct=int(val_pct), seed=cur["split"]["seed"]),
+                 "question_column": None, "question": question, "answers": {i: i for i in ids},
+                 "schema_path": cur["schema_path"], "folder": rel}
+            return self.line_apply_data(f, schema=self._schema_meta(rows))
+
+        res = self._with_csv_restore(csv_path, work)
+        return dict(res, counts=counts) if res.get("ok") else res
+
+    def line_set_question(self, text: str) -> Dict[str, Any]:
+        """질문 문장(`{image}` 는 맨 앞이나 맨 뒤). 문장에 표의 열 `{열}` 을 넣으면 그 열도 읽게 한다."""
+        def mut(d: Dict[str, Any]) -> None:
+            qst, img = LD.station(d, "question"), LD.station(d, "image")
+            p = qst.setdefault("params", {})
+            p["template"], p["policy"] = LD.parse_question(text)
+            fields = [x for _, x, _, _ in string.Formatter().parse(p["template"]) if x]
+            cols: List[str] = []
+            for c in [*fields, *self._answer_cols(d)]:
+                if c and c not in cols:
+                    cols.append(c)
+            img.setdefault("params", {})["columns"] = cols
+
+        return self._line_try(mut)
+
+    def line_set_val_pct(self, pct: int) -> Dict[str, Any]:
+        """폴더 입력 방식의 검증 비율(%). 시드는 그대로 둔다 — 같은 비율이면 같게 나뉜다."""
+        def mut(d: Dict[str, Any]) -> None:
+            ss = d.setdefault("sample_space", {})
+            seed = int((ss.get("splits") or {}).get("seed", LD.DEFAULT_SEED))
+            ss["splits"] = LD.make_splits("random", val_pct=int(pct), seed=seed)
+
+        return self._line_try(mut)
+
+    def line_set_schema(self, rows: List[Dict[str, str]], columns: Any = None) -> Dict[str, Any]:
+        """③ 의 정답 항목 표를 적용한다(Q64). `columns` 는 표 방식의 항목 → 표의 열(없으면 지금 값, 그것도
+        없으면 항목 이름). 폴더 방식은 열 이름이 항목 이름이고, 새 항목의 열을 표에 먼저 덧붙인다."""
+        if getattr(self, "line_data", None) is None:
+            return self._line_refuse("5노드(Line) 파일이 아닙니다")
+        d = os.path.dirname(self.path)
+        cur = LD.form(self.line_data, d)
+        folder = self._folder_full()
+        ids = [str(r.get("항목", "")).strip() for r in rows]
+        given = dict(columns or {})
+        answers = {i: (i if folder else (given.get(i) or cur["answers"].get(i) or i)) for i in ids}
+        f = {"index": cur["index"], "key": cur["key"], "image_column": cur["image_column"],
+             "splits": dict((self.line_data.get("sample_space") or {}).get("splits") or {}),
+             "question_column": cur["question_column"], "answers": answers, "schema_path": cur["schema_path"],
+             "folder": self.line_data.get("folder") or ""}
+        schema = self._schema_meta(rows)
+        if not folder:
+            return self.line_apply_data(f, schema=schema)
+        csv_path = table_edit.target(self.line_data, d)["path"]
+
+        def work() -> Dict[str, Any]:
+            try:
+                folder_table.sync(folder, csv_path, [i for i in ids if i])
+            except SpecError as exc:
+                return self._line_refuse(_short(_msg(exc)), _msg(exc))
+            return self.line_apply_data(f, schema=schema)
+
+        return self._with_csv_restore(csv_path, work)
+
+    # ── ③ 건별 정답 ─────────────────────────────────────────────────────
+    def line_answers(self) -> Dict[str, Any]:
+        """③ 건별 정답 표. 표에서 제외한 건은 뺀다. 저장 전에 고친 값(`answer_edits`)을 얹어 보인다.
+
+        표가 CSV 면 고칠 수 있고, 엑셀·JSONL 이면 보기 전용이다(이유를 `why` 에 담는다, Q73).
+        """
+        d = os.path.dirname(self.path)
+        try:
+            t = table_edit.target(self.line_data, d)
+            index = str((self.line_data.get("sample_space") or {}).get("index", ""))
+            path, sheet = xlsx.split_sheet(index)
+            path = LD.resolve(d, path)
+            rows, _n = table_edit.drop_excluded(samples_mod.read_table(path, sheet), path, t["key"])
+        except SpecError as exc:
+            return self._line_refuse(_short(_msg(exc)), _msg(exc))
+        why = ""
+        try:
+            table_edit._need_csv(path)
+        except SpecError as exc:
+            why = _msg(exc)
+        edits = getattr(self, "answer_edits", None) or {}
+        out = []
+        for r in rows:
+            key = str(r.get(t["key"], ""))
+            vals = {str(k): ("" if v is None else str(v)) for k, v in r.items()}
+            vals.update(edits.get(key, {}))
+            out.append({"key": key, "values": vals})
+        return {"ok": True, "key": t["key"], "path": path, "editable": not why, "why": why, "rows": out,
+                "cols": self._answer_cols(self.line_data)}
+
+    def line_set_answer(self, sample_key: str, col: str, value: str) -> Dict[str, Any]:
+        """건 하나의 정답 칸. 표에 바로 쓰지 않고 `저장` 때 Line 과 함께 쓴다(Q71)."""
+        if getattr(self, "answer_edits", None) is None:
+            self.answer_edits = {}
+        self.answer_edits.setdefault(str(sample_key), {})[str(col)] = str(value)
+        self.dirty = True
+        return {"ok": True}
+
+    def line_fill_from_folder(self, item: str) -> Dict[str, Any]:
+        """빈 정답 칸만 하위 폴더 이름으로 채운다(Q70). 입력해 둔 값은 덮지 않고, 목록 항목이면
+        허용값에 없는 폴더 이름은 채우지 않는다. 채운 값은 저장 때 표에 쓴다."""
+        if not self._folder_full():
+            return self._line_refuse("폴더 입력 방식이 아닙니다",
+                                     "하위 폴더 이름으로 채우기는 사진 폴더를 고른 프로젝트에서만 됩니다.")
+        got = self.line_answers()
+        if not got.get("ok"):
+            return got
+        rows = LD.form(self.line_data, os.path.dirname(self.path))["schema"]["rows"]
+        spec = next((r for r in rows if r["항목"] == item), None)
+        if spec is None:
+            return self._line_refuse(f"정답 항목 {item!r}가 없습니다",
+                                     f"정답 항목 {item!r}가 없습니다 (있는 항목: {[r['항목'] for r in rows]}).\n"
+                                     "  안 잡혔다면: 채운 값이 어느 칸에도 쓰이지 않습니다.\n  항목 이름을 확인하세요.")
+        allowed = ([v.strip() for v in spec["허용값"].split(answer_table.SEP) if v.strip()]
+                   if spec["종류"] == "목록" else [])
+        filled = not_allowed = kept = 0
+        for row in got["rows"]:
+            name = folder_table.folder_name(row["key"])
+            if not name:
+                continue
+            if str(row["values"].get(item, "")).strip():
+                kept += 1
+            elif allowed and name not in allowed:
+                not_allowed += 1
+            else:
+                self.line_set_answer(row["key"], item, name)
+                filled += 1
+        return {"ok": True, "filled": filled, "not_allowed": not_allowed, "kept": kept}
 
     # ── 저장·내보내기 ───────────────────────────────────────────────────
     def line_row(self, sample_key: str) -> Dict[str, Any]:
@@ -202,6 +406,16 @@ class LineMixin:
             return self._line_refuse("5노드(Line) 파일이 아닙니다")
         if self.compiled is None or not self.valid:
             return self._line_refuse(_short(self.error), self.error)
+        # ③ 에서 고친 정답을 먼저 표에 쓴다. 표를 못 쓰면(엑셀에서 열림 등) Line 도 쓰지 않는다.
+        edits = getattr(self, "answer_edits", None) or {}
+        if edits:
+            try:
+                t = table_edit.target(self.line_data, os.path.dirname(self.path))
+                for key in list(edits):
+                    table_edit.set_cells(t["path"], t["key"], key, edits[key])
+                    del edits[key]
+            except SpecError as exc:
+                return self._line_refuse(_short(_msg(exc)), _msg(exc))
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             fh.write(dump_yaml(self.line_data))

@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import time
+from typing import Any, Dict
 
 from .common import _load_nodes
 from ..core.compiler import compile_project
@@ -52,7 +53,7 @@ def cmd_new_line(a: argparse.Namespace) -> int:
     path, made = scaffold.new_line(a.dir, line_id=a.id, name=a.name)
     for f in made:
         print(f"  만듦: {f}")
-    print(f"\n  편집기: vlmt edit {path}   (열면 `데이터` 가 먼저 뜹니다)")
+    print(f"\n  편집기: vlmt edit {path}   (열면 ① 이미지가 골라져 있습니다 — 사진 폴더나 표를 고르세요)")
     if a.edit:
         from ..ui import app as app_mod
 
@@ -265,6 +266,51 @@ def cmd_row_set(a: argparse.Namespace) -> int:
     t = _table_of(a.spec)
     changed = table_edit.set_cells(t["path"], t["key"], a.sample_id, edits)
     print(f"{a.sample_id}: " + (", ".join(changed) + " 고침" if changed else "바뀐 것 없음"))
+    return 0
+
+
+def _line_editor(spec: str) -> Any:
+    from ..ui.api import Editor
+
+    return Editor.open_line(spec)
+
+
+def _done_or_raise(res: Dict[str, Any]) -> None:
+    from ..core.errors import SpecError
+
+    if not res.get("ok"):
+        raise SpecError(str(res.get("detail") or res.get("reason")))
+
+
+def cmd_line_folder(a: argparse.Namespace) -> int:
+    """사진 폴더를 입력으로 쓴다. 화면 ① 의 `폴더 고르기` 와 같은 일이다(폴더·질문 문장·정답 항목을 한 번에)."""
+    from ..core.errors import SpecError
+
+    rows = []
+    for spec in a.item:
+        parts = spec.split(":", 2)
+        if len(parts) < 2:
+            raise SpecError(f"정답 항목 {spec!r}를 읽을 수 없습니다.\n  안 잡혔다면: 어떤 칸을 답하게 할지 알 수 없습니다.\n"
+                            "  항목:종류[:허용값] 꼴로 적으세요(예: 색상:목록:검정색|파란색|흰색).")
+        rows.append({"항목": parts[0].strip(), "이름": "", "종류": parts[1].strip(),
+                     "허용값": parts[2].strip() if len(parts) > 2 else ""})
+    ed = _line_editor(a.spec)
+    res = ed.line_use_folder(a.folder, a.question, rows, val_pct=a.val_pct)
+    _done_or_raise(res)
+    _done_or_raise(ed.line_save())
+    c = res["counts"]
+    print(f"  사진 {c['total']}건 · 새로 {c['added']}건 · 제외 {c['excluded']}건 · 건너뛴 파일 {c['skipped']}개")
+    print("  정답은 data.csv 의 칸이 비어 있습니다 — 화면 ③ 이나 `vlmt row-set`, `vlmt row-fill-folder` 로 채우세요.")
+    return 0
+
+
+def cmd_row_fill_folder(a: argparse.Namespace) -> int:
+    """빈 정답 칸을 하위 폴더 이름으로 채운다. 화면 ③ 의 `하위 폴더 이름으로 채우기` 와 같은 일이다."""
+    ed = _line_editor(a.spec)
+    res = ed.line_fill_from_folder(a.item)
+    _done_or_raise(res)
+    _done_or_raise(ed.line_save())
+    print(f"  {res['filled']}건 채움 · 이미 적힌 {res['kept']}건 그대로 · 허용값에 없는 폴더 {res['not_allowed']}건")
     return 0
 
 

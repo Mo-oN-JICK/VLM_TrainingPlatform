@@ -64,8 +64,9 @@ def make_editor(value: Any, choices: List[str], on_done: Callable[[Any], None]) 
         w.editingFinished.connect(done)
     return w
 
-def settings_rows(editor: Any, st: Dict[str, Any], expert: bool) -> List[tuple]:
-    """(종류, 이름, 값, 선택지, 적용 함수). 기본 모드는 기본 항목만, 전문가는 전부와 안쪽 상자 값까지."""
+def settings_rows(editor: Any, st: Dict[str, Any], expert: bool, skip: Any = ()) -> List[tuple]:
+    """(종류, 이름, 값, 선택지, 적용 함수). 기본 모드는 기본 항목만, 전문가는 전부와 안쪽 상자 값까지.
+    `skip` 은 위쪽 패널이 따로 보여 주는 설정 이름이다(같은 값을 두 곳에서 고치지 않게)."""
     cid = st["id"]
     rows: List[tuple] = []
     if st.get("amount") and (expert or st["amount"]["level"] == "basic"):
@@ -74,11 +75,11 @@ def settings_rows(editor: Any, st: Dict[str, Any], expert: bool) -> List[tuple]:
                      a["value"] or "직접 입력", a["choices"],
                      lambda v, sid=cid: editor.line_set_amount(sid, v)))
     for name, s in st["settings"].items():
-        if s["level"] != "basic" and not expert:
+        if (s["level"] != "basic" and not expert) or name in skip:
             continue
         rows.append(("setting", s["label"] + ("" if s["level"] == "basic" else "  · 전문가"),
                      s["value"], s["choices"], lambda v, sid=cid, n=name: editor.line_set(sid, n, v)))
-    if expert:
+    if expert and editor.compiled is not None:
         for b in M.boxes(st, editor.compiled, os.path.dirname(editor.path)):
             rows.append(("box", f"{b.label}  ({b.id})", None, [], None))
             for pname, pval in b.params:

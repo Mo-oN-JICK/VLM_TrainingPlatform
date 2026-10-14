@@ -72,11 +72,12 @@ vlm_trainer/
     contract.py        inference_contract.json / inference_graph.yaml 생성(6.5)
 
   cli/
-    main.py            인자 정의와 진입점. 하위 명령 31개
+    main.py            인자 정의와 진입점. 하위 명령 33개
     cmd_graph.py       compile decompile expand nodes show view infer-graph
     cmd_execute.py     dryrun run materialize train budget preview sweep
                        pipeline export
     cmd_project.py     new new-line new-node check-node edit recipe table-template schema-build schema-rows judge judgments row-set row-exclude
+                       line-folder row-fill-folder
     common.py          하위 명령이 함께 쓰는 헬퍼(run_id, 진행 파일 경로, 시간 표기)
 
   ui/                  네이티브 앱. **웹 서버가 아니다**(아래 9.1.1)
@@ -87,10 +88,10 @@ vlm_trainer/
     tokens.py          색 팔레트(문서 12)
     render.py          `vlmt view`의 단독 HTML. 읽기 전용이다
     line_model.py      5노드 카드 램프·카운터·NG 행 계산(Qt 없음)
-    line_data.py       데이터 대화상자 계산(열 목록, 나누기 미리보기)
+    line_data.py       데이터 대화상자 계산(열 목록, 나누기 미리보기), 질문 문장의 {image}
     words.py           화면 용어 금지어 표
     app/               PySide6 — window / canvas / library / inspector /
-                       history / progress / line_settings / line_dock(5노드) /
+                       history / progress / line_settings / line_dock / line_panels(5노드) /
                        data_dialog / verdict_dialog
 ```
 

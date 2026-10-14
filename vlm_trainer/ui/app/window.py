@@ -24,6 +24,7 @@ from .canvas import GraphCanvas
 from .history import HistoryDock, RecipeDock
 from .inspector import Inspector
 from .library import LibraryDock
+from . import line_panels
 from .line_dock import NgDock
 from .line_settings import _BAD, fill_table, new_table, settings_rows
 from .progress import RunDock, RunWatcher
@@ -105,6 +106,9 @@ class EditorWindow(QtWidgets.QMainWindow):
             self.ng_dock.refused.connect(self._refuse)
             self.run_dock.quarantine_label.hide()      # 아래 NG 표와 겹친다
             self.run_dock.quarantine.hide()
+            # ①②③ 패널은 사진 두 장과 정답 표를 담는다 — 노드 설정 폭으로는 잘린다
+            self.resizeDocks([self.inspector], [520], QtCore.Qt.Horizontal)
+            self.resizeDocks([self.ng_dock], [200], QtCore.Qt.Vertical)
 
         self._connect_canvas()
         self._connect_panels()
@@ -340,6 +344,10 @@ class EditorWindow(QtWidgets.QMainWindow):
         if cg is None:
             self.lbl_graph.setText("컴파일되지 않았습니다: "
                                    + (self.editor.error or "").splitlines()[0])
+            if self.editor.line_data is not None:
+                # 새 5노드도 카드는 보여야 ① 에서 폴더나 표를 고를 수 있다
+                self.canvas.load(None, line=self.editor.line_describe())
+                self._show_inspector(self._picked)
             return
         fixed = {k: (int(v[0]), int(v[1])) for k, v in (self.editor.layout or {}).items()
                  if isinstance(v, (list, tuple)) and len(v) == 2}
@@ -399,6 +407,13 @@ class EditorWindow(QtWidgets.QMainWindow):
             self.reload_graph()
             self.statusBar().showMessage("데이터 설정을 적용했습니다 — 저장하면 파일에 남습니다", 6000)
 
+    def pick_first_card(self) -> None:
+        """새 5노드: ① 을 골라 둔다. 설정 칸에 입력 방식(폴더 / 표)이 바로 보인다."""
+        first = next(iter(self.canvas.cards), "")
+        if first:
+            self.canvas.cards[first].setSelected(True)
+            self._on_pick(first)
+
     def _open_verdict(self) -> None:
         from .verdict_dialog import VerdictDialog
 
@@ -420,7 +435,7 @@ class EditorWindow(QtWidgets.QMainWindow):
         win = EditorWindow(ed)
         self._others = getattr(self, "_others", []) + [win]  # 닫히지 않게 붙들어 둔다
         win.show()
-        QtCore.QTimer.singleShot(0, win._open_data)
+        QtCore.QTimer.singleShot(0, win.pick_first_card)
 
     def _export(self) -> None:
         box = QtWidgets.QMessageBox(self)
@@ -656,7 +671,7 @@ class EditorWindow(QtWidgets.QMainWindow):
 
     def _show_inspector(self, nid: str) -> None:
         card = self.canvas.cards.get(nid)
-        if card is None or self.editor.compiled is None:
+        if card is None or (self.editor.compiled is None and self.editor.line_data is None):
             self.inspector.show_empty()
             return
         if self.editor.line_data is not None:
@@ -681,12 +696,28 @@ class EditorWindow(QtWidgets.QMainWindow):
         hint = QtWidgets.QLabel(st["hint"])
         hint.setWordWrap(True)
         hint.setStyleSheet("color:#A8B0B6; font-size:11px;")
-        t = new_table()
-        fill_table(t, settings_rows(self.editor, st, expert), self._line_edit_cb)
         lay.addWidget(title)
         lay.addWidget(hint)
-        lay.addWidget(t, 1)
-        self.inspector.show_widget(w)
+        # ① ② ③ 은 위쪽에 전용 패널을 두고, 그 패널이 다루는 설정은 아래 표에서 뺀다
+        panel, skip = {
+            "image": (line_panels.image_panel, ("image_column", "columns") if self.editor.line_data.get("folder") else ()),
+            "question": (line_panels.question_panel, ("template", "policy")),
+            "answer": (line_panels.answer_panel, ("mapping",) if expert else ("mapping", "schema_path")),
+        }.get(st["name"], (None, ()))
+        if panel is not None:
+            lay.addWidget(panel(self, st))
+        rows = settings_rows(self.editor, st, expert, skip)
+        if rows:
+            t = new_table()
+            fill_table(t, rows, self._line_edit_cb)
+            t.setMinimumHeight(min(320, 34 * len(rows) + 30))
+            lay.addWidget(t, 0 if panel is not None else 1)
+        lay.addStretch(0)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        scroll.setWidget(w)
+        self.inspector.show_widget(scroll)
 
     def _line_edit_cb(self, setter: Any, old: Any) -> Any:
         def done(v: Any) -> None:
@@ -736,6 +767,6 @@ def launch(project_path: str, extra_modules: tuple = ()) -> int:
     editor.extra_modules = tuple(extra_modules)
     win = EditorWindow(editor)
     win.show()
-    if win.ng_dock is not None and editor.compiled is None:  # 새 5노드: 표부터 넣게 한다
-        QtCore.QTimer.singleShot(0, win._open_data)
+    if win.ng_dock is not None and editor.compiled is None:  # 새 5노드: ① 의 입력 방식부터 고르게 한다
+        QtCore.QTimer.singleShot(0, win.pick_first_card)
     return app.exec()

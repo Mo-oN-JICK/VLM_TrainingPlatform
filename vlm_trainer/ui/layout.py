@@ -334,6 +334,12 @@ def fold_line(cg: CompiledGraph, desc: Dict[str, Any], expanded: Any = ()
     from .line_model import _members, mark
 
     expanded = set(expanded or ())
+    if cg is None:      # 표·정답 항목이 아직 없는 새 프로젝트: 펼칠 것 없이 카드만 그린다
+        cards = {s["id"]: Shown(id=s["id"], ref=STATION, kind=NodeKind.PROCESSING, category=STATION, lane=i,
+                                summary="아직 컴파일되지 않았습니다", label=f"{mark(s['number'])} {s['label']}",
+                                hint=s["hint"], state_ids=[]) for i, s in enumerate(desc["stations"])}
+        ids = list(cards)
+        return cards, [], list(zip(ids, ids[1:]))
     base, wires = fold(cg, ())
     stations = desc["stations"]
     members = [set(_members(cg, s["members"])) for s in stations]
