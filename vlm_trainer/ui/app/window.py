@@ -302,6 +302,14 @@ class EditorWindow(QtWidgets.QMainWindow):
                 a.setVisible(False)
             self.act_reread = tb.addAction("다시 읽기", lambda: self.reread())
             self.act_reread.setToolTip("표(CSV)와 Line 파일을 다시 읽습니다. 표를 고쳤다면 눌러 주세요.")
+            self.act_new = tb.addAction("새 5노드…", self._new_line)
+            self.act_new.setToolTip("빈 폴더를 골라 새 5노드 프로젝트를 만듭니다. 표는 `데이터` 에서 넣습니다.")
+            self.act_data = tb.addAction("데이터", self._open_data)
+            self.act_data.setToolTip("표 파일, 열 지정, 정답 항목, 학습/검증 나누기를 정합니다.")
+            self.act_verdict = tb.addAction("검증 결과", self._open_verdict)
+            self.act_verdict.setToolTip("검증 사진에 모델이 낸 답을 정답과 나란히 보고 OK / NG 를 정합니다.")
+            self.act_export = tb.addAction("11노드로 내보내기", self._export)
+            self.act_export.setToolTip("상자와 배선을 직접 고칠 때 씁니다. 내보낸 뒤에는 5노드와 연결이 끊깁니다.")
             self.act_expert = tb.addAction("전문가 모드")
             self.act_expert.setCheckable(True)
             self.act_expert.setToolTip("켜면 모든 설정과 안쪽 상자의 값이 보입니다. 창을 닫으면 꺼집니다.")
@@ -380,6 +388,57 @@ class EditorWindow(QtWidgets.QMainWindow):
                 node.update()
         quarantine = list((snap or {}).get("quarantine") or [])
         self.ng_dock.paint(M.ng_rows(cards, quarantine), int((snap or {}).get("quarantine_total") or len(quarantine)))
+
+    def _open_data(self) -> None:
+        from .data_dialog import DataDialog
+
+        if DataDialog(self.editor, self).exec() == QtWidgets.QDialog.Accepted:
+            self.ng_dock.bind(self.editor)      # 표가 바뀌었다 — 사진도 새로
+            self.reload_graph()
+            self.statusBar().showMessage("데이터 설정을 적용했습니다 — 저장하면 파일에 남습니다", 6000)
+
+    def _open_verdict(self) -> None:
+        from .verdict_dialog import VerdictDialog
+
+        VerdictDialog(self.ng_dock.thumbs, getattr(self.editor, "run_id", "") or "", self).exec()
+
+    def _new_line(self) -> None:
+        from ...spec import scaffold
+
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "새 프로젝트를 만들 폴더(없으면 만들어 두세요)")
+        if not folder:
+            return
+        try:
+            path, _made = scaffold.new_line(folder)
+        except Exception as exc:
+            self._refuse("새 5노드", {"reason": str(exc).splitlines()[0], "detail": str(exc)})
+            return
+        ed = Editor.open_line(path)
+        ed.extra_modules = self.editor.extra_modules
+        win = EditorWindow(ed)
+        self._others = getattr(self, "_others", []) + [win]  # 닫히지 않게 붙들어 둔다
+        win.show()
+        QtCore.QTimer.singleShot(0, win._open_data)
+
+    def _export(self) -> None:
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("11노드로 내보내기")
+        box.setIcon(QtWidgets.QMessageBox.Warning)
+        box.setText("11노드 프로젝트로 내보냅니다.")
+        box.setInformativeText(
+            "내보낸 파일은 이 5노드 파일과 연결이 끊깁니다. 한 번 내보내면 5노드 화면으로 돌아올 수 없고, "
+            "이후에는 내보낸 파일을 직접 편집해야 합니다.\n상자와 배선을 직접 고칠 때만 쓰세요.\n\n"
+            f"만들 파일: {os.path.basename(self.editor.line_export_path())}")
+        go = box.addButton("내보내기", QtWidgets.QMessageBox.DestructiveRole)
+        box.addButton("취소", QtWidgets.QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is not go:
+            return
+        res = self.editor.line_export()
+        if res.get("ok"):
+            self.statusBar().showMessage(f"내보냈습니다: {res['path']}", 8000)
+        else:
+            self._refuse("내보내기", res)
 
     def reread(self, confirm: bool = True) -> None:
         """Line 과 표를 디스크에서 다시 읽는다. 저장하지 않은 변경은 사라지므로 먼저 묻는다."""
@@ -569,6 +628,8 @@ class EditorWindow(QtWidgets.QMainWindow):
         self.inspector.setEnabled(not on)
         if self.ng_dock is not None:
             self.ng_dock.set_running(on)
+            self.act_data.setEnabled(not on)     # 표를 바꾸면 도는 것과 화면이 갈라진다
+            self.act_new.setEnabled(not on)
         # **보는 것은 막지 않는다.** 전에는 `setInteractive(False)` 로 캔버스의 마우스
         # 이벤트를 통째로 껐는데, 그러면 팬도 휠 줌도 선택도 죽는다 — 실행 중에 아래쪽
         # 노드를 보러 갈 수가 없었다. 실행 중에 제일 하고 싶은 일이 그것인데.

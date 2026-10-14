@@ -217,3 +217,38 @@ def test_fixing_a_row_from_the_dock_writes_the_csv_and_rereads(app, line, tmp_pa
     old = w.editor
     w.reread(confirm=False)
     assert w.editor is not old and d.editor is w.editor and len(w.canvas.cards) == 5
+
+
+# ── 단계 5-E: 데이터·검증 결과·내보내기·새 5노드 ─────────────────────────
+def test_the_toolbar_has_the_line_buttons_and_export_writes_the_11_node_file(app, line, monkeypatch):
+    from PySide6 import QtWidgets
+    from vlm_trainer.ui.app.window import EditorWindow
+
+    w = EditorWindow(Editor.open_line(line))
+    names = [a.text() for a in w.findChildren(QtWidgets.QToolBar)[0].actions()]
+    assert {"데이터", "검증 결과", "다시 읽기", "새 5노드…", "11노드로 내보내기"} <= set(names)
+
+    # 대화상자는 `내보내기` 를 눌렀다고 친다
+    monkeypatch.setattr(QtWidgets.QMessageBox, "exec", lambda self: 0)
+    monkeypatch.setattr(QtWidgets.QMessageBox, "clickedButton",
+                        lambda self: next(b for b in self.buttons() if b.text() == "내보내기"))
+    w._export()
+    assert os.path.exists(w.editor.line_export_path())
+
+
+def test_the_data_dialog_opens_from_the_canvas_window_and_a_new_line_opens_empty(app, line, tmp_path, monkeypatch):
+    from PySide6 import QtWidgets
+    from vlm_trainer.spec import scaffold
+    from vlm_trainer.ui.app.data_dialog import DataDialog
+    from vlm_trainer.ui.app.window import EditorWindow
+
+    seen = []
+    monkeypatch.setattr(DataDialog, "exec", lambda self: seen.append(self) or QtWidgets.QDialog.Rejected)
+    w = EditorWindow(Editor.open_line(line))
+    w._open_data()
+    assert len(seen) == 1
+    path, _ = scaffold.new_line(str(tmp_path / "새폴더"))
+    nw = EditorWindow(Editor.open_line(path))               # 표가 없어 컴파일되지 않은 새 프로젝트
+    assert nw.editor.compiled is None and nw.ng_dock.tbl_ng.rowCount() == 0
+    nw._open_data()
+    assert len(seen) == 2
